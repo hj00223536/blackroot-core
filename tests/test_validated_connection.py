@@ -45,6 +45,13 @@ class ValidatedConnectionTests(unittest.TestCase):
         self.assertEqual(self.store.connect_validated_block(child, 1, self.headers), 0)
         self.assertEqual(self.store.tip(), (1, child.header.hash))
 
+    def test_rejects_body_that_does_not_match_selected_header_merkle_root(self):
+        malformed = Block(self.genesis.header, (coinbase(0), coinbase(0)))
+        with self.assertRaisesRegex(ValueError, "duplicate transaction ids|merkle root"):
+            self.store.connect_validated_block(malformed, 0, self.headers)
+        self.assertIsNone(self.store.tip())
+        self.assertEqual(self.store.count(), 0)
+
     def test_rejects_header_not_in_validated_chain_without_mutation(self):
         impostor = mined_block([coinbase(0)], bytes(32), 3)
         with self.assertRaisesRegex(ValueError, "not the selected validated"):
