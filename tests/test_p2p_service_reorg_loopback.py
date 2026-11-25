@@ -145,6 +145,62 @@ class P2PServiceReorganizationLoopbackTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.service.reorg.pool.pending_hashes, ())
         self.assertEqual(self.store.tip(), (2, self.fork_two.header.hash))
 
+    async def test_tcp_rejects_overpaying_longer_fork_without_state_change(self):
+        invalid_coinbase = Transaction(
+            1,
+            (TxInput(
+                OutPoint(ZERO_TXID, COINBASE_INDEX),
+                (3).to_bytes(2, "little"),
+            ),),
+            (TxOutput(block_subsidy(3) + 1, b"miner"),),
+        )
+        root = merkle_root([invalid_coinbase.txid])
+        invalid_three = None
+        for nonce in range(10000):
+            header = BlockHeader(
+                1, self.fork_two.header.hash, root, 5, BITS, nonce
+            )
+            if check_proof_of_work(header.serialize(), BITS, POW_LIMIT):
+                invalid_three = Block(header, (invalid_coinbase,))
+                break
+        self.assertIsNotNone(invalid_three)
+        self.chain.add_to_branch(invalid_three.header)
+        self.blocks[invalid_three.header.hash] = invalid_three.serialize()
+
+        original_tip = self.store.tip()
+        with self.store._connection_scope() as db:
+            original_utxos = db.execute(
+                "SELECT txid, output_index, value, script_pubkey, created_height, "
+                "is_coinbase, created_mtp FROM utxos ORDER BY txid, output_index"
+            ).fetchall()
+        assignments = await self.service.reorg.request_missing_bodies(
+            self.service._peers()
+        )
+        expected = {
+            self.fork_one.header.hash,
+            self.fork_two.header.hash,
+            invalid_three.header.hash,
+        }
+        self.assertEqual(set(assignments), expected)
+
+        async def wait_for_invalid_branch_rejection():
+            while self.service.reorg.pool.pending_hashes:
+                await asyncio.sleep(0.01)
+            # Allow the peer dispatcher to finish its rejection/cleanup path.
+            await asyncio.sleep(0.05)
+
+        await asyncio.wait_for(wait_for_invalid_branch_rejection(), timeout=5)
+        self.assertEqual(self.store.tip(), original_tip)
+        for block_hash in expected:
+            self.assertIsNone(self.store.load_block_body(block_hash))
+        with self.store._connection_scope() as db:
+            restored_utxos = db.execute(
+                "SELECT txid, output_index, value, script_pubkey, created_height, "
+                "is_coinbase, created_mtp FROM utxos ORDER BY txid, output_index"
+            ).fetchall()
+        self.assertEqual(restored_utxos, original_utxos)
+        self.store.verify_integrity()
+
     async def test_service_downloads_fork_bodies_over_tcp_and_reorganizes(self):
         assignments = await self.service.reorg.request_missing_bodies(
             self.service._peers()
