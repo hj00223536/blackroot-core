@@ -62,6 +62,27 @@ class PersistentNodeStateTests(unittest.TestCase):
         self.assertEqual(reopened.utxos.tip(), (0, self.genesis_block.header.hash))
         self.assertEqual(reopened.headers.chain.node(self.genesis_block.header.hash).height, 0)
 
+    def test_connect_best_block_archives_body_automatically(self):
+        state = self.state()
+        self.assertEqual(state.connect_best_block(self.genesis_block, 0), 0)
+        reopened = UTXOStore(self.root / "utxos.sqlite")
+        self.assertEqual(
+            reopened.load_block_body(self.genesis_block.header.hash),
+            self.genesis_block,
+        )
+
+    def test_archive_detects_merkle_corruption_after_storage(self):
+        state = self.state()
+        state.connect_best_block(self.genesis_block, 0)
+        with sqlite3.connect(self.root / "utxos.sqlite") as db:
+            db.execute(
+                "UPDATE block_bodies SET raw_block=? WHERE block_hash=?",
+                (self.genesis_block.serialize()[:-1] + bytes([self.genesis_block.serialize()[-1] ^ 1]),
+                 self.genesis_block.header.hash),
+            )
+        with self.assertRaisesRegex(RuntimeError, "merkle root is corrupt"):
+            state.utxos.load_block_body(self.genesis_block.header.hash)
+
     def test_reorganizes_to_archived_best_branch_after_reopen(self):
         state = self.state()
         state.connect_best_block(self.genesis_block, 0)
