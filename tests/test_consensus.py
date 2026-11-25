@@ -59,5 +59,36 @@ class TargetAndPowTests(unittest.TestCase):
         self.assertFalse(check_proof_of_work(header, 0x207FFFFF, 1))
 
 
+class RetargetAndWorkTests(unittest.TestCase):
+    def test_compact_target_round_trip_for_regtest_limit(self):
+        target = decode_compact_target(0x207FFFFF)
+        from src.blackroot_consensus import encode_compact_target
+        self.assertEqual(encode_compact_target(target), 0x207FFFFF)
+
+    def test_block_work_decreases_as_target_increases(self):
+        from src.blackroot_consensus import block_work
+        easier = decode_compact_target(0x207FFFFF)
+        harder = easier // 2
+        self.assertGreater(block_work(harder), block_work(easier))
+
+    def test_retarget_clamps_fast_and_slow_timespans(self):
+        from src.blackroot_consensus import retarget_compact
+        bits = 0x207FFFFF
+        limit = decode_compact_target(bits)
+        target_span = 2016 * 600
+        quarter = decode_compact_target(retarget_compact(bits, 1, limit, target_span))
+        four_x = decode_compact_target(retarget_compact(bits, target_span * 20, limit, target_span))
+        self.assertEqual(quarter, limit // 4)
+        self.assertEqual(four_x, limit)
+
+    def test_retarget_rejects_bad_inputs(self):
+        from src.blackroot_consensus import retarget_compact
+        bits = 0x207FFFFF
+        limit = decode_compact_target(bits)
+        for actual in (0, -1, True):
+            with self.assertRaises(ValueError):
+                retarget_compact(bits, actual, limit)
+
+
 if __name__ == "__main__":
     unittest.main()
