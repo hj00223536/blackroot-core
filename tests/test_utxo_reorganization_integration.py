@@ -76,9 +76,17 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
         store.add_genesis_output(funding, previous_output)
         store.connect_validated_block(genesis, 0, headers)
 
-        spend = signed_spend(funding, previous_output, output_script=b"recipient")
+        recipient_script = p2pkh_script(_hash160(pubkey))
+        spend = signed_spend(
+            funding, previous_output, output_script=recipient_script
+        )
+        chained_outpoint = OutPoint(spend.txid, 0)
+        chained_previous = TxOutput(9_000, recipient_script)
+        chained_spend = signed_spend(
+            chained_outpoint, chained_previous, output_script=b"final-recipient"
+        )
         coinbase_tx = coinbase(1, 2)
-        txs = (coinbase_tx, spend)
+        txs = (coinbase_tx, spend, chained_spend)
         root = merkle_root(tx.txid for tx in txs)
         old_one = None
         for nonce in range(10_000):
@@ -92,7 +100,11 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
 
         self.assertIsNone(store.get(funding))
         recipient = OutPoint(spend.txid, 0)
-        self.assertEqual(store.get(recipient), TxOutput(9_000, b"recipient"))
+        final_recipient = OutPoint(chained_spend.txid, 0)
+        self.assertIsNone(store.get(recipient))
+        self.assertEqual(
+            store.get(final_recipient), TxOutput(9_000, b"final-recipient")
+        )
 
         side_one = mined_block(1, genesis.header.hash, 3)
         side_two = mined_block(2, side_one.header.hash, 4)
@@ -105,6 +117,7 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
         self.assertEqual(switched, (2, side_two.header.hash))
         self.assertEqual(store.get(funding), previous_output)
         self.assertIsNone(store.get(recipient))
+        self.assertIsNone(store.get(final_recipient))
         store.verify_integrity()
 
     def test_reorganization_back_to_old_branch_restores_exact_coinbase_utxo_state(self):
