@@ -46,5 +46,7 @@ def validate_coinbase_maturity(
     if (not isinstance(maturity, int) or isinstance(maturity, bool)
             or maturity < 0):
         raise ValueError("maturity must be a non-negative integer")
+    if spending_height < provenance.created_height:
+        raise ValueError("UTXO cannot be spent before its creation height")
     if provenance.is_coinbase and spending_height - provenance.created_height < maturity:
         raise ValueError("premature coinbase spend")
