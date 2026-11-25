@@ -6,6 +6,7 @@ from src.blackroot_chain import BlockHeader, HeaderChain, ZERO_HASH
 from src.blackroot_consensus import decode_compact_target, check_proof_of_work
 from src.blackroot_p2p_handshake import VersionMessage
 from src.blackroot_p2p_inventory import InventoryVector, encode_inventory
+from src.blackroot_p2p_headers import encode_headers
 from src.blackroot_p2p_service import P2PSyncService
 
 MAGIC_BITS = 0x207FFFFF
@@ -84,6 +85,15 @@ class P2PSyncServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNot(replacement, original)
         self.assertEqual(self.service.blocks.tracker.pending_hashes, (genesis_hash,))
         self.assertEqual(replacement.sent[-1][0], "getdata")
+
+    async def test_header_sync_does_not_start_body_sync_before_genesis_bootstrap(self):
+        self.store.tip.return_value = None
+        handler = self.manager.on_peer_message_factory(self.peer_a)
+
+        await handler("headers", encode_headers([]))
+
+        self.store.load_block_body.assert_not_called()
+        self.assertEqual(self.service.reorg.pool.pending_hashes, ())
 
     async def test_disconnect_hook_is_installed_on_manager(self):
         self.assertIs(self.manager.on_peer_disconnected.__self__, self.service)
