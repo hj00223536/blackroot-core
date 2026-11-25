@@ -1,0 +1,65 @@
+# Storage Transaction Boundary Assessment
+
+**Status: design assessment only. No storage migration has been performed.**
+
+## Current verified architecture
+
+The node currently opens three independently managed SQLite databases:
+
+- `PersistentHeaderStore` persists and commits header-DAG updates through its own connection.
+- `UTXOStore` opens its own connections for block bodies, active-chain state, undo records, and UTXO mutations. Block connection and reorganization use explicit transactions on those connections.
+- `NodeRecoveryJournal` persists and commits recovery intent through a third connection/database.
+
+`PersistentNodeState` coordinates these stores at the Python method level. It writes a recovery intent before a UTXO transition and reconciles the observed UTXO tip afterward. This is a useful fail-closed recovery protocol, but it is not one atomic SQLite transaction across all persisted state.
+
+## Important distinction: same file is not enough
+
+Changing all three path arguments to the same SQLite filename would **not** establish atomicity.
+
+The stores currently:
+- create connections independently;
+- enter connection context managers independently;
+- issue commits inside their own methods;
+- and, in some operations, explicitly begin and commit transactions.
+
+Those boundaries cannot be composed into one caller-owned transaction merely by reusing a filename. Independent connections to one SQLite file still have independent transaction scopes. A broad path-only change could also create confusing schema ownership and locking behavior without solving partial commits.
+
+## Recommended target design
+
+Introduce one node-owned SQLite connection/transaction coordinator and make persistent stores operate on that caller-owned connection.
+
+Required properties:
+
+1. One connection owner per node-state transaction boundary.
+2. Store methods accept a connection or transaction context; they do not open, commit, or close the node-owned connection during a coordinated operation.
+3. Schema initialization remains explicit and idempotent, with table names and metadata keys owned by their respective stores.
+4. A single block-acceptance transaction covers the intended durable effects: body/archive record, active block and transaction records, UTXO mutations, undo data, and active-tip metadata.
+5. Header-DAG persistence is included in that same transaction only after header-store APIs are refactored to use the same connection. Header validation and in-memory chain publication happen only after durable commit succeeds.
+6. Reorganization performs all disconnect/connect operations and active-tip updates inside one transaction.
+7. Startup replay and integrity checks remain fail-closed. The recovery journal should be reconsidered after the single-database transaction boundary is proven; it must not be removed merely because the database filename is shared.
+
+## Safe migration sequence
+
+- **Phase A — connection ownership:** add a small connection/transaction abstraction with explicit ownership rules. Preserve the current three-file mode until tests prove the new mode.
+- **Phase B — store adapters:** refactor each store to support an injected connection without internal commits or connection closure when participating in a caller-owned transaction. Keep standalone compatibility paths isolated.
+- **Phase C — atomic acceptance:** implement block acceptance and reorganization through one transaction coordinator. Do not publish in-memory best-chain state before commit.
+- **Phase D — fault testing:** inject exceptions at every write stage and terminate subprocesses before and after commit. Reopen the database and prove the result is either wholly old state or wholly new state, never a mixed state.
+- **Phase E — migration:** define a versioned, backup-first migration from existing files. Verify row counts, hashes, active tip, archived bodies, undo records, and header replay before switching the node to the consolidated database.
+
+## Acceptance criteria
+
+The migration is not complete until automated tests demonstrate:
+
+- all coordinated stores use the exact same connection object during a block-acceptance transaction;
+- no participating store commits independently;
+- a failed transaction leaves no partial header/UTXO/body/undo/tip update;
+- a successful transaction persists all required records together;
+- reorganization rollback restores the exact prior active state;
+- process-crash tests pass on both sides of the commit boundary;
+- migration refuses ambiguous, corrupt, or inconsistent source databases without deleting or overwriting them.
+
+## Current safety status
+
+The existing recovery journal and startup consistency checks remain in place. The current architecture still has separate databases and no atomic cross-database commit. This document is a design checkpoint, not evidence of an implemented atomic-storage guarantee.
+
+**Mainnet status remains NOT READY.**
