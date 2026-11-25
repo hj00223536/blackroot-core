@@ -89,7 +89,7 @@ class MultiPeerReorganizationSync:
             self.store.store_block_body(block)
             if not self.pool.complete(block_hash, peer_id):
                 raise RuntimeError("fork body assignment disappeared during acceptance")
-        except BaseException:
+        except Exception:
             # Invalid or unpersistable responses must not pin the request slot.
             # The caller may disconnect the peer; another peer can then retry.
             self.pool.cancel(block_hash)
