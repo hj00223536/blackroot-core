@@ -93,6 +93,14 @@ class BlockBodyRequestTrackerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unknown header"):
             self.tracker.request(bytes.fromhex("66" * 32), self.chain)
 
+    def test_expire_returns_only_stale_requests(self):
+        now = [10.0]
+        tracker = BlockBodyRequestTracker(max_outstanding=2, clock=lambda: now[0])
+        tracker.request(self.block.header.hash, self.chain)
+        self.assertEqual(tracker.expire(5, now=14.9), ())
+        self.assertEqual(tracker.expire(5, now=15.0), (self.block.header.hash,))
+        self.assertEqual(tracker.pending_hashes, ())
+
     def test_cancel_is_idempotent(self):
         self.tracker.request(self.block.header.hash, self.chain)
         self.assertTrue(self.tracker.cancel(self.block.header.hash))
