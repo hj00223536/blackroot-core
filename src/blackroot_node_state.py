@@ -31,22 +31,33 @@ class PersistentNodeState:
         self._verify_persistent_tip()
 
     def _verify_persistent_tip(self) -> None:
-        active = self.utxos.tip()
-        if active is None:
+        records = self.utxos.active_block_headers()
+        if not records:
             return
-        height, block_hash = active
-        node = self.headers.chain.node(block_hash)
-        if node is None or node.height != height:
-            raise RuntimeError(
-                "persistent UTXO tip is absent or inconsistent in replayed header DAG"
-            )
-        stored_header = self.utxos.block_header(height)
-        if stored_header is None or stored_header != node.header.serialize():
-            raise RuntimeError(
-                "persistent UTXO block header does not match replayed header DAG"
-            )
-        if height == 0 and block_hash != self.headers.chain.best_chain()[0].hash:
-            raise RuntimeError("persistent UTXO genesis does not match header-store genesis")
+        expected_parent = bytes(32)
+        for expected_height, (height, block_hash, prev_hash, stored_header) in enumerate(records):
+            if height != expected_height:
+                raise RuntimeError("persistent UTXO active block heights are not contiguous")
+            if prev_hash != expected_parent:
+                raise RuntimeError("persistent UTXO active block parent linkage is corrupt")
+            node = self.headers.chain.node(block_hash)
+            if node is None or node.height != height:
+                raise RuntimeError(
+                    "persistent UTXO block is absent or inconsistent in replayed header DAG"
+                )
+            if stored_header != node.header.serialize():
+                raise RuntimeError(
+                    "persistent UTXO block header does not match replayed header DAG"
+                )
+            if node.header.prev_hash != prev_hash:
+                raise RuntimeError("persistent UTXO parent hash disagrees with header DAG")
+            if height == 0 and block_hash != self.headers.chain.best_chain()[0].hash:
+                raise RuntimeError("persistent UTXO genesis does not match header-store genesis")
+            expected_parent = block_hash
+
+        active = self.utxos.tip()
+        if active != (records[-1][0], records[-1][1]):
+            raise RuntimeError("persistent UTXO tip disagrees with active block records")
 
     def add_header(
         self,
