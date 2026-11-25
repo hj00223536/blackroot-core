@@ -118,14 +118,10 @@ class MultiPeerReorganizationSyncTests(unittest.IsolatedAsyncioTestCase):
             self.fail("unable to mine invalid-body fork header")
 
         self.chain.add_to_branch(invalid_fork_two.header)
+        self.store.store_block_body(valid_fork_one)
+        self.store.store_block_body(invalid_fork_two)
         with self.assertRaisesRegex(ValueError, "coinbase reward exceeds"):
-            self.store.reorganize_to_best(
-                self.chain,
-                {
-                    valid_fork_one.header.hash: valid_fork_one,
-                    invalid_fork_two.header.hash: invalid_fork_two,
-                },
-            )
+            self.store.reorganize_to_best(self.chain)
 
         self.assertEqual(self.store.tip(), original_tip)
         self.assertEqual(self.store.count(), original_count)
