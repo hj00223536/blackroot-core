@@ -136,7 +136,18 @@ class SeparateProcessNodeSmokeTests(unittest.TestCase):
                 self.assertEqual(first_record["height"], 0)
                 self.assertIn("no value", second_record["warning"])
 
+                # Exercise the CLI's SIGTERM path, not just test-runner cleanup.
+                for process in reversed(processes):
+                    process.terminate()
+                for process in reversed(processes):
+                    process.communicate(timeout=5)
+                    self.assertEqual(
+                        process.returncode, 0,
+                        f"node did not shut down cleanly; output={process.stdout}",
+                    )
+
             finally:
+                # Always reap children, including when an assertion or timeout fails.
                 for process in reversed(processes):
                     if process.poll() is None:
                         process.terminate()
