@@ -67,6 +67,13 @@ class PersistentHeaderStoreTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "metadata mismatch"):
             PersistentHeaderStore(self.path, POW_LIMIT, self.genesis)
 
+    def test_replay_fails_closed_when_genesis_header_is_missing(self):
+        PersistentHeaderStore(self.path, POW_LIMIT, self.genesis)
+        with sqlite3.connect(self.path) as db:
+            db.execute("DELETE FROM headers WHERE block_hash=?", (self.genesis.hash,))
+        with self.assertRaisesRegex(RuntimeError, "missing its genesis header"):
+            PersistentHeaderStore(self.path, POW_LIMIT, self.genesis)
+
     def test_stale_writer_fails_closed_after_concurrent_header_commit(self):
         first = PersistentHeaderStore(self.path, POW_LIMIT, self.genesis)
         stale = PersistentHeaderStore(self.path, POW_LIMIT, self.genesis)
