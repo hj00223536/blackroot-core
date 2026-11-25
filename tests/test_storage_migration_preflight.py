@@ -337,9 +337,10 @@ class SQLiteSnapshotTests(unittest.TestCase):
                     next_header = candidate
                     break
             self.assertIsNotNone(next_header)
+            state.add_header(next_header, adjusted_time=height + 1)
             self.assertEqual(
-                state.add_header(next_header, adjusted_time=height + 1),
-                next_header.hash.hex(),
+                state.headers.chain.get(height).hash,
+                next_header.hash,
             )
             next_block = Block(next_header, (next_coinbase,))
             self.assertEqual(state.connect_best_block(next_block, height), 0)
