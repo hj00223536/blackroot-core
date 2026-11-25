@@ -6,15 +6,45 @@ from src.blackroot_blocks import Block, COINBASE_INDEX, ZERO_TXID
 from src.blackroot_chain import BlockHeader, HeaderChain
 from src.blackroot_consensus import block_subsidy, check_proof_of_work, decode_compact_target
 from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput, merkle_root
+from src.blackroot_script import N, _mul, _hash160, _push, legacy_sighash_all, p2pkh_script
 from src.blackroot_utxo_db import UTXOStore
 
 
-def coinbase(value, tag):
+def coinbase(value, tag, script_pubkey=b'miner'):
     return Transaction(
         1,
         (TxInput(OutPoint(ZERO_TXID, COINBASE_INDEX), script_sig=tag),),
-        (TxOutput(value, b"miner"),),
+        (TxOutput(value, script_pubkey),),
     )
+
+
+def der_integer(value):
+    raw = value.to_bytes((value.bit_length() + 7) // 8, "big") or b"\x00"
+    if raw[0] & 0x80:
+        raw = b"\x00" + raw
+    return b"\x02" + bytes([len(raw)]) + raw
+
+
+def der_signature(r, s):
+    body = der_integer(r) + der_integer(s)
+    return b"\x30" + bytes([len(body)]) + body
+
+
+def signed_spend(previous, previous_output, value, private_key=1):
+    point = _mul(private_key)
+    pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
+    unsigned = Transaction(1, (TxInput(previous),), (TxOutput(value, b"recipient"),))
+    digest = legacy_sighash_all(unsigned, 0, previous_output.script_pubkey)
+    nonce = 2
+    nonce_point = _mul(nonce)
+    r = nonce_point[0] % N
+    s = (pow(nonce, N - 2, N) *
+         (int.from_bytes(digest, "big") + r * private_key)) % N
+    if s > N // 2:
+        s = N - s
+    signature = der_signature(r, s) + b"\x01"
+    return Transaction(1, (TxInput(previous, _push(signature) + _push(pubkey)),),
+                       unsigned.outputs)
 
 
 def block_for(txs, previous=bytes(32), timestamp=1):
@@ -80,15 +110,17 @@ class PersistentBlockTests(unittest.TestCase):
 
 
     def test_disconnect_tip_restores_spent_parent_utxo(self):
-        genesis_cb = coinbase(block_subsidy(0), b"\x01\x01")
+        point = _mul(1)
+        pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
+        locking_script = p2pkh_script(_hash160(pubkey))
+        genesis_cb = coinbase(block_subsidy(0), b"\x01\x01", locking_script)
         genesis = block_for([genesis_cb])
         self.store.connect_block(genesis, 0)
         genesis_output = OutPoint(genesis_cb.txid, 0)
+        previous_output = TxOutput(block_subsidy(0), locking_script)
 
-        spend = Transaction(
-            1,
-            (TxInput(genesis_output),),
-            (TxOutput(block_subsidy(0) - 100, b"recipient"),),
+        spend = signed_spend(
+            genesis_output, previous_output, block_subsidy(0) - 100
         )
         next_cb = coinbase(block_subsidy(1) + 100, b"\x01\x02")
         second = block_for([next_cb, spend], previous=genesis.header.hash, timestamp=2)
@@ -97,7 +129,7 @@ class PersistentBlockTests(unittest.TestCase):
 
         self.assertEqual(self.store.disconnect_tip(second.header.hash), (1, second.header.hash))
         self.assertEqual(self.store.tip(), (0, genesis.header.hash))
-        self.assertEqual(self.store.get(genesis_output), TxOutput(block_subsidy(0), b"miner"))
+        self.assertEqual(self.store.get(genesis_output), TxOutput(block_subsidy(0), locking_script))
         self.assertIsNone(self.store.get(OutPoint(next_cb.txid, 0)))
         self.assertIsNone(self.store.get(OutPoint(spend.txid, 0)))
 
