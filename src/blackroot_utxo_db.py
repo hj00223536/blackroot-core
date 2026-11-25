@@ -193,6 +193,13 @@ class UTXOStore:
 
                 updated, fees = validate_block_transactions(block, parent, height)
 
+                db.execute(
+                    "INSERT INTO blocks(height, block_hash, prev_hash, header, tx_count, total_fees) "
+                    "VALUES(?, ?, ?, ?, ?, ?)",
+                    (height, block.header.hash, block.header.prev_hash,
+                     block.header.serialize(), len(block.transactions), fees),
+                )
+
                 # Record inverse operations before committing the new UTXO set.
                 # Only inputs present in the parent snapshot are restored on disconnect;
                 # outputs created and spent within this same block are not parent UTXOs.
