@@ -16,7 +16,7 @@ class DataDirectoryLockTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "another BLACKROOT node"):
                     DataDirectoryLock(directory).acquire()
                 self.assertTrue(first.path.exists())
-                self.assertIn(f"pid={os.getpid()}", first.path.read_text())
+                self.assertEqual(first.path.read_text(), f"pid={os.getpid()}\\n")
             finally:
                 first.release()
             with DataDirectoryLock(directory):
