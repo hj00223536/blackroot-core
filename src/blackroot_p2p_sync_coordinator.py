@@ -81,6 +81,28 @@ class PeerSyncCoordinator:
 
         raise ValueError(f"unsupported sync command: {command}")
 
+    async def retry_expired_requests(self, peer, timeout: float, *, now: float | None = None) -> tuple[bytes, ...]:
+        """Reissue expired body requests to this connected peer.
+
+        The caller schedules this method; no background task or implicit
+        network dialing is started by the coordinator.
+        """
+        if not getattr(peer, "connected", False):
+            raise ConnectionError("peer handshake is not complete")
+        expired = self.requests.expire(timeout, now=now)
+        retried: list[bytes] = []
+        for block_hash in expired:
+            try:
+                self.requests.request(block_hash, self.chain)
+            except ValueError:
+                continue
+            await peer.send(
+                "getdata",
+                encode_inventory([InventoryVector(INV_TYPE_BLOCK, block_hash)]),
+            )
+            retried.append(block_hash)
+        return tuple(retried)
+
     async def _handle_inventory(self, peer, payload: bytes) -> None:
         items = decode_inventory(payload)
         missing_headers = False
