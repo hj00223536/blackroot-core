@@ -68,6 +68,23 @@ class P2PSyncServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.peer_b.sent), 1)
         self.assertEqual(self.peer_b.sent[0][0], "getdata")
 
+    async def test_best_chain_inventory_and_notfound_are_routed_to_alternate_peer(self):
+        genesis_hash = self.chain.best_hash
+        handler = self.manager.on_peer_message_factory(self.peer_a)
+        inventory = encode_inventory([InventoryVector(2, genesis_hash)])
+
+        await handler("inv", inventory)
+        original = self.service.blocks.pool.assigned_peer(genesis_hash)
+        self.assertIsNotNone(original)
+        self.assertEqual(self.service.blocks.tracker.pending_hashes, (genesis_hash,))
+
+        await handler("notfound", inventory)
+
+        replacement = self.service.blocks.pool.assigned_peer(genesis_hash)
+        self.assertIsNot(replacement, original)
+        self.assertEqual(self.service.blocks.tracker.pending_hashes, (genesis_hash,))
+        self.assertEqual(replacement.sent[-1][0], "getdata")
+
     async def test_disconnect_hook_is_installed_on_manager(self):
         self.assertIs(self.manager.on_peer_disconnected.__self__, self.service)
         self.assertEqual(self.manager.on_peer_message_factory.__self__, self.service)
