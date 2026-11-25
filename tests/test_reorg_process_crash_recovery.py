@@ -31,7 +31,7 @@ class ReorganizationProcessCrashRecoveryTests(unittest.TestCase):
                 'block_undo_created', 'utxos', 'block_bodies', 'metadata',
             )
             before = {}
-            with store._connect() as db:
+            with store._connection_scope() as db:
                 for table in tables:
                     before[table] = db.execute(
                         f'SELECT * FROM {table} ORDER BY 1, 2'
@@ -67,7 +67,7 @@ raise SystemExit('expected abrupt exit did not occur')
             self.assertEqual(result.returncode, 74)
 
             recovered = UTXOStore(database)
-            with recovered._connect() as db:
+            with recovered._connection_scope() as db:
                 for table in tables:
                     after = db.execute(
                         f'SELECT * FROM {table} ORDER BY 1, 2'
