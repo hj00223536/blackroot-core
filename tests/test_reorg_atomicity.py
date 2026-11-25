@@ -122,7 +122,7 @@ class ReorganizationAtomicityTests(unittest.TestCase):
             signature = b"\\x30" + bytes([len(body)]) + body + b"\\x01"
             valid_script_sig = _push(signature) + _push(pubkey)
             corrupted = bytearray(valid_script_sig)
-            corrupted[2] ^= 1
+            corrupted[1] ^= 1
             invalid_spend = Transaction(
                 1, (TxInput(funding, bytes(corrupted)),), unsigned.outputs
             )
