@@ -105,11 +105,14 @@ class RetargetAndWorkTests(unittest.TestCase):
         bits = 0x207FFFFF
         limit = decode_compact_target(bits)
         target_span = 2016 * 600
-        quarter = decode_compact_target(retarget_compact(bits, 1, limit, target_span))
-        four_x = decode_compact_target(retarget_compact(bits, target_span * 20, limit, target_span))
-        self.assertLessEqual(quarter, limit // 4)
-        self.assertLess((limit // 4) - quarter, 1 << 232)
-        self.assertEqual(four_x, limit)
+        quarter_bits = retarget_compact(bits, 1, limit, target_span)
+        four_x_bits = retarget_compact(bits, target_span * 20, limit, target_span)
+        # Fixed expected encodings independently derived from the specified
+        # integer formula and compact-target truncation.
+        self.assertEqual(quarter_bits, 0x201FFFFF)
+        self.assertEqual(four_x_bits, 0x207FFFFF)
+        self.assertEqual(decode_compact_target(quarter_bits), limit // 4)
+        self.assertEqual(decode_compact_target(four_x_bits), limit)
 
     def test_retarget_rejects_bad_inputs(self):
         from src.blackroot_consensus import retarget_compact
