@@ -24,11 +24,11 @@ def der_signature(r, s):
     return b"\x30" + bytes([len(body)]) + body
 
 
-def signed_spend(previous, previous_output, private_key=1, output_script=b'pay', lock_time=0, sequence=0xFFFFFFFE):
+def signed_spend(previous, previous_output, private_key=1, output_script=b'pay', lock_time=0, sequence=0xFFFFFFFE, version=1):
     point = _mul(private_key)
     pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
     unsigned = Transaction(
-        1, (TxInput(previous, sequence=sequence),), (TxOutput(9_000, output_script),), lock_time
+        version, (TxInput(previous, sequence=sequence),), (TxOutput(9_000, output_script),), lock_time
     )
     digest = legacy_sighash_all(unsigned, 0, previous_output.script_pubkey)
     nonce = 2
@@ -40,7 +40,7 @@ def signed_spend(previous, previous_output, private_key=1, output_script=b'pay',
         s = N - s
     signature = der_signature(r, s) + b"\x01"
     script_sig = _push(signature) + _push(pubkey)
-    return Transaction(1, (TxInput(previous, script_sig, sequence),), unsigned.outputs, lock_time)
+    return Transaction(version, (TxInput(previous, script_sig, sequence),), unsigned.outputs, lock_time)
 
 
 def make_coinbase(value, script=b"\x01\x01"):
@@ -126,6 +126,50 @@ class BlockValidationTests(unittest.TestCase):
             median_time_past=1_700_000_001,
         )
         self.assertNotIn(self.funding, result)
+
+    def test_bip68_height_relative_lock_enforces_creation_height(self):
+        spend = signed_spend(
+            self.funding, self.previous_output, version=2, sequence=2
+        )
+        provenance = {self.funding: UTXOProvenance(5, False)}
+        with self.assertRaisesRegex(ValueError, "relative height sequence lock"):
+            validate_block_transactions(
+                make_block([make_coinbase(1), spend]), self.parent, 6, provenance
+            )
+        result, _fees = validate_block_transactions(
+            make_block([make_coinbase(1), spend]), self.parent, 7, provenance
+        )
+        self.assertNotIn(self.funding, result)
+
+    def test_bip68_disable_flag_skips_relative_height_lock(self):
+        spend = signed_spend(
+            self.funding, self.previous_output, version=2,
+            sequence=(1 << 31) | 100,
+        )
+        result, _fees = validate_block_transactions(
+            make_block([make_coinbase(1), spend]), self.parent, 1
+        )
+        self.assertNotIn(self.funding, result)
+
+    def test_bip68_time_relative_lock_is_rejected_until_mtp_provenance_exists(self):
+        spend = signed_spend(
+            self.funding, self.previous_output, version=2,
+            sequence=(1 << 22) | 1,
+        )
+        provenance = {self.funding: UTXOProvenance(0, False)}
+        with self.assertRaisesRegex(ValueError, "time-based relative sequence locks are not supported"):
+            validate_block_transactions(
+                make_block([make_coinbase(1), spend]), self.parent, 1, provenance
+            )
+
+    def test_bip68_requires_authenticated_provenance_for_enabled_sequence(self):
+        spend = signed_spend(
+            self.funding, self.previous_output, version=2, sequence=1
+        )
+        with self.assertRaisesRegex(ValueError, "authenticated UTXO provenance"):
+            validate_block_transactions(
+                make_block([make_coinbase(1), spend]), self.parent, 1
+            )
 
     def test_rejects_unsigned_spend_inside_block(self):
         unsigned = Transaction(
