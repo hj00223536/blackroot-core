@@ -37,6 +37,16 @@ class PersistentHeaderStore:
         self._chain: HeaderChain | None = None
         self._initialize(genesis)
 
+    @contextmanager
+    def _connection_scope(self) -> Iterator[sqlite3.Connection | SQLiteTransactionConnection]:
+        """Borrow the coordinator connection or close a locally owned handle."""
+        db = self._connect()
+        try:
+            yield db
+        finally:
+            if self._external_connection is None:
+                db.close()
+
     def _connect(self):
         if self._external_connection is not None:
             return self._external_connection
@@ -52,7 +62,7 @@ class PersistentHeaderStore:
                 raise RuntimeError("coordinator-owned header writes require an active outer transaction")
             yield self._external_connection
             return
-        with self._connect() as db:
+        with self._connection_scope() as db:
             db.execute("BEGIN IMMEDIATE")
             try:
                 yield db
@@ -82,7 +92,7 @@ class PersistentHeaderStore:
         return self._chain
 
     def _initialize(self, genesis: BlockHeader) -> None:
-        with self._connect() as db:
+        with self._connection_scope() as db:
             if self._external_connection is None:
                 db.execute("PRAGMA journal_mode = WAL")
             db.execute("""
@@ -125,6 +135,8 @@ class PersistentHeaderStore:
                 if db.execute("SELECT COUNT(*) FROM headers").fetchone()[0] == 0:
                     raise RuntimeError("persistent header store is missing its genesis header")
                 self._replay(db, genesis)
+            if self._external_connection is None:
+                db.commit()
 
     @staticmethod
     def _insert_node(db: sqlite3.Connection, chain: HeaderChain, block_hash: bytes) -> None:
@@ -248,7 +260,7 @@ class PersistentHeaderStore:
 
     def reload(self) -> HeaderChain:
         """Replay persisted headers after an externally-owned transaction commits."""
-        with self._connect() as db:
+        with self._connection_scope() as db:
             self._verify_sqlite_integrity(db)
             self._replay(db, self.chain.best_chain()[0])
         return self.chain
