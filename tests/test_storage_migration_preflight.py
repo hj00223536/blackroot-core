@@ -1,3 +1,4 @@
+import hashlib
 import sqlite3
 import tempfile
 import unittest
@@ -153,6 +154,11 @@ class SQLiteSnapshotTests(unittest.TestCase):
         before = source.read_bytes()
         report = create_consistent_sqlite_snapshot(source, destination)
         self.assertEqual(report["status"], "snapshot_created")
+        self.assertEqual(
+            report["snapshot_sha256"],
+            hashlib.sha256(destination.read_bytes()).hexdigest(),
+        )
+        self.assertEqual(len(report["snapshot_sha256"]), 64)
         self.assertEqual(source.read_bytes(), before)
         with sqlite3.connect(destination) as db:
             self.assertEqual(db.execute("SELECT value FROM records").fetchone()[0],
