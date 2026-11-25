@@ -97,6 +97,48 @@ class PersistentNodeStateTests(unittest.TestCase):
         finally:
             state.close()
 
+    def test_coordinated_reorganization_commits_header_utxo_and_journal_state(self):
+        state = self.coordinated_state()
+        try:
+            state.connect_best_block(self.genesis_block, 0)
+            candidate = make_block(self.genesis_block.header.hash, 1, 2)
+            state.add_header(candidate.header, adjusted_time=2)
+            state.archive_block_body(candidate)
+            self.assertEqual(
+                state.reorganize_best(),
+                (1, candidate.header.hash),
+            )
+            self.assertEqual(state.utxos.tip(), (1, candidate.header.hash))
+            self.assertFalse(state.recovery_journal.pending())
+        finally:
+            state.close()
+
+    def test_coordinated_reorganization_rolls_back_utxo_and_journal_on_fault(self):
+        state = self.coordinated_state()
+        try:
+            state.connect_best_block(self.genesis_block, 0)
+            candidate = make_block(self.genesis_block.header.hash, 1, 2)
+            state.add_header(candidate.header, adjusted_time=2)
+            state.archive_block_body(candidate)
+            original_reconcile = state.recovery_journal.reconcile
+
+            def fail_after_reorg(observed_tip):
+                original_reconcile(observed_tip)
+                raise RuntimeError("fault after coordinated reorg")
+
+            state.recovery_journal.reconcile = fail_after_reorg
+            with self.assertRaisesRegex(RuntimeError, "fault after coordinated reorg"):
+                state.reorganize_best()
+            state.recovery_journal.reconcile = original_reconcile
+            self.assertEqual(
+                state.utxos.tip(),
+                (0, self.genesis_block.header.hash),
+            )
+            self.assertFalse(state.recovery_journal.pending())
+            self.assertEqual(state.headers.chain.best_hash, candidate.header.hash)
+        finally:
+            state.close()
+
     def test_coordinated_block_failure_rolls_back_body_utxo_and_journal_together(self):
         state = self.coordinated_state()
         try:
