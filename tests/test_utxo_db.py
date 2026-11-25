@@ -45,7 +45,7 @@ class UTXOStoreTests(unittest.TestCase):
 
         genesis_coinbase = Transaction(
             1,
-            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\x01\x01"),),
             (TxOutput(block_subsidy(0), b"genesis-miner"),),
         )
         genesis = block(bytes(32), 1, (genesis_coinbase,))
@@ -64,13 +64,13 @@ class UTXOStoreTests(unittest.TestCase):
             s = N - s
 
         def der_integer(value):
-            raw = value.to_bytes((value.bit_length() + 7) // 8, "big") or b"\\x00"
+            raw = value.to_bytes((value.bit_length() + 7) // 8, "big") or b"\x00"
             if raw[0] & 0x80:
-                raw = b"\\x00" + raw
-            return b"\\x02" + bytes([len(raw)]) + raw
+                raw = b"\x00" + raw
+            return b"\x02" + bytes([len(raw)]) + raw
 
         body = der_integer(r) + der_integer(s)
-        signature = b"\\x30" + bytes([len(body)]) + body + b"\\x01"
+        signature = b"\x30" + bytes([len(body)]) + body + b"\x01"
         signed_input = TxInput(spend_funding, _push(signature) + _push(pubkey))
         invalid_signature = bytearray(signed_input.script_sig)
         invalid_signature[2] ^= 1
@@ -79,7 +79,7 @@ class UTXOStoreTests(unittest.TestCase):
         )
         coinbase = Transaction(
             1,
-            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x02"),),
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\x01\x02"),),
             (TxOutput(block_subsidy(1) + 100, b"miner"),),
         )
         candidate = block(genesis.header.hash, 2, (coinbase, invalid_spend))
