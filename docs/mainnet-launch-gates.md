@@ -14,7 +14,7 @@ customer funds.
   coinbase maturity, block limits, fee policy, and upgrade/version signaling.
 - [ ] Complete and independently review script execution and signature
   verification using established cryptographic libraries and published vectors.
-- [ ] Finalize full header consensus: canonical compact targets, exact retarget
+- [ ] Finalize full header consensus: exact retarget
   boundary rules, median-time-past, future-time policy, genesis parameters, and
   network-specific difficulty behavior.
 - [x] Implement an opt-in coordinated SQLite node-state lifecycle with a shared
@@ -86,6 +86,16 @@ Block transaction validation is tested to reject two separately valid transactio
 ### Transaction output-collision protection
 
 The in-memory transaction application path now has a regression test proving that a transaction whose derived output outpoint already exists is rejected before any input is removed or output is written. The test snapshots the full UTXO map and asserts it is unchanged after rejection. This is a local state-integrity check, not a substitute for full consensus, script, or persistence testing.
+
+
+### Canonical compact-target encoding
+
+Header admission now requires compact `nBits` to round-trip through the
+canonical encoder. A regression test constructs two distinct compact encodings
+that decode to the same target and verifies that the non-canonical alias is
+rejected at genesis admission. This removes one source of header-hash and
+consensus interpretation ambiguity in the prototype; full header consensus
+still requires an independently frozen specification and cross-client tests.
 
 
 ### UTXO creation-height invariant
