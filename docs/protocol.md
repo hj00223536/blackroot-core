@@ -41,9 +41,9 @@ A candidate block is valid only if its decoded target is positive, within the se
 - Exact genesis header, coinbase transaction, timestamp message, merkle root, nonce, and initial difficulty
 - Mainnet/testnet/regtest network magic, address encodings, ports, and chain identifiers
 - Difficulty retarget formula, actual-timespan clamps, timestamp median rules, and minimum-difficulty behavior (if any)
-- Transaction format, signature hashing, script language, sighash flags, witness rules, and consensus limits
+- Normative transaction format, signature hashing, script language, sighash flags, witness rules, and consensus limits (a non-normative legacy-style serialization/accounting prototype now exists in src/blackroot_transactions.py; see docs/transactions.md)
 - Coinbase maturity and subsidy-plus-fees validation
-- UTXO database format, undo data, reorg handling, and chainwork selection
+- UTXO database format, undo data, reorg handling, and cumulative-chainwork selection (current header-chain prototype is in-memory and does not implement reorgs or chainwork)
 - P2P message framing, peer discovery, bans, rate limits, and DoS controls
 - Mempool policy and fee calculation
 - Wallet derivation, address checksums, backup/restore, and hardware-wallet compatibility
