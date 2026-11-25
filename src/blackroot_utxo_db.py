@@ -166,7 +166,10 @@ class UTXOStore:
             raise ValueError("block body merkle root does not match header")
         raw = block.serialize()
         block_hash = block.header.hash
-        with self._connect() as db:
+        # Serialize the read/check/insert sequence against concurrent writers.
+        # Deferred transactions otherwise allow multiple processes to observe
+        # a missing row before either attempts the INSERT.
+        with self._write_scope() as db:
             row = db.execute(
                 "SELECT raw_block FROM block_bodies WHERE block_hash=?", (block_hash,)
             ).fetchone()
