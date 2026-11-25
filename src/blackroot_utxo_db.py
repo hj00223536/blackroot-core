@@ -1,9 +1,10 @@
 """SQLite-backed experimental UTXO and block persistence.
 
 Block connection/reorganization calls the block validator, including its
-fail-closed legacy P2PKH authorization check. The standalone ``apply`` helper
-is accounting-only. This store does not enforce coinbase maturity or complete
-header/network consensus and is not suitable as a production node database.
+fail-closed supported legacy P2PKH authorization check and coinbase-maturity
+checks using persisted UTXO provenance. The standalone ``apply`` helper is
+accounting-only. Header/network consensus is only partially delegated to the
+experimental HeaderChain wrapper; this is not a production node database.
 """
 from __future__ import annotations
 
@@ -224,8 +225,11 @@ class UTXOStore:
     def connect_block(self, block: Block, height: int) -> int:
         """Atomically validate and persist a block and its resulting UTXO set.
 
-        Header PoW, timestamps, scripts, signatures, coinbase maturity and
-        chain reorganizations are not checked by this prototype.
+        This path checks supported block-body rules, legacy P2PKH
+        authorization, and coinbase maturity from the stored provenance.
+        It does not validate header PoW, difficulty, timestamps, or peer
+        consensus; use connect_validated_block only with a correctly
+        initialized HeaderChain for the prototype header checks.
         """
         if not isinstance(block, Block):
             raise TypeError("block must be a Block")
