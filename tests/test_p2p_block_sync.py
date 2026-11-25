@@ -101,6 +101,13 @@ class BlockBodyRequestTrackerTests(unittest.TestCase):
         self.assertEqual(tracker.expire(5, now=15.0), (self.block.header.hash,))
         self.assertEqual(tracker.pending_hashes, ())
 
+    def test_cancel_all_clears_outstanding_requests(self):
+        tracker = BlockBodyRequestTracker(max_outstanding=2)
+        tracker.request(self.block.header.hash, self.chain)
+        self.assertEqual(tracker.cancel_all(), (self.block.header.hash,))
+        self.assertEqual(tracker.cancel_all(), ())
+        self.assertEqual(tracker.pending_hashes, ())
+
     def test_cancel_is_idempotent(self):
         self.tracker.request(self.block.header.hash, self.chain)
         self.assertTrue(self.tracker.cancel(self.block.header.hash))
