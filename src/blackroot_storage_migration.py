@@ -5,6 +5,7 @@ It is a guardrail for a future separately reviewed migration utility.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import sqlite3
 from pathlib import Path
@@ -183,6 +184,9 @@ def create_consistent_sqlite_snapshot(
             "AND name NOT LIKE 'sqlite_%'"
         ).fetchone()[0]
         page_count = snapshot_db.execute("PRAGMA page_count").fetchone()[0]
+        snapshot_db.close()
+        snapshot_db = None
+        snapshot_sha256 = hashlib.sha256(destination.read_bytes()).hexdigest()
         return {
             "status": "snapshot_created",
             "source": str(source),
@@ -192,6 +196,7 @@ def create_consistent_sqlite_snapshot(
             "foreign_key_check": "ok",
             "table_count": table_count,
             "page_count": page_count,
+            "snapshot_sha256": snapshot_sha256,
         }
     except BaseException:
         if snapshot_db is not None:
