@@ -6,6 +6,7 @@ from pathlib import Path
 from src.blackroot_chain import BlockHeader, ZERO_HASH
 from src.blackroot_consensus import decode_compact_target
 from src.blackroot_node_config import TestnetConfig
+from src.blackroot_node import parse_connect_endpoint
 from src.blackroot_p2p_handshake import VersionMessage
 
 BITS = 0x207FFFFF
@@ -130,6 +131,15 @@ class TestnetConfigTests(unittest.TestCase):
             path.write_text(json.dumps(raw), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "missing"):
                 TestnetConfig.from_json_file(path)
+
+    def test_cli_peer_endpoint_accepts_only_literal_loopback(self):
+        settings = config()
+        self.assertEqual(parse_connect_endpoint("127.0.0.1:18444", settings), ("127.0.0.1", 18444))
+        self.assertEqual(parse_connect_endpoint("[::1]:18444", settings), ("::1", 18444))
+        for endpoint in ("0.0.0.0:18444", "192.0.2.1:18444", "localhost:18444",
+                         "127.0.0.1:0", "127.0.0.1:65536", "127.0.0.1"):
+            with self.subTest(endpoint=endpoint), self.assertRaises(ValueError):
+                parse_connect_endpoint(endpoint, settings)
 
 
 if __name__ == "__main__":
