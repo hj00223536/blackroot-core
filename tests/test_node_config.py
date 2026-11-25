@@ -1,4 +1,7 @@
+import json
+import tempfile
 import unittest
+from pathlib import Path
 
 from src.blackroot_chain import BlockHeader, ZERO_HASH
 from src.blackroot_consensus import decode_compact_target
@@ -71,6 +74,62 @@ class TestnetConfigTests(unittest.TestCase):
         for host in ("0.0.0.0", "192.0.2.1", "localhost"):
             with self.subTest(host=host), self.assertRaises(ValueError):
                 settings.validate_bind_host(host)
+
+    def test_json_config_loads_exact_fields_and_revalidates_genesis(self):
+        settings = config()
+        header = settings.genesis_header
+        raw = {
+            "network_id": settings.network_id,
+            "message_magic": settings.message_magic.hex(),
+            "protocol_version": settings.protocol_version,
+            "genesis_header": {
+                "version": header.version,
+                "prev_hash": header.prev_hash.hex(),
+                "merkle_root": header.merkle_root.hex(),
+                "timestamp": header.timestamp,
+                "bits": header.bits,
+                "nonce": header.nonce,
+            },
+            "genesis_hash": settings.genesis_hash.hex(),
+            "pow_limit": hex(settings.pow_limit),
+            "p2p_port": settings.p2p_port,
+            "max_peers": settings.max_peers,
+            "max_payload": settings.max_payload,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "testnet.json"
+            path.write_text(json.dumps(raw), encoding="utf-8")
+            loaded = TestnetConfig.from_json_file(path)
+        self.assertEqual(loaded, settings)
+
+    def test_json_config_rejects_unknown_and_missing_fields(self):
+        settings = config()
+        header = settings.genesis_header
+        raw = {
+            "network_id": settings.network_id,
+            "message_magic": settings.message_magic.hex(),
+            "protocol_version": settings.protocol_version,
+            "genesis_header": {
+                "version": header.version, "prev_hash": header.prev_hash.hex(),
+                "merkle_root": header.merkle_root.hex(), "timestamp": header.timestamp,
+                "bits": header.bits, "nonce": header.nonce,
+            },
+            "genesis_hash": settings.genesis_hash.hex(),
+            "pow_limit": hex(settings.pow_limit),
+            "p2p_port": settings.p2p_port,
+            "max_peers": settings.max_peers,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "testnet.json"
+            raw["unexpected"] = True
+            path.write_text(json.dumps(raw), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "unknown"):
+                TestnetConfig.from_json_file(path)
+            del raw["unexpected"]
+            del raw["network_id"]
+            path.write_text(json.dumps(raw), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "missing"):
+                TestnetConfig.from_json_file(path)
 
 
 if __name__ == "__main__":
