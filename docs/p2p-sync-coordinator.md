@@ -293,3 +293,9 @@ separate; true cross-database atomicity is not implemented.
 `UTXOStore.verify_integrity()` runs during `PersistentNodeState` startup before the active tip is reconciled with the recovery journal. It checks SQLite's page-level integrity report, foreign-key constraints, contiguous active block heights and parent links, per-block transaction counts and positions, canonical transaction decoding and txid matches, and foreign-key consistency. Startup fails closed when any of these active-state checks detects corruption. Archived candidate bodies are checked individually when loaded or used for reorganization, avoiding a full scan of potentially large side-branch archives at every startup.
 
 These checks cover the UTXO database's SQLite and stored-record consistency. They do not independently reconstruct the complete UTXO set by replaying every historical block, prove that the header database and UTXO database were committed atomically, or replace independent consensus and cryptographic review. Header-DAG replay remains the separate header-store validation path.
+
+### Header database integrity checks
+
+On open, PersistentHeaderStore now runs SQLite's full PRAGMA integrity_check and foreign_key_check before reading metadata or replaying the header DAG. It then validates the configured schema version, proof-of-work limit and genesis identity, and replays every stored header to re-check its hash, proof of work, linkage, height and cumulative chainwork. A missing genesis or inconsistent replay is rejected rather than silently repaired.
+
+This detects SQLite structural problems and invalid persisted header records. It is not a substitute for independent consensus review, filesystem durability testing, or atomic coordination with the separate UTXO database.
