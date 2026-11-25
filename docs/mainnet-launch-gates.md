@@ -98,6 +98,15 @@ consensus interpretation ambiguity in the prototype; full header consensus
 still requires an independently frozen specification and cross-client tests.
 
 
+### Serialized block-body archive writer serialization
+
+Block-body archival now uses the immediate-write transaction scope for its
+read/check/insert sequence. This serializes standalone writers and prevents
+concurrent processes from both observing an absent row before either inserts.
+A regression test verifies repeated archival of the same block is idempotent
+and round-trips exactly. Dedicated multi-process archive stress remains
+required.
+
 ### Reorganization round-trip UTXO coverage
 
 An integration regression now switches from the original active branch to a
