@@ -136,10 +136,7 @@ class PersistentHeaderStore:
         candidate = HeaderChain(self.pow_limit, live_chain.best_chain()[0])
         # Rebuild all known branches so fork choice and duplicate checks are
         # evaluated against the same DAG without mutating the live instance.
-        nodes = sorted(
-            (node for node in live_chain._nodes.values() if node.height > 0),
-            key=lambda node: (node.height, node.header.hash),
-        )
+        nodes = (node for node in live_chain.nodes if node.height > 0)
         for node in nodes:
             candidate.add_to_branch(node.header)
         display_hash = candidate.add_to_branch(
