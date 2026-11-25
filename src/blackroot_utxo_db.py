@@ -10,6 +10,7 @@ import sqlite3
 from pathlib import Path
 
 from .blackroot_transactions import OutPoint, Transaction, TxOutput, validate_transaction
+from .blackroot_blocks import Block, validate_block_transactions
 
 
 class UTXOStore:
@@ -51,6 +52,25 @@ class UTXOStore:
                 )
             elif row[0] != str(self.SCHEMA_VERSION):
                 raise RuntimeError("unsupported UTXO database schema version")
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS blocks (
+                    height INTEGER PRIMARY KEY CHECK(height >= 0),
+                    block_hash BLOB NOT NULL UNIQUE CHECK(length(block_hash) = 32),
+                    prev_hash BLOB NOT NULL CHECK(length(prev_hash) = 32),
+                    header BLOB NOT NULL,
+                    tx_count INTEGER NOT NULL CHECK(tx_count > 0),
+                    total_fees INTEGER NOT NULL CHECK(total_fees >= 0)
+                )
+            """)
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS block_transactions (
+                    height INTEGER NOT NULL REFERENCES blocks(height) ON DELETE CASCADE,
+                    position INTEGER NOT NULL CHECK(position >= 0),
+                    txid BLOB NOT NULL UNIQUE CHECK(length(txid) = 32),
+                    raw_transaction BLOB NOT NULL,
+                    PRIMARY KEY(height, position)
+                ) WITHOUT ROWID
+            """)
 
     def add_genesis_output(self, outpoint: OutPoint, output: TxOutput) -> None:
         """Insert a trusted bootstrap output; caller must authenticate its origin."""
@@ -111,3 +131,70 @@ class UTXOStore:
                 raise
             db.commit()
             return fee
+
+    def tip(self) -> tuple[int, bytes] | None:
+        """Return the stored tip height and hash, or None."""
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT height, block_hash FROM blocks ORDER BY height DESC LIMIT 1"
+            ).fetchone()
+        return None if row is None else (row[0], bytes(row[1]))
+
+    def connect_block(self, block: Block, height: int) -> int:
+        """Atomically validate and persist a block and its resulting UTXO set.
+
+        Header PoW, timestamps, scripts, signatures, coinbase maturity and
+        chain reorganizations are not checked by this prototype.
+        """
+        if not isinstance(block, Block):
+            raise TypeError("block must be a Block")
+        if not isinstance(height, int) or isinstance(height, bool) or height < 0:
+            raise ValueError("height must be a non-negative integer")
+
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                tip = db.execute(
+                    "SELECT height, block_hash FROM blocks ORDER BY height DESC LIMIT 1"
+                ).fetchone()
+                if tip is None:
+                    if height != 0 or block.header.prev_hash != bytes(32):
+                        raise ValueError("first block must be height zero with a zero parent")
+                else:
+                    if height != tip[0] + 1:
+                        raise ValueError("block height must directly extend stored tip")
+                    if block.header.prev_hash != bytes(tip[1]):
+                        raise ValueError("block does not extend stored tip")
+
+                parent: dict[OutPoint, TxOutput] = {}
+                rows = db.execute(
+                    "SELECT txid, output_index, value, script_pubkey FROM utxos"
+                ).fetchall()
+                for txid, index, value, script in rows:
+                    parent[OutPoint(bytes(txid), index)] = TxOutput(value, bytes(script))
+
+                updated, fees = validate_block_transactions(block, parent, height)
+                db.execute(
+                    "INSERT INTO blocks(height, block_hash, prev_hash, header, tx_count, total_fees) "
+                    "VALUES(?, ?, ?, ?, ?, ?)",
+                    (height, block.header.hash, block.header.prev_hash,
+                     block.header.serialize(), len(block.transactions), fees),
+                )
+                for position, tx in enumerate(block.transactions):
+                    db.execute(
+                        "INSERT INTO block_transactions(height, position, txid, raw_transaction) "
+                        "VALUES(?, ?, ?, ?)",
+                        (height, position, tx.txid, tx.serialize()),
+                    )
+
+                db.execute("DELETE FROM utxos")
+                db.executemany(
+                    "INSERT INTO utxos(txid, output_index, value, script_pubkey) VALUES(?, ?, ?, ?)",
+                    [(op.txid, op.index, output.value, output.script_pubkey)
+                     for op, output in updated.items()],
+                )
+                db.commit()
+                return fees
+            except Exception:
+                db.rollback()
+                raise
