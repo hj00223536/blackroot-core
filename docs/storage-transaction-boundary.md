@@ -13,6 +13,10 @@ The opt-in `PersistentNodeState.open_coordinated(database_path, pow_limit, genes
 Automated tests cover:
 
 - exact shared connection use by the three stores;
+- process termination during a coordinated best-chain reorganization (before
+  commit) reopens with the complete old UTXO branch, and termination immediately
+  after commit reopens with the complete replacement branch; both cases verify
+  that no recovery intent remains and the UTXO database passes integrity checks;
 - commit-on-success and rollback-on-exception;
 - fault injection during block connection and reorganization;
 - process termination before commit (reopens to old durable state) and immediately after commit (reopens to new durable state);
