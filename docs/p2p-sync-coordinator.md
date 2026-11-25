@@ -250,3 +250,24 @@ then explicitly archives the matching body and completes the normal validated
 reorganization. This demonstrates recovery of that specific staged state; it
 does not provide atomic commits across the two databases or simulate storage
 hardware failure.
+
+### Write-ahead recovery intent journal
+
+`src/blackroot_recovery_journal.py` adds a third SQLite database containing
+at most one pending active-tip transition. Before a best-block connection or
+best-chain reorganization, `PersistentNodeState` records the old and expected
+new UTXO tips. The journal uses SQLite WAL mode and requests
+`synchronous=FULL`. After the UTXO transaction, the observed tip is reconciled
+against the intent and the intent is cleared.
+
+On startup, after validating the active UTXO records against the replayed
+header DAG, the node resolves any pending intent:
+- observed tip equals the new endpoint: the UTXO transaction committed;
+- observed tip equals the old endpoint: the UTXO transaction did not commit;
+- any other tip: startup fails closed.
+
+Tests cover both recoverable crash windows and an unexpected third tip.
+This is a write-ahead reconciliation protocol across separate SQLite files,
+not a truly atomic multi-database transaction. Its durability still depends
+on SQLite, filesystem, and storage-device guarantees; it is not production
+crash-safety certification.
