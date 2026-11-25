@@ -99,6 +99,64 @@ class PersistentBlockTests(unittest.TestCase):
         self.assertEqual(self.store.tip(), (0, block.header.hash))
         self.assertEqual(self.store.count(), 1)
 
+    def test_reorganize_atomically_replaces_tip_and_utxos(self):
+        genesis_cb = coinbase(block_subsidy(0), b"\x01\x01")
+        genesis = block_for([genesis_cb])
+        self.store.connect_block(genesis, 0)
+
+        old_cb = coinbase(block_subsidy(1), b"\x01\x02")
+        old_block = block_for([old_cb], previous=genesis.header.hash, timestamp=2)
+        self.store.connect_block(old_block, 1)
+
+        replacement_cb = coinbase(block_subsidy(1), b"\x02\x02")
+        replacement = block_for([replacement_cb], previous=genesis.header.hash, timestamp=3)
+        self.assertEqual(
+            self.store.reorganize((old_block.header.hash,), (replacement,)),
+            (1, replacement.header.hash),
+        )
+        self.assertEqual(self.store.tip(), (1, replacement.header.hash))
+        self.assertIsNone(self.store.get(OutPoint(old_cb.txid, 0)))
+        self.assertEqual(
+            self.store.get(OutPoint(replacement_cb.txid, 0)),
+            TxOutput(block_subsidy(1), b"miner"),
+        )
+        self.assertEqual(
+            self.store.get(OutPoint(genesis_cb.txid, 0)),
+            TxOutput(block_subsidy(0), b"miner"),
+        )
+
+    def test_failed_reorganization_rolls_back_disconnect_and_connect(self):
+        genesis_cb = coinbase(block_subsidy(0), b"\x01\x01")
+        genesis = block_for([genesis_cb])
+        self.store.connect_block(genesis, 0)
+
+        active_cb = coinbase(block_subsidy(1), b"\x01\x02")
+        active = block_for([active_cb], previous=genesis.header.hash, timestamp=2)
+        self.store.connect_block(active, 1)
+
+        invalid_cb = coinbase(block_subsidy(1) + 1, b"\x02\x02")
+        invalid = block_for([invalid_cb], previous=genesis.header.hash, timestamp=3)
+        with self.assertRaisesRegex(ValueError, "exceeds subsidy"):
+            self.store.reorganize((active.header.hash,), (invalid,))
+
+        self.assertEqual(self.store.tip(), (1, active.header.hash))
+        self.assertEqual(
+            self.store.get(OutPoint(active_cb.txid, 0)),
+            TxOutput(block_subsidy(1), b"miner"),
+        )
+        self.assertIsNone(self.store.get(OutPoint(invalid_cb.txid, 0)))
+
+    def test_reorganization_requires_tip_first_disconnect_order(self):
+        genesis_cb = coinbase(block_subsidy(0), b"\x01\x01")
+        genesis = block_for([genesis_cb])
+        self.store.connect_block(genesis, 0)
+        child_cb = coinbase(block_subsidy(1), b"\x01\x02")
+        child = block_for([child_cb], previous=genesis.header.hash, timestamp=2)
+        self.store.connect_block(child, 1)
+        with self.assertRaisesRegex(ValueError, "tip-first"):
+            self.store.reorganize((genesis.header.hash,), tuple())
+        self.assertEqual(self.store.tip(), (1, child.header.hash))
+
     def test_disconnect_rejects_empty_chain(self):
         with self.assertRaisesRegex(ValueError, "empty chain"):
             self.store.disconnect_tip(bytes.fromhex("44" * 32))
