@@ -38,7 +38,8 @@ The current helper and header-chain behavior, including retarget boundaries, com
 - [ ] Implement deterministic genesis coinbase serialization using the final transaction format.
 - [ ] Compute and freeze the merkle root, initial target, nonce, serialized header, and block hash.
 - [ ] Add immutable test vectors to CI.
-- [ ] Reproduce every vector in a second independent implementation.
+- [x] Reproduce the current candidate transaction/header/hash/PoW vector in a separate Node.js implementation using only built-in crypto and byte primitives; CI runs it independently of the Python reference code. This is cross-language repository evidence, not an external client or audit.
+- [ ] Reproduce every final, frozen vector in a separately maintained external client.
 - [ ] Decide and test whether the genesis output is unspendable.
 
 Do not invent or manually select a genesis hash. Until this gate passes, nodes cannot safely identify the same chain.
@@ -74,7 +75,7 @@ Do not invent or manually select a genesis hash. Until this gate passes, nodes c
 
 | Area | Repository evidence | Status |
 |---|---|---|
-| Genesis | Deterministic candidate vector and two repository-level byte/hash checks exist; no approval or external client reproduction | PARTIAL / BLOCKED |
+| Genesis | Deterministic candidate vector is checked by Python tests and a separate Node.js verifier in CI; no approval, frozen network parameters, or separately maintained external client reproduction | PARTIAL / BLOCKED |
 | Network identity and parameters | Explicit in-code config validator exists; no reviewed constants or file loader | PARTIAL / BLOCKED |
 | Node application/CLI | Loopback-only local CLI and strict JSON loader exist; block-body sync/full consensus and supervised retry lifecycle remain incomplete | PARTIAL / BLOCKED |
 | P2P building blocks | TCP transport, peer manager, handshake and sync components exist | PROTOTYPE |
