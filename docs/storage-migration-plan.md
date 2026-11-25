@@ -123,3 +123,17 @@ This is a synthetic one-block fixture. It does not establish safety for
 arbitrary historical databases, long chains, competing branches, large
 datasets, interrupted filesystem operations, or live network cutover. Those
 remain separate migration and operational test gates.
+
+### Competing-branch reorganization and restart test
+
+A coordinated-node test now activates a two-block branch, constructs a
+three-block competing branch from genesis, archives its bodies, and asks the
+header DAG to select the greater-work branch. It verifies that reorganization
+disconnects the former active suffix, connects the replacement branch, leaves
+the recovery journal clear, and preserves the selected header/UTXO tip and
+UTXO integrity after closing and reopening the node.
+
+This is a synthetic equal-difficulty fork-choice fixture. It does not test
+mainnet difficulty parameters, adversarial network timing, script/signature
+authorization, transaction relay, or crash injection at every filesystem
+boundary.
