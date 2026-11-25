@@ -110,6 +110,61 @@ class PersistentNodeStateTests(unittest.TestCase):
         finally:
             state.close()
 
+    def test_coordinated_competing_branch_reorg_survives_close_and_reopen(self):
+        state = self.coordinated_state()
+        try:
+            state.connect_best_block(self.genesis_block, 0)
+
+            def branch_block(parent_hash, height, timestamp, branch_tag):
+                tx = Transaction(
+                    1,
+                    (TxInput(
+                        OutPoint(ZERO_TXID, COINBASE_INDEX),
+                        script_sig=branch_tag + bytes([height + 1]),
+                    ),),
+                    (TxOutput(block_subsidy(height), b"miner-" + branch_tag),),
+                )
+                header = mine_header(parent_hash, merkle_root([tx.txid]), timestamp)
+                return Block(header, (tx,))
+
+            # First activate a two-block branch A.
+            a1 = branch_block(self.genesis_block.header.hash, 1, 2, b"A")
+            a2 = branch_block(a1.header.hash, 2, 3, b"A")
+            for block, timestamp in ((a1, 2), (a2, 3)):
+                state.add_header(block.header, adjusted_time=timestamp)
+                state.archive_block_body(block)
+            self.assertEqual(state.reorganize_best(), (2, a2.header.hash))
+            self.assertEqual(state.utxos.tip(), (2, a2.header.hash))
+
+            # Build a longer competing branch B from genesis. Its greater
+            # cumulative work must disconnect A and connect all three B blocks.
+            b1 = branch_block(self.genesis_block.header.hash, 1, 4, b"B")
+            b2 = branch_block(b1.header.hash, 2, 5, b"B")
+            b3 = branch_block(b2.header.hash, 3, 6, b"B")
+            for block, timestamp in ((b1, 4), (b2, 5), (b3, 6)):
+                state.add_header(block.header, adjusted_time=timestamp)
+                state.archive_block_body(block)
+
+            self.assertEqual(state.headers.chain.best_hash, b3.header.hash)
+            self.assertEqual(state.reorganize_best(), (3, b3.header.hash))
+            self.assertEqual(state.utxos.tip(), (3, b3.header.hash))
+            state.utxos.verify_integrity()
+            self.assertFalse(state.recovery_journal.pending())
+            expected_utxos = state.utxos.count()
+        finally:
+            state.close()
+
+        reopened = self.coordinated_state()
+        try:
+            self.assertEqual(reopened.utxos.tip(), (3, b3.header.hash))
+            self.assertEqual(reopened.headers.chain.best_hash, b3.header.hash)
+            self.assertEqual(reopened.utxos.count(), expected_utxos)
+            reopened.utxos.verify_integrity()
+            reopened._verify_persistent_tip()
+            self.assertFalse(reopened.recovery_journal.pending())
+        finally:
+            reopened.close()
+
     def test_coordinated_reorganization_rolls_back_utxo_and_journal_on_fault(self):
         state = self.coordinated_state()
         try:
