@@ -32,8 +32,9 @@ class UTXOStoreTests(unittest.TestCase):
         private_key = 7
         point = _mul(private_key)
         pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
+        spend_funding = OutPoint(bytes.fromhex("41" * 32), 0)
         funding_output = TxOutput(900, p2pkh_script(_hash160(pubkey)))
-        self.store.add_genesis_output(self.funding, funding_output)
+        self.store.add_genesis_output(spend_funding, funding_output)
 
         def block(previous, timestamp, transactions):
             header = BlockHeader(
@@ -51,7 +52,7 @@ class UTXOStoreTests(unittest.TestCase):
         self.store.connect_block(genesis, 0)
 
         unsigned = Transaction(
-            1, (TxInput(self.funding),), (TxOutput(800, b"recipient"),)
+            1, (TxInput(spend_funding),), (TxOutput(800, b"recipient"),)
         )
         digest = legacy_sighash_all(unsigned, 0, funding_output.script_pubkey)
         nonce = 11
@@ -70,11 +71,11 @@ class UTXOStoreTests(unittest.TestCase):
 
         body = der_integer(r) + der_integer(s)
         signature = b"\\x30" + bytes([len(body)]) + body + b"\\x01"
-        signed_input = TxInput(self.funding, _push(signature) + _push(pubkey))
+        signed_input = TxInput(spend_funding, _push(signature) + _push(pubkey))
         invalid_signature = bytearray(signed_input.script_sig)
         invalid_signature[2] ^= 1
         invalid_spend = Transaction(
-            1, (TxInput(self.funding, bytes(invalid_signature)),), unsigned.outputs
+            1, (TxInput(spend_funding, bytes(invalid_signature)),), unsigned.outputs
         )
         coinbase = Transaction(
             1,
@@ -84,14 +85,14 @@ class UTXOStoreTests(unittest.TestCase):
         candidate = block(genesis.header.hash, 2, (coinbase, invalid_spend))
         before_tip = self.store.tip()
         before_count = self.store.count()
-        before_funding = self.store.get(self.funding)
+        before_funding = self.store.get(spend_funding)
 
         with self.assertRaisesRegex(ValueError, "script verification failed"):
             self.store.connect_block(candidate, 1)
 
         self.assertEqual(self.store.tip(), before_tip)
         self.assertEqual(self.store.count(), before_count)
-        self.assertEqual(self.store.get(self.funding), before_funding)
+        self.assertEqual(self.store.get(spend_funding), before_funding)
         self.assertIsNone(self.store.get(OutPoint(invalid_spend.txid, 0)))
         self.store.verify_integrity()
 
