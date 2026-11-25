@@ -13,6 +13,7 @@ from .blackroot_consensus import COIN, MAX_MONEY, sha256d
 
 MAX_SCRIPT_SIZE = 10_000
 MAX_VECTOR_ITEMS = 100_000
+MAX_TRANSACTION_SIZE = 4_000_000
 MAX_MONEY_ATOMS = MAX_MONEY
 
 
@@ -61,9 +62,15 @@ class TxInput:
     script_sig: bytes = b""
     sequence: int = 0xFFFFFFFF
 
-    def serialize(self) -> bytes:
+    def __post_init__(self):
+        if not isinstance(self.previous_output, OutPoint):
+            raise TypeError("previous_output must be an OutPoint")
+        if not isinstance(self.script_sig, bytes):
+            raise TypeError("script_sig must be bytes")
         if not isinstance(self.sequence, int) or isinstance(self.sequence, bool) or not 0 <= self.sequence <= 0xFFFFFFFF:
             raise ValueError("sequence must fit uint32")
+
+    def serialize(self) -> bytes:
         return self.previous_output.serialize() + _varbytes(self.script_sig) + struct.pack("<I", self.sequence)
 
 
@@ -72,9 +79,15 @@ class TxOutput:
     value: int
     script_pubkey: bytes
 
-    def serialize(self) -> bytes:
+    def __post_init__(self):
         if not isinstance(self.value, int) or isinstance(self.value, bool) or not 0 <= self.value <= MAX_MONEY_ATOMS:
             raise ValueError("output value is outside the money range")
+        if not isinstance(self.script_pubkey, bytes):
+            raise TypeError("script_pubkey must be bytes")
+        if len(self.script_pubkey) > MAX_SCRIPT_SIZE:
+            raise ValueError("script exceeds prototype size limit")
+
+    def serialize(self) -> bytes:
         return struct.pack("<Q", self.value) + _varbytes(self.script_pubkey)
 
 
@@ -106,7 +119,10 @@ class Transaction:
         result += b"".join(txin.serialize() for txin in self.inputs)
         result += compact_size(len(self.outputs))
         result += b"".join(txout.serialize() for txout in self.outputs)
-        return result + struct.pack("<I", self.lock_time)
+        result += struct.pack("<I", self.lock_time)
+        if len(result) > MAX_TRANSACTION_SIZE:
+            raise ValueError("serialized transaction exceeds prototype size limit")
+        return result
 
     @property
     def txid(self) -> bytes:
