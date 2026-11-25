@@ -63,7 +63,6 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
 
     def test_reorganization_back_to_old_branch_restores_exact_coinbase_utxo_state(self):
         side_tip_utxo = OutPoint(self.side_two.transactions[0].txid, 0)
-        old_tip_utxo = OutPoint(old_three.transactions[0].txid, 0)
         old_one_utxo = OutPoint(self.old_one.transactions[0].txid, 0)
 
         self.store.reorganize_to_best(
@@ -80,6 +79,7 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
         old_three = mined_block(3, old_two.header.hash, 6)
         self.headers.add_to_branch(old_two.header)
         self.headers.add_to_branch(old_three.header)
+        old_tip_utxo = OutPoint(old_three.transactions[0].txid, 0)
 
         switched = self.store.reorganize_to_best(
             self.headers,
