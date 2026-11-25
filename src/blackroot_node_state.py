@@ -61,6 +61,8 @@ class PersistentNodeState:
         """Connect a body only if its header is selected at that best-chain height."""
         if not isinstance(block, Block):
             raise TypeError("block must be a Block")
+        if not isinstance(height, int) or isinstance(height, bool) or height < 0:
+            raise ValueError("height must be a non-negative integer")
         if height > self.headers.chain.height:
             raise ValueError("block height is above persistent best header tip")
         selected = self.headers.chain.get(height)
