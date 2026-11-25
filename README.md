@@ -47,7 +47,7 @@ No genesis hash, network identifier, address prefix, ports, DNS seeds, exchange 
 
 ## Testnet launch status
 
-BLACKROOT has **not launched a public testnet**. Experimental P2P and storage components and integration tests exist, but a frozen testnet protocol, deterministic independently verified genesis, runnable node application, and public operating infrastructure are still missing. See [Testnet launch gates](docs/testnet-launch-gates.md) for the verified blockers and required sequence. Testnet coins, if a future testnet is operated, will have no monetary value.
+BLACKROOT has **not launched a public testnet**. A loopback-only local node CLI and strict JSON configuration loader now exist, but the testnet protocol and genesis are not approved/frozen, block-body sync and full consensus are incomplete, and no public operating infrastructure exists. See [Testnet launch gates](docs/testnet-launch-gates.md) for the verified blockers and required sequence. Testnet coins, if a future testnet is operated, will have no monetary value.
 
 ## Mainnet launch status
 
