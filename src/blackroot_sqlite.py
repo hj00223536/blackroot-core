@@ -7,6 +7,7 @@ the node-owned connection.
 from __future__ import annotations
 
 import sqlite3
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
@@ -107,7 +108,21 @@ class SQLiteTransactionCoordinator:
         try:
             connection.execute("PRAGMA foreign_keys = ON")
             connection.execute(f"PRAGMA busy_timeout = {int(self.timeout * 1000)}")
-            connection.execute("PRAGMA journal_mode = WAL")
+            # Concurrent processes may open a new database simultaneously.
+            # journal_mode changes need a database lock and can fail immediately
+            # even when busy_timeout is configured, so retry only this transition.
+            deadline = time.monotonic() + self.timeout
+            while True:
+                mode = connection.execute("PRAGMA journal_mode").fetchone()[0].lower()
+                if mode == "wal":
+                    break
+                try:
+                    connection.execute("PRAGMA journal_mode = WAL")
+                    break
+                except sqlite3.OperationalError as exc:
+                    if "locked" not in str(exc).lower() or time.monotonic() >= deadline:
+                        raise
+                    time.sleep(0.01)
             connection.execute("PRAGMA synchronous = FULL")
         except BaseException:
             connection.close()
