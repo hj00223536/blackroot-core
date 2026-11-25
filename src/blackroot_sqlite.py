@@ -12,6 +12,40 @@ from pathlib import Path
 from typing import Iterator
 
 
+class SQLiteTransactionCursor:
+    """Cursor facade that does not expose its owning raw connection."""
+
+    def __init__(self, cursor: sqlite3.Cursor):
+        self._cursor = cursor
+
+    def fetchone(self):
+        return self._cursor.fetchone()
+
+    def fetchmany(self, size=None):
+        return self._cursor.fetchmany() if size is None else self._cursor.fetchmany(size)
+
+    def fetchall(self):
+        return self._cursor.fetchall()
+
+    @property
+    def rowcount(self):
+        return self._cursor.rowcount
+
+    @property
+    def lastrowid(self):
+        return self._cursor.lastrowid
+
+    @property
+    def description(self):
+        return self._cursor.description
+
+    def __iter__(self):
+        return iter(self._cursor)
+
+    def close(self):
+        self._cursor.close()
+
+
 class SQLiteTransactionConnection:
     """Restricted view of a coordinator-owned SQLite connection."""
 
@@ -19,16 +53,19 @@ class SQLiteTransactionConnection:
         self._connection = connection
 
     def execute(self, *args, **kwargs):
-        return self._connection.execute(*args, **kwargs)
+        return SQLiteTransactionCursor(self._connection.execute(*args, **kwargs))
 
     def executemany(self, *args, **kwargs):
-        return self._connection.executemany(*args, **kwargs)
+        return SQLiteTransactionCursor(self._connection.executemany(*args, **kwargs))
 
     def executescript(self, *args, **kwargs):
-        return self._connection.executescript(*args, **kwargs)
+        raise RuntimeError(
+            "executescript is disabled on a coordinator-owned connection; "
+            "it may implicitly commit the outer transaction"
+        )
 
     def cursor(self, *args, **kwargs):
-        return self._connection.cursor(*args, **kwargs)
+        return SQLiteTransactionCursor(self._connection.cursor(*args, **kwargs))
 
     @property
     def in_transaction(self) -> bool:
