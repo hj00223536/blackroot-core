@@ -1,8 +1,4 @@
-"""Coinbase maturity rule primitives.
-
-This module defines the proposed consensus boundary independently of storage.
-It is not yet wired into block validation or the SQLite UTXO state transition.
-"""
+"""Authenticated UTXO creation provenance and coinbase maturity primitives."""
 from __future__ import annotations
 
 from dataclasses import dataclass
