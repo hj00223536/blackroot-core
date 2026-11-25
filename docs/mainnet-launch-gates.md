@@ -109,6 +109,15 @@ reconnection across two successful switches. It does not yet cover spending
 and restoring an ordinary pre-existing output or process interruption at every
 individual reorganization write boundary.
 
+### Ordinary-output restoration during reorganization
+
+An integration test now seeds an authenticated ordinary P2PKH output, spends it
+in the active branch, then switches to a longer competing branch. It verifies
+that the spent funding output is restored from undo data and the disconnected
+transaction's recipient output is removed. The test validates the ordinary
+signature path and checks the resulting UTXO database integrity. Crash
+interruption at each write boundary remains a separate launch gate.
+
 ### UTXO creation-height invariant
 
 Authenticated UTXO provenance is now checked against the spending block height for every output type: no output may be spent at a height earlier than the height at which it was created. Coinbase outputs additionally require the configured maturity interval. Regression tests cover both coinbase and ordinary outputs with future creation heights. This closes a temporal-state validation gap in the maturity helper; it does not establish complete consensus readiness.
