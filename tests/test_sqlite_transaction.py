@@ -1,5 +1,8 @@
 import sqlite3
+import subprocess
+import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -10,7 +13,8 @@ class SQLiteTransactionCoordinatorTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.path = Path(self.temp.name) / "node.sqlite"
+        self.root = Path(self.temp.name)
+        self.path = self.root / "node.sqlite"
 
     def test_transaction_commits_all_statements_on_owned_connection(self):
         with SQLiteTransactionCoordinator(self.path) as coordinator:
@@ -79,6 +83,74 @@ class SQLiteTransactionCoordinatorTests(unittest.TestCase):
                 self.assertTrue(db.in_transaction)
             self.assertFalse(db.in_transaction)
             self.assertEqual(db.execute("SELECT value FROM sample").fetchall(), [(9,)])
+
+    def test_independent_process_writers_are_serialized_by_begin_immediate(self):
+        with sqlite3.connect(self.path) as db:
+            db.execute("CREATE TABLE writes (value INTEGER PRIMARY KEY)")
+
+        release = self.root / "release-writer"
+        acquired = self.root / "first-writer-acquired"
+        first_code = """
+import sys, time
+from pathlib import Path
+from src.blackroot_sqlite import SQLiteTransactionCoordinator
+database, acquired, release = map(Path, sys.argv[1:])
+with SQLiteTransactionCoordinator(database, timeout=5) as owner:
+    with owner.transaction() as db:
+        db.execute("INSERT INTO writes(value) VALUES(1)")
+        acquired.write_text("ready")
+        deadline = time.monotonic() + 8
+        while not release.exists():
+            if time.monotonic() > deadline:
+                raise SystemExit("timed out waiting for parent release")
+            time.sleep(0.01)
+"""
+        second_code = """
+import sys
+from src.blackroot_sqlite import SQLiteTransactionCoordinator
+with SQLiteTransactionCoordinator(sys.argv[1], timeout=5) as owner:
+    with owner.transaction() as db:
+        db.execute("INSERT INTO writes(value) VALUES(2)")
+"""
+        first = subprocess.Popen(
+            [sys.executable, "-c", first_code, str(self.path), str(acquired), str(release)],
+            cwd=Path(__file__).resolve().parents[1],
+        )
+        second = None
+        try:
+            deadline = time.monotonic() + 5
+            while not acquired.exists() and time.monotonic() < deadline:
+                if first.poll() is not None:
+                    self.fail("first writer exited before acquiring its transaction")
+                time.sleep(0.01)
+            self.assertTrue(acquired.exists(), "first writer did not acquire its transaction")
+
+            second = subprocess.Popen(
+                [sys.executable, "-c", second_code, str(self.path)],
+                cwd=Path(__file__).resolve().parents[1],
+            )
+            time.sleep(0.25)
+            self.assertIsNone(
+                second.poll(),
+                "second process should wait while the first holds BEGIN IMMEDIATE",
+            )
+            release.write_text("commit")
+            self.assertEqual(first.wait(timeout=5), 0)
+            self.assertEqual(second.wait(timeout=5), 0)
+        finally:
+            release.touch()
+            if first.poll() is None:
+                first.kill()
+                first.wait(timeout=5)
+            if second is not None and second.poll() is None:
+                second.kill()
+                second.wait(timeout=5)
+
+        with sqlite3.connect(self.path) as db:
+            self.assertEqual(
+                db.execute("SELECT value FROM writes ORDER BY value").fetchall(),
+                [(1,), (2,)],
+            )
 
 
 if __name__ == "__main__":
