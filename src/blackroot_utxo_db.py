@@ -171,10 +171,13 @@ class UTXOStore:
         # a missing row before either attempts the INSERT.
         with self._write_scope() as db:
             row = db.execute(
-                "SELECT raw_block FROM block_bodies WHERE block_hash=?", (block_hash,)
+                "SELECT raw_block, serialized_size FROM block_bodies WHERE block_hash=?", (block_hash,)
             ).fetchone()
             if row is not None:
-                if bytes(row[0]) != raw:
+                archived_raw = bytes(row[0])
+                if len(archived_raw) != row[1]:
+                    raise RuntimeError("archived block body size metadata is corrupt")
+                if archived_raw != raw:
                     raise RuntimeError("conflicting archived body for identical block header")
                 return block_hash
             db.execute(
