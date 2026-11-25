@@ -76,6 +76,14 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
 
     def test_concurrent_writers_cannot_connect_the_same_extension(self):
         path = Path(self.temp.name) / "concurrent-extension.sqlite"
+        # Initialize and populate the database before workers race to open it;
+        # this isolates the test to competing block-connection transactions,
+        # rather than concurrent first-time schema/WAL initialization.
+        setup_store = UTXOStore(path)
+        setup_headers = HeaderChain(POW_LIMIT, self.genesis.header)
+        setup_headers.add(self.old_one.header)
+        setup_store.connect_validated_block(self.genesis, 0, setup_headers)
+        setup_store.connect_validated_block(self.old_one, 1, setup_headers)
         contender = mined_block(2, self.old_one.header.hash, 5)
         barrier = Path(self.temp.name) / "release-writers"
         ready_a = Path(self.temp.name) / "writer-a.ready"
