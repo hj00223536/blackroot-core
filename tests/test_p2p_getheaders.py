@@ -1,3 +1,4 @@
+import struct
 import unittest
 
 from src.blackroot_p2p_getheaders import (
@@ -41,5 +42,4 @@ class GetHeadersCodecTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import struct
     unittest.main()
