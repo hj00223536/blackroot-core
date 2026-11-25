@@ -42,7 +42,6 @@ class ThreeNodeLoopbackTests(unittest.IsolatedAsyncioTestCase):
         self.store.connect_validated_block.return_value = 0
         self.scheduler = MultiPeerBlockScheduler(self.chain, self.store)
         self.sync_service = NodePeerSyncService(self.scheduler)
-        self.received = asyncio.Event()
         self.remote_requests = {"peer-1": asyncio.Event(), "peer-2": asyncio.Event()}
         self.remote_managers = []
 
@@ -102,8 +101,11 @@ class ThreeNodeLoopbackTests(unittest.IsolatedAsyncioTestCase):
         selected = await self.scheduler.request_block(
             self.block.header.hash, self.sync_service.peers
         )
-        await asyncio.wait_for(self.received.wait(), timeout=2)
         await asyncio.wait_for(self.remote_requests[selected].wait(), timeout=2)
+        async def wait_for_store():
+            while self.store.connect_validated_block.call_count == 0:
+                await asyncio.sleep(0.01)
+        await asyncio.wait_for(wait_for_store(), timeout=2)
         other = "peer-2" if selected == "peer-1" else "peer-1"
         self.assertFalse(self.remote_requests[other].is_set())
         self.store.connect_validated_block.assert_called_once()
