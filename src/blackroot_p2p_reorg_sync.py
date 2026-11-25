@@ -12,7 +12,7 @@ import time
 
 from .blackroot_blocks import Block
 from .blackroot_chain import HeaderChain
-from .blackroot_p2p_inventory import INV_TYPE_BLOCK, InventoryVector, encode_inventory
+from .blackroot_p2p_inventory import INV_TYPE_BLOCK, InventoryVector, decode_inventory, encode_inventory
 from .blackroot_p2p_request_pool import MultiPeerBlockRequestPool
 from .blackroot_transactions import merkle_root
 
@@ -116,6 +116,46 @@ class MultiPeerReorganizationSync:
         expired = self.expire_requests(timeout, now=now)
         retried = {}
         for block_hash in expired:
+            available = [
+                peer_id for peer_id, peer in peers.items()
+                if getattr(peer, "connected", False)
+            ]
+            peer_id = self.pool.assign(block_hash, available)
+            try:
+                await peers[peer_id].send(
+                    "getdata",
+                    encode_inventory([InventoryVector(INV_TYPE_BLOCK, block_hash)]),
+                )
+            except Exception:
+                self.pool.cancel(block_hash)
+                raise
+            self._requested_at[block_hash] = time.monotonic()
+            retried[block_hash] = peer_id
+        return retried
+
+    def peer_notfound(self, peer_id: object, payload: bytes) -> tuple[bytes, ...]:
+        """Release only block requests that this peer was assigned but lacks."""
+        released = []
+        for item in decode_inventory(payload):
+            if item.kind != INV_TYPE_BLOCK:
+                continue
+            if self.pool.assigned_peer(item.item_hash) != peer_id:
+                continue
+            if self.pool.cancel(item.item_hash):
+                self._requested_at.pop(item.item_hash, None)
+                released.append(item.item_hash)
+        return tuple(released)
+
+    async def retry_released_bodies(
+        self, block_hashes, peers: Mapping[object, object]
+    ) -> dict[bytes, object]:
+        """Assign previously released body hashes to other connected peers."""
+        retried = {}
+        for block_hash in block_hashes:
+            if self.store.load_block_body(block_hash) is not None:
+                continue
+            if self.pool.assigned_peer(block_hash) is not None:
+                continue
             available = [
                 peer_id for peer_id, peer in peers.items()
                 if getattr(peer, "connected", False)
