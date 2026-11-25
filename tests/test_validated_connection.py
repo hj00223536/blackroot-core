@@ -104,6 +104,17 @@ class ValidatedConnectionTests(unittest.TestCase):
         reopened = UTXOStore(shared_path)
         self.assertEqual(reopened.tip(), (0, self.genesis.header.hash))
 
+    def test_store_does_not_close_coordinator_owned_connection(self):
+        shared_path = Path(self.tmp.name) / "borrowed-connection.sqlite"
+        with SQLiteTransactionCoordinator(shared_path) as coordinator:
+            with coordinator.transaction() as connection:
+                store = UTXOStore(shared_path, connection=connection)
+                self.assertEqual(store.count(), 0)
+                self.assertIsNone(store.tip())
+                self.assertTrue(coordinator.is_open)
+                self.assertEqual(connection.execute("SELECT 1").fetchone()[0], 1)
+                self.assertTrue(connection.in_transaction)
+
     def test_outer_rollback_reverts_complete_utxo_block_connection(self):
         shared_path = Path(self.tmp.name) / "rollback-block.sqlite"
         with SQLiteTransactionCoordinator(shared_path) as coordinator:
