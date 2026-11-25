@@ -116,3 +116,16 @@ must invoke this method from its own timer/event loop; this library component
 does not create background tasks. Disconnected-peer cleanup also clears the
 corresponding timestamps. Tests cover timeout validation and reassignment when
 the original source is no longer connected.
+
+
+### `notfound` and released-request reassignment
+
+The fork-body downloader now accepts a `notfound` inventory payload together
+with its source peer ID. It releases only hashes currently assigned to that
+same peer; unrelated or spoofed `notfound` messages do not cancel another
+peer's request. The caller can pass the released hashes to
+`retry_released_bodies(hashes, peers)`, which assigns them to connected peers
+and sends new `getdata` requests. The peer lifecycle owner must call
+`peer_disconnected(peer_id)` on disconnect and schedule retries for the
+returned hashes. This keeps network scheduling explicit and avoids hidden
+background tasks.
