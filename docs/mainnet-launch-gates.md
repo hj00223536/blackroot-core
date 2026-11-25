@@ -17,8 +17,12 @@ customer funds.
 - [ ] Finalize full header consensus: canonical compact targets, exact retarget
   boundary rules, median-time-past, future-time policy, genesis parameters, and
   network-specific difficulty behavior.
-- [ ] Integrate persistent header DAG and UTXO storage into one node lifecycle,
-  with atomic header/body/state acceptance and crash-safe recovery.
+- [x] Implement an opt-in coordinated SQLite node-state lifecycle with a shared
+  transaction boundary for header, block-body, UTXO, and recovery-journal writes;
+  selected commit/rollback and process-termination cases have automated tests.
+- [ ] Make coordinated storage the supported production lifecycle only after
+  backup-first migration, restore drills, multi-process stress, operational
+  shutdown/recovery behavior, and independent review are complete.
 - [ ] Validate every block header and body before it can affect active state.
 - [ ] Complete side-branch storage, per-block UTXO undo, chainwork selection,
   deterministic reorganization, and adversarial crash/recovery testing.
@@ -51,13 +55,18 @@ The repository contains experimental Python components for SHA-256d and
 subsidy helpers, header validation/fork-choice, a replay-verified SQLite header
 store, legacy transaction serialization, limited P2PKH script validation,
 block-body checks, coinbase maturity, and a SQLite UTXO persistence/reorg
-prototype. These components are not yet integrated into a complete node
-lifecycle and their tests cover only selected behaviors.
+prototype. An opt-in coordinated persistent node-state lifecycle now places the
+header store, UTXO store, block-body archive, and recovery journal on one
+node-owned SQLite connection. Selected transaction rollback, process-exit, and
+independent-process writer-serialization cases pass automated tests. This is
+still a partial prototype, not a complete production node lifecycle.
 
-The persistent header store is separate from the UTXO database. Its replay
-verification does not by itself validate historical external adjusted-time
-inputs or establish peer agreement. The pure-Python signature code is not
-suitable for production key handling.
+The legacy compatibility mode still uses separate header, UTXO, and recovery
+journal files. The coordinated mode is opt-in and no migration utility for
+legacy databases has been implemented. Header replay verification does not by
+itself validate historical external adjusted-time inputs or establish peer
+agreement. The pure-Python signature code is not suitable for production key
+handling.
 
 **Decision rule:** keep all development isolated from real funds until every
 blocking item is implemented, independently tested, reviewed, and approved.
