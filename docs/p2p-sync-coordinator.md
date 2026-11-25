@@ -239,3 +239,14 @@ the replayed genesis header and active UTXO tip match the pre-shutdown state.
 This is a clean shutdown/reopen test, not a simulated power loss: SQLite
 cross-database atomicity, interrupted writes, fsync guarantees, and automatic
 recovery of a header-ahead-of-UTXO crash window remain unresolved.
+
+### Header-ahead-of-UTXO crash-window recovery test
+
+`tests/test_persistent_node_state.py` now simulates the recoverable crash
+window where a validated header is committed to the header database but its
+body has not yet been connected to the UTXO database. Reopening the state must
+preserve the older UTXO tip while replaying the newer best header. The test
+then explicitly archives the matching body and completes the normal validated
+reorganization. This demonstrates recovery of that specific staged state; it
+does not provide atomic commits across the two databases or simulate storage
+hardware failure.
