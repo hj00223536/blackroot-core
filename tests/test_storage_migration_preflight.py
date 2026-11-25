@@ -377,6 +377,43 @@ class SQLiteSnapshotTests(unittest.TestCase):
         self.assertEqual(reopened["header_best_hash"], parent.hash.hex())
         self.assertFalse(reopened["production_cutover_performed"])
 
+        # Prove the imported staging database is operational, not merely
+        # readable: connect one further valid block, close, and reopen again.
+        resumed = PersistentNodeState.open_coordinated(staged, pow_limit, genesis)
+        height = 3
+        resumed_coinbase = Transaction(
+            1,
+            (TxInput(
+                OutPoint(ZERO_TXID, COINBASE_INDEX),
+                script_sig=b"\\x01" + bytes([height]),
+            ),),
+            (TxOutput(block_subsidy(height), b"\\x51"),),
+        )
+        resumed_merkle = merkle_root([resumed_coinbase.txid])
+        resumed_header = None
+        for nonce in range(10000):
+            candidate = BlockHeader(
+                1, parent.hash, resumed_merkle, 4, 0x207fffff, nonce
+            )
+            if check_proof_of_work(candidate.serialize(), candidate.bits, pow_limit):
+                resumed_header = candidate
+                break
+        self.assertIsNotNone(resumed_header)
+        resumed.add_header(resumed_header, adjusted_time=4)
+        self.assertEqual(
+            resumed.connect_best_block(Block(resumed_header, (resumed_coinbase,)), 3),
+            0,
+        )
+        self.assertEqual(resumed.utxos.tip(), (3, resumed_header.hash))
+        resumed.close()
+
+        reopened_again = validate_coordinated_staging_database(
+            staged, pow_limit=pow_limit, genesis=genesis
+        )
+        self.assertEqual(reopened_again["status"], "coordinated_node_reopen_passed")
+        self.assertEqual(reopened_again["utxo_tip"], (3, resumed_header.hash.hex()))
+        self.assertEqual(reopened_again["header_best_hash"], resumed_header.hash.hex())
+
     def test_coordinated_staging_validator_reopens_real_node_stores(self):
         genesis = BlockHeader(1, bytes(32), bytes(32), 1, 0x207fffff, 0)
         pow_limit = decode_compact_target(0x207fffff)
