@@ -9,7 +9,9 @@ experimental HeaderChain wrapper; this is not a production node database.
 from __future__ import annotations
 
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
 from .blackroot_transactions import OutPoint, Transaction, TxOutput, validate_transaction
 from .blackroot_blocks import Block, validate_block_transactions
@@ -41,12 +43,23 @@ class UTXOStore:
         connection.execute("PRAGMA busy_timeout = 10000")
         return connection
 
-    def _require_standalone_transaction(self, operation: str) -> None:
+    @contextmanager
+    def _write_scope(self) -> Iterator[sqlite3.Connection | SQLiteTransactionConnection]:
+        """Use an outer transaction when injected; otherwise own one locally."""
         if self._external_connection is not None:
-            raise RuntimeError(
-                f"{operation} still owns an internal transaction and is not yet "
-                "available with a coordinator-owned connection"
-            )
+            if not self._external_connection.in_transaction:
+                raise RuntimeError("coordinator-owned UTXO writes require an active outer transaction")
+            yield self._external_connection
+            return
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                yield db
+                db.commit()
+            except BaseException:
+                if db.in_transaction:
+                    db.rollback()
+                raise
 
     def _initialize(self) -> None:
         with self._connect() as db:
@@ -379,87 +392,79 @@ class UTXOStore:
             raise TypeError("block must be a Block")
         if not isinstance(height, int) or isinstance(height, bool) or height < 0:
             raise ValueError("height must be a non-negative integer")
-        self._require_standalone_transaction("connect_block")
+        with self._write_scope() as db:
+            tip = db.execute(
+                "SELECT height, block_hash FROM blocks ORDER BY height DESC LIMIT 1"
+            ).fetchone()
+            if tip is None:
+                if height != 0 or block.header.prev_hash != bytes(32):
+                    raise ValueError("first block must be height zero with a zero parent")
+            else:
+                if height != tip[0] + 1:
+                    raise ValueError("block height must directly extend stored tip")
+                if block.header.prev_hash != bytes(tip[1]):
+                    raise ValueError("block does not extend stored tip")
 
-        with self._connect() as db:
-            db.execute("BEGIN IMMEDIATE")
-            try:
-                tip = db.execute(
-                    "SELECT height, block_hash FROM blocks ORDER BY height DESC LIMIT 1"
-                ).fetchone()
-                if tip is None:
-                    if height != 0 or block.header.prev_hash != bytes(32):
-                        raise ValueError("first block must be height zero with a zero parent")
-                else:
-                    if height != tip[0] + 1:
-                        raise ValueError("block height must directly extend stored tip")
-                    if block.header.prev_hash != bytes(tip[1]):
-                        raise ValueError("block does not extend stored tip")
+            parent: dict[OutPoint, TxOutput] = {}
+            provenance: dict[OutPoint, UTXOProvenance] = {}
+            rows = db.execute(
+                "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase FROM utxos"
+            ).fetchall()
+            for txid, index, value, script, created_height, is_coinbase_flag in rows:
+                outpoint = OutPoint(bytes(txid), index)
+                parent[outpoint] = TxOutput(value, bytes(script))
+                provenance[outpoint] = UTXOProvenance(created_height, bool(is_coinbase_flag))
 
-                parent: dict[OutPoint, TxOutput] = {}
-                provenance: dict[OutPoint, UTXOProvenance] = {}
-                rows = db.execute(
-                    "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase FROM utxos"
-                ).fetchall()
-                for txid, index, value, script, created_height, is_coinbase_flag in rows:
-                    outpoint = OutPoint(bytes(txid), index)
-                    parent[outpoint] = TxOutput(value, bytes(script))
-                    provenance[outpoint] = UTXOProvenance(created_height, bool(is_coinbase_flag))
+            updated, fees = validate_block_transactions(block, parent, height, provenance)
+            updated_provenance = self._advance_provenance(block, provenance, height)
+            if set(updated) != set(updated_provenance):
+                raise RuntimeError("UTXO/provenance state diverged")
 
-                updated, fees = validate_block_transactions(block, parent, height, provenance)
-                updated_provenance = self._advance_provenance(block, provenance, height)
-                if set(updated) != set(updated_provenance):
-                    raise RuntimeError("UTXO/provenance state diverged")
+            db.execute(
+                "INSERT INTO blocks(height, block_hash, prev_hash, header, tx_count, total_fees) "
+                "VALUES(?, ?, ?, ?, ?, ?)",
+                (height, block.header.hash, block.header.prev_hash,
+                 block.header.serialize(), len(block.transactions), fees),
+            )
 
-                db.execute(
-                    "INSERT INTO blocks(height, block_hash, prev_hash, header, tx_count, total_fees) "
-                    "VALUES(?, ?, ?, ?, ?, ?)",
-                    (height, block.header.hash, block.header.prev_hash,
-                     block.header.serialize(), len(block.transactions), fees),
-                )
-
-                # Record inverse operations before committing the new UTXO set.
-                # Only inputs present in the parent snapshot are restored on disconnect;
-                # outputs created and spent within this same block are not parent UTXOs.
-                for tx in block.transactions[1:]:
-                    for txin in tx.inputs:
-                        previous = txin.previous_output
-                        spent_output = parent.get(previous)
-                        if spent_output is not None:
-                            db.execute(
-                                "INSERT INTO block_undo_spent(height, txid, output_index, value, script_pubkey, created_height, is_coinbase) "
-                                "VALUES(?, ?, ?, ?, ?, ?, ?)",
-                                (height, previous.txid, previous.index,
-                                 spent_output.value, spent_output.script_pubkey,
-                                 provenance[previous].created_height, int(provenance[previous].is_coinbase)),
-                            )
-                for tx in block.transactions:
-                    for index, _output in enumerate(tx.outputs):
+            # Record inverse operations before committing the new UTXO set.
+            # Only inputs present in the parent snapshot are restored on disconnect;
+            # outputs created and spent within this same block are not parent UTXOs.
+            for tx in block.transactions[1:]:
+                for txin in tx.inputs:
+                    previous = txin.previous_output
+                    spent_output = parent.get(previous)
+                    if spent_output is not None:
                         db.execute(
-                            "INSERT INTO block_undo_created(height, txid, output_index) VALUES(?, ?, ?)",
-                            (height, tx.txid, index),
+                            "INSERT INTO block_undo_spent(height, txid, output_index, value, script_pubkey, created_height, is_coinbase) "
+                            "VALUES(?, ?, ?, ?, ?, ?, ?)",
+                            (height, previous.txid, previous.index,
+                             spent_output.value, spent_output.script_pubkey,
+                             provenance[previous].created_height, int(provenance[previous].is_coinbase)),
                         )
-
-                for position, tx in enumerate(block.transactions):
+            for tx in block.transactions:
+                for index, _output in enumerate(tx.outputs):
                     db.execute(
-                        "INSERT INTO block_transactions(height, position, txid, raw_transaction) "
-                        "VALUES(?, ?, ?, ?)",
-                        (height, position, tx.txid, tx.serialize()),
+                        "INSERT INTO block_undo_created(height, txid, output_index) VALUES(?, ?, ?)",
+                        (height, tx.txid, index),
                     )
 
-                db.execute("DELETE FROM utxos")
-                db.executemany(
-                    "INSERT INTO utxos(txid, output_index, value, script_pubkey, created_height, is_coinbase) VALUES(?, ?, ?, ?, ?, ?)",
-                    [(op.txid, op.index, output.value, output.script_pubkey,
-                      updated_provenance[op].created_height,
-                      int(updated_provenance[op].is_coinbase))
-                     for op, output in updated.items()],
+            for position, tx in enumerate(block.transactions):
+                db.execute(
+                    "INSERT INTO block_transactions(height, position, txid, raw_transaction) "
+                    "VALUES(?, ?, ?, ?)",
+                    (height, position, tx.txid, tx.serialize()),
                 )
-                db.commit()
-                return fees
-            except Exception:
-                db.rollback()
-                raise
+
+            db.execute("DELETE FROM utxos")
+            db.executemany(
+                "INSERT INTO utxos(txid, output_index, value, script_pubkey, created_height, is_coinbase) VALUES(?, ?, ?, ?, ?, ?)",
+                [(op.txid, op.index, output.value, output.script_pubkey,
+                  updated_provenance[op].created_height,
+                  int(updated_provenance[op].is_coinbase))
+                 for op, output in updated.items()],
+            )
+        return fees
 
     def reorganize_to_best(
         self,
