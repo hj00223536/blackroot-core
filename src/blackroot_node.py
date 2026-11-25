@@ -5,6 +5,7 @@ import argparse
 import asyncio
 import json
 import signal
+import secrets
 import time
 from pathlib import Path
 
@@ -14,7 +15,7 @@ from .blackroot_node_state import PersistentNodeState
 from .blackroot_p2p_handshake import VersionMessage
 
 
-async def run_node(config: TestnetConfig, data_dir: Path, bind_host: str) -> None:
+async def run_node(config: TestnetConfig, data_dir: Path, bind_host: str, connect_to: tuple[str, int] | None = None) -> None:
     bind_host = config.validate_bind_host(bind_host)
     data_dir.mkdir(parents=True, exist_ok=True)
     state = PersistentNodeState.open_coordinated(
@@ -28,7 +29,7 @@ async def run_node(config: TestnetConfig, data_dir: Path, bind_host: str) -> Non
             protocol_version=config.protocol_version,
             services=0,
             timestamp=int(time.time()),
-            nonce=0,
+            nonce=secrets.randbits(64),
             start_height=state.headers.chain.height,
             user_agent="/blackroot-local-node/0.1/",
         )
@@ -39,6 +40,11 @@ async def run_node(config: TestnetConfig, data_dir: Path, bind_host: str) -> Non
             protocol_version=config.protocol_version,
         )
         host, port = await runtime.listen(bind_host, config.p2p_port)
+        if connect_to is not None:
+            remote_host, remote_port = connect_to
+            config.validate_bind_host(remote_host)
+            await runtime.connect(remote_host, remote_port)
+            await runtime.synchronize()
         print(json.dumps({
             "event": "node_started",
             "network_id": config.network_id,
@@ -73,11 +79,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", required=True, help="strict JSON testnet config")
     parser.add_argument("--data-dir", required=True, help="node-owned data directory")
     parser.add_argument("--bind-host", default="127.0.0.1", help="literal loopback IP only")
+    parser.add_argument("--connect", help="optional loopback peer as IP:PORT (IPv6: [::1]:PORT)")
     args = parser.parse_args(argv)
     try:
         config = TestnetConfig.from_json_file(args.config)
         config.validate_bind_host(args.bind_host)
-        asyncio.run(run_node(config, Path(args.data_dir), args.bind_host))
+        connect_to = None
+        if args.connect:
+            if args.connect.startswith("["):
+                closing = args.connect.find("]")
+                if closing < 0 or args.connect[closing + 1:closing + 2] != ":":
+                    raise ValueError("--connect IPv6 endpoint must use [::1]:PORT")
+                remote_host = args.connect[1:closing]
+                port_text = args.connect[closing + 2:]
+            else:
+                if args.connect.count(":") != 1:
+                    raise ValueError("--connect endpoint must use IP:PORT")
+                remote_host, port_text = args.connect.rsplit(":", 1)
+            if not port_text.isdigit() or not 1 <= int(port_text) <= 65535:
+                raise ValueError("--connect port must be between 1 and 65535")
+            config.validate_bind_host(remote_host)
+            connect_to = (remote_host, int(port_text))
+        asyncio.run(run_node(config, Path(args.data_dir), args.bind_host, connect_to))
     except (ValueError, OSError, RuntimeError) as exc:
         parser.exit(2, f"blackroot-node: {exc}\n")
     return 0
