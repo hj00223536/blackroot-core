@@ -111,6 +111,15 @@ class LegacyStoragePreflightTests(unittest.TestCase):
         )
         self.assertEqual(before, {p: p.read_bytes() for p in before})
 
+    def test_schema_merge_plan_rejects_virtual_tables(self):
+        with sqlite3.connect(self.journal) as db:
+            try:
+                db.execute("CREATE VIRTUAL TABLE unsupported_search USING fts5(content)")
+            except sqlite3.OperationalError as exc:
+                self.skipTest(f"SQLite FTS5 module unavailable: {exc}")
+        with self.assertRaisesRegex(RuntimeError, "virtual table"):
+            plan_coordinated_schema_merge(self.header, self.utxo, self.journal)
+
     def test_schema_merge_plan_rejects_global_index_name_collisions(self):
         with sqlite3.connect(self.header) as db:
             db.execute("CREATE INDEX shared_name ON headers(height)")
