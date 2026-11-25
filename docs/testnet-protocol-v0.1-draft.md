@@ -61,7 +61,7 @@ The following require normative definitions and independent vectors before activ
 - block weight/size, transaction count, sigops and all resource limits;
 - mempool policy (which must be distinguished from consensus).
 
-Provisional economic targets in docs/blackroot-brt-launch-plan.md are not frozen: 50 BRT initial subsidy, 210,000-block halving, 100,000,000 atomic units per BRT, 21,000,000 BRT ceiling, and no premine proposed. Supply arithmetic and all edge cases must be independently reviewed before any network is activated.
+Provisional economic targets in docs/blackroot-brt-launch-plan.md are not frozen: 50 BRT initial subsidy, 210,000-block halving, 100,000,000 atomic units per BRT, 21,000,000 BRT ceiling, and no premine proposed. The current integer-truncated subsidy schedule, summed over all 64 halving epochs, issues 2,099,999,997,690,000 atomic units (20,999,999.9769 BRT); the remaining 2,310,000 atomic units (0.0231 BRT) below the nominal 21,000,000 BRT ceiling are never issued by this schedule. The subsidy is 1 atomic unit per block in epoch 32 and zero from epoch 33 onward. This arithmetic is now pinned by a unit-test vector, but the monetary rules remain provisional and require independent review before activation.
 
 ## 6. State transition and reorganization
 
