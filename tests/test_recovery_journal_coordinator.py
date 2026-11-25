@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import contextmanager
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,6 +7,19 @@ from pathlib import Path
 from src.blackroot_recovery_journal import NodeRecoveryJournal
 from src.blackroot_sqlite import SQLiteTransactionCoordinator
 
+
+
+@contextmanager
+def managed_sqlite(connection):
+    try:
+        yield connection
+        connection.commit()
+    except BaseException:
+        if connection.in_transaction:
+            connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 class RecoveryJournalCoordinatorTests(unittest.TestCase):
     def setUp(self):
@@ -34,7 +48,7 @@ class RecoveryJournalCoordinatorTests(unittest.TestCase):
                     journal.prepare(self.old_tip, self.new_tip)
                     self.assertTrue(journal.pending())
                     raise RuntimeError("abort journal transaction")
-        with sqlite3.connect(self.path) as db:
+        with managed_sqlite(sqlite3.connect(self.path)) as db:
             table = db.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' "
                 "AND name='recovery_intent'"
