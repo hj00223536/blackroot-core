@@ -104,11 +104,36 @@ def _output_total(outputs: tuple[TxOutput, ...]) -> int:
     return total
 
 
+LOCKTIME_THRESHOLD = 500_000_000
+
+
+def is_final_transaction(tx: Transaction, height: int, median_time_past: int | None) -> bool:
+    """Evaluate legacy absolute nLockTime finality for a candidate block.
+
+    Timestamp locks use parent-chain median-time-past. Relative sequence
+    locks (BIP68) are not implemented.
+    """
+    if tx.lock_time == 0:
+        return True
+    if tx.lock_time < LOCKTIME_THRESHOLD:
+        comparison = height
+    else:
+        if median_time_past is None:
+            raise ValueError("median-time-past is required for timestamp nLockTime")
+        if not isinstance(median_time_past, int) or isinstance(median_time_past, bool) or median_time_past < 0:
+            raise ValueError("median-time-past must be a non-negative integer")
+        comparison = median_time_past
+    if tx.lock_time < comparison:
+        return True
+    return all(txin.sequence == 0xFFFFFFFF for txin in tx.inputs)
+
+
 def validate_block_transactions(
     block: Block,
     parent_utxos: dict[OutPoint, TxOutput],
     height: int,
     parent_provenance: dict[OutPoint, UTXOProvenance] | None = None,
+    median_time_past: int | None = None,
 ) -> tuple[dict[OutPoint, TxOutput], int]:
     """Validate block transactions against a parent UTXO snapshot.
 
@@ -152,6 +177,8 @@ def validate_block_transactions(
     working = dict(parent_utxos)
     fees = 0
     for tx in block.transactions[1:]:
+        if not is_final_transaction(tx, height, median_time_past):
+            raise ValueError("transaction is non-final for candidate block height/time")
         if parent_provenance is not None:
             for txin in tx.inputs:
                 provenance = parent_provenance.get(txin.previous_output)
