@@ -107,6 +107,9 @@ class ReorganizationAtomicityTests(unittest.TestCase):
             well_formed_script_sig = _push(signature) + _push(pubkey)
             corrupted = bytearray(well_formed_script_sig)
             corrupted[5] ^= 1
+            unsigned = Transaction(
+                1, (TxInput(funding),), (TxOutput(9_000, b"recipient"),)
+            )
             invalid_spend = Transaction(
                 1, (TxInput(funding, bytes(corrupted)),), unsigned.outputs
             )
