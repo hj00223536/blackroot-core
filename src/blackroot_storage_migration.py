@@ -403,6 +403,16 @@ def import_snapshot_set_to_coordinated_database(
         for kind, source in source_dbs.items():
             source.close()
         source_dbs.clear()
+
+        # Snapshots are expected to be immutable. Re-hash them after all reads
+        # complete so a concurrent external modification cannot silently
+        # produce a staging file assembled from mixed source states.
+        source_hashes_after = {
+            kind: _sha256_file(path) for kind, path in sources.items()
+        }
+        if source_hashes_after != source_hashes:
+            raise RuntimeError("source snapshot changed during staged import")
+
         target.close()
         target = None
         return {
