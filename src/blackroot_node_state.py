@@ -84,10 +84,19 @@ class PersistentNodeState:
         selected = self.headers.chain.get(height)
         if selected.hash != block.header.hash:
             raise ValueError("block body is not selected by persistent best header chain")
+        self.utxos.store_block_body(block)
         return self.utxos.connect_validated_block(block, height, self.headers.chain)
 
-    def reorganize_best(self, replacement_blocks: dict[bytes, Block]) -> tuple[int, bytes]:
-        """Switch UTXO state to the greater-work header branch using supplied bodies."""
+    def archive_block_body(self, block: Block) -> bytes:
+        """Archive a candidate body only when its header is known in the header DAG."""
+        if not isinstance(block, Block):
+            raise TypeError("block must be a Block")
+        if self.headers.chain.node(block.header.hash) is None:
+            raise ValueError("cannot archive a body for an unknown header")
+        return self.utxos.store_block_body(block)
+
+    def reorganize_best(self, replacement_blocks: dict[bytes, Block] | None = None) -> tuple[int, bytes]:
+        """Switch to the greater-work branch using supplied or archived block bodies."""
         result = self.utxos.reorganize_to_best(self.headers.chain, replacement_blocks)
         self._verify_persistent_tip()
         return result
