@@ -55,5 +55,33 @@ class HeaderChainTests(unittest.TestCase):
             chain.add(mine_header(genesis.hash, 2, BITS, POW_LIMIT))
 
 
+    def test_selects_longer_work_fork_and_reports_reorganization(self):
+        genesis = mine_header(ZERO_HASH, 1)
+        chain = HeaderChain(POW_LIMIT, genesis)
+
+        old_branch = mine_header(genesis.hash, 2)
+        chain.add(old_branch)
+        old_tip = old_branch.hash
+
+        side_one = mine_header(genesis.hash, 3)
+        chain.add_to_branch(side_one)
+        side_two = mine_header(side_one.hash, 4)
+        chain.add_to_branch(side_two)
+
+        self.assertEqual(chain.tip.hash, side_two.hash)
+        self.assertEqual(chain.height, 2)
+        disconnect, connect = chain.reorganization(old_tip)
+        self.assertEqual([item.hash for item in disconnect], [old_branch.hash])
+        self.assertEqual([item.hash for item in connect], [side_one.hash, side_two.hash])
+
+    def test_rejects_unknown_parent_and_duplicate_header(self):
+        genesis = mine_header(ZERO_HASH, 1)
+        chain = HeaderChain(POW_LIMIT, genesis)
+        with self.assertRaisesRegex(ValueError, "unknown parent"):
+            chain.add_to_branch(mine_header(bytes.fromhex("55" * 32), 2))
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            chain.add_to_branch(genesis)
+
+
 if __name__ == "__main__":
     unittest.main()
