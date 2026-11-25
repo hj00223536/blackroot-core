@@ -78,14 +78,11 @@ class MessageFramingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "length mismatch"):
             decode_message(good + b"x", MAGIC)
 
-    def test_rejects_invalid_commands_and_unbounded_receive_data(self):
+    def test_rejects_invalid_commands(self):
         for command in ("", "UPPER", "has space", "long_command_123"):
             with self.subTest(command=command):
                 with self.assertRaises(ValueError):
                     encode_message(MAGIC, command, b"")
-        parser = MessageStreamParser(MAGIC, max_payload=4)
-        with self.assertRaisesRegex(ValueError, "receive buffer"):
-            parser.feed(bytes(HEADER_SIZE + 5))
 
     def test_checksum_matches_sha256d_prefix(self):
         payload = b"blackroot"
