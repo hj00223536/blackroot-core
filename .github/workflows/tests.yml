@@ -36,3 +36,5 @@ jobs:
           node-version: "22"
       - name: Reproduce genesis transaction, header, hash and proof of work
         run: node scripts/verify_genesis_candidate.mjs
+      - name: Verify legacy transaction serialization and CompactSize vectors
+        run: node scripts/verify_transaction_vectors.mjs
