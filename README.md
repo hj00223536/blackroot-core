@@ -7,7 +7,7 @@ BLACKROOT is an experimental independent UTXO-chain design. This repository cont
 ## Proposed monetary and consensus parameters
 
 - Native coin name: BLACKROOT
-- Ticker: BROOT (provisional; availability and trademark status not established)
+- Ticker: BRT (provisional; availability and trademark status not established)
 - UTXO transaction model
 - Proof of Work using double SHA-256 (SHA-256d)
 - Target block interval: 600 seconds
