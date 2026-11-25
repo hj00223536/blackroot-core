@@ -154,6 +154,14 @@ class PersistentNodeState:
         if active != (records[-1][0], records[-1][1]):
             raise RuntimeError("persistent UTXO tip disagrees with active block records")
 
+    def persist_synced_headers(self, chain) -> None:
+        """Durably persist the validated DAG after P2P header synchronization."""
+        if self.coordinated:
+            with self._require_coordinator().transaction():
+                self.headers.persist_chain(chain)
+        else:
+            self.headers.persist_chain(chain)
+
     def add_header(
         self,
         header: BlockHeader,
