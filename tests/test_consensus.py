@@ -3,6 +3,7 @@ import unittest
 from src.blackroot_consensus import (
     COIN,
     HALVING_INTERVAL,
+    MAX_MONEY,
     block_subsidy,
     check_proof_of_work,
     decode_compact_target,
@@ -24,6 +25,20 @@ class SubsidyTests(unittest.TestCase):
         for height in (-1, 1.5, True):
             with self.assertRaises(ValueError):
                 block_subsidy(height)
+
+
+    def test_full_scheduled_issuance_stays_below_max_money(self):
+        # Each halving epoch contains exactly HALVING_INTERVAL block heights.
+        # Integer truncation eventually makes the subsidy zero.
+        total_issuance = sum(
+            HALVING_INTERVAL * block_subsidy(epoch * HALVING_INTERVAL)
+            for epoch in range(64)
+        )
+        self.assertEqual(total_issuance, 2_099_999_976_900_000)
+        self.assertEqual(total_issuance, 20_999_999 * COIN + 7_690_000)
+        self.assertLess(total_issuance, MAX_MONEY)
+        self.assertEqual(block_subsidy(32 * HALVING_INTERVAL), 1)
+        self.assertEqual(block_subsidy(33 * HALVING_INTERVAL), 0)
 
 
 class HashAndHeaderTests(unittest.TestCase):
