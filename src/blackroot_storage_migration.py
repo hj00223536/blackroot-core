@@ -38,6 +38,47 @@ def _readonly_connection(path: Path) -> sqlite3.Connection:
     return db
 
 
+def _schema_inventory(db: sqlite3.Connection) -> dict:
+    """Return deterministic SQLite DDL, column, index, and FK metadata.
+
+    This is inspection data for a future reviewed importer; it does not attempt
+    to rewrite or normalize schema objects.
+    """
+    objects = [
+        {"type": row[0], "name": row[1], "table": row[2], "sql": row[3]}
+        for row in db.execute(
+            "SELECT type, name, tbl_name, sql FROM sqlite_master "
+            "WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name, tbl_name"
+        )
+    ]
+    tables = {}
+    for item in objects:
+        if item["type"] != "table":
+            continue
+        name = item["name"]
+        quoted = '"' + name.replace('"', '""') + '"'
+        tables[name] = {
+            "create_sql": item["sql"],
+            "columns": [
+                {
+                    "cid": row[0], "name": row[1], "type": row[2],
+                    "not_null": bool(row[3]), "default": row[4],
+                    "primary_key_position": row[5],
+                }
+                for row in db.execute(f"PRAGMA table_info({quoted})")
+            ],
+            "foreign_keys": [
+                {
+                    "id": row[0], "sequence": row[1],
+                    "referenced_table": row[2], "from_column": row[3],
+                    "to_column": row[4], "on_update": row[5],
+                    "on_delete": row[6], "match": row[7],
+                }
+                for row in db.execute(f"PRAGMA foreign_key_list({quoted})")
+            ],
+        }
+    return {"objects": objects, "tables": tables}
+
 def _inspect_database(path: Path, kind: str) -> dict:
     try:
         db = _readonly_connection(path)
@@ -99,6 +140,7 @@ def _inspect_database(path: Path, kind: str) -> dict:
             "integrity_check": "ok",
             "foreign_key_check": "ok",
             "tables": sorted(tables),
+            "schema_inventory": _schema_inventory(db),
         }
     finally:
         db.close()
