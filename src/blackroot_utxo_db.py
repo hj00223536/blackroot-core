@@ -658,11 +658,11 @@ class UTXOStore:
                 parent: dict[OutPoint, TxOutput] = {}
                 provenance: dict[OutPoint, UTXOProvenance] = {}
                 for txid, index, value, script, created_height, is_coinbase_flag, created_mtp in db.execute(
-                    "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase FROM utxos"
+                    "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp FROM utxos"
                 ).fetchall():
                     outpoint = OutPoint(bytes(txid), index)
                     parent[outpoint] = TxOutput(value, bytes(script))
-                    provenance[outpoint] = UTXOProvenance(created_height, bool(is_coinbase_flag))
+                    provenance[outpoint] = UTXOProvenance(created_height, bool(is_coinbase_flag), created_mtp)
                 updated, fees = validate_block_transactions(
                     block, parent, height, provenance, median_time_past
                 )
@@ -683,8 +683,8 @@ class UTXOStore:
                         spent_output = parent.get(previous)
                         if spent_output is not None:
                             db.execute(
-                                "INSERT INTO block_undo_spent(height, txid, output_index, value, script_pubkey, created_height, is_coinbase) "
-                                "VALUES(?, ?, ?, ?, ?, ?, ?)",
+                                "INSERT INTO block_undo_spent(height, txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp) "
+                                "VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
                                 (height, previous.txid, previous.index,
                                  spent_output.value, spent_output.script_pubkey,
                                  provenance[previous].created_height, int(provenance[previous].is_coinbase),
@@ -704,7 +704,7 @@ class UTXOStore:
                     )
                 db.execute("DELETE FROM utxos")
                 db.executemany(
-                    "INSERT INTO utxos(txid, output_index, value, script_pubkey, created_height, is_coinbase) VALUES(?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO utxos(txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp) VALUES(?, ?, ?, ?, ?, ?, ?)",
                     [(op.txid, op.index, output.value, output.script_pubkey,
                       updated_provenance[op].created_height,
                       int(updated_provenance[op].is_coinbase),
@@ -749,15 +749,15 @@ class UTXOStore:
                 )
 
             spent = db.execute(
-                "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase "
+                "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
                 "FROM block_undo_spent WHERE height=?",
                 (height,),
             ).fetchall()
-            for txid, index, value, script, created_height, is_coinbase_flag in spent:
+            for txid, index, value, script, created_height, is_coinbase_flag, created_mtp in spent:
                 db.execute(
-                    "INSERT INTO utxos(txid, output_index, value, script_pubkey, created_height, is_coinbase) "
-                    "VALUES(?, ?, ?, ?, ?, ?)",
-                    (txid, index, value, script, created_height, is_coinbase_flag),
+                    "INSERT INTO utxos(txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp) "
+                    "VALUES(?, ?, ?, ?, ?, ?, ?)",
+                    (txid, index, value, script, created_height, is_coinbase_flag, created_mtp),
                 )
 
             db.execute("DELETE FROM blocks WHERE height=?", (height,))
