@@ -151,3 +151,22 @@ mempool policy tests remain outstanding.
 ### UTXO creation-height invariant
 
 Authenticated UTXO provenance is now checked against the spending block height for every output type: no output may be spent at a height earlier than the height at which it was created. Coinbase outputs additionally require the configured maturity interval. Regression tests cover both coinbase and ordinary outputs with future creation heights. This closes a temporal-state validation gap in the maturity helper; it does not establish complete consensus readiness.
+
+
+### Coordinated reorganization crash-recovery checkpoints
+
+Process-exit regression tests now cover a coordinated reorganization interrupted
+immediately after the recovery intent is written, after reorganization writes
+have been applied but before the shared transaction commits, and immediately
+after a successful commit. Reopen checks distinguish the expected old-state
+rollback from the fully committed new state, verify that no recovery intent is
+left pending, and run the UTXO integrity check. A separate two-process scenario
+holds a writer inside the reorganization transaction, starts a competing
+process, terminates the writer, and verifies that the contender can reopen and
+complete the switch.
+
+These are deterministic process-termination tests against SQLite transaction
+boundaries. They do not simulate sudden power loss, torn writes, filesystem or
+device failure, corruption, long-running contention, or every individual SQL
+write boundary. Those remain explicit launch gates and require independent
+fault-injection and restore testing.
