@@ -160,3 +160,12 @@ not create hidden background timers, discover public peers, or enable the
 service automatically for every node. Header discovery, body transfer, and
 reorganization still depend on the caller constructing a correctly configured
 `PeerManager`, persistent chain, and UTXO store.
+
+
+The node-level service also routes ordinary best-chain `inv` announcements
+through `MultiPeerBlockScheduler`: known selected-chain block hashes are
+requested from one assigned connected peer, and unsolicited or wrong-source
+block bodies are rejected. A matching `notfound` or peer disconnect releases
+both the best-chain and fork-body assignments and retries against remaining
+peers. For a `notfound` response, the source peer is excluded from the
+immediate retry so it is not selected again for the same unavailable body.
