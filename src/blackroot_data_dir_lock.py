@@ -41,7 +41,7 @@ class DataDirectoryLock:
                     f"another BLACKROOT node already holds data directory: {self.data_dir}"
                 ) from exc
             os.ftruncate(fd, 0)
-            os.write(fd, f"pid={os.getpid()}\\n".encode("ascii"))
+            os.write(fd, f"pid={os.getpid()}\n".encode("ascii"))
             os.fsync(fd)
         except BaseException:
             os.close(fd)
