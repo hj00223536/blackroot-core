@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -279,6 +280,16 @@ Path(result).write_text(outcome)
         )
         self.assertEqual(tip, (2, self.side_two.header.hash))
         self.assertEqual(self.store.tip(), tip)
+        side_output = OutPoint(self.side_two.transactions[0].txid, 0)
+        with sqlite3.connect(self.store.path) as db:
+            created_mtp = db.execute(
+                "SELECT created_mtp FROM utxos WHERE txid=? AND output_index=?",
+                (side_output.txid, side_output.index),
+            ).fetchone()
+        self.assertEqual(
+            created_mtp,
+            (self.headers.median_time_past(self.side_two.header.prev_hash),),
+        )
 
     def test_reorganization_restores_spent_ordinary_output(self):
         path = Path(self.temp.name) / "ordinary-spend-reorg.sqlite"
