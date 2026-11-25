@@ -52,7 +52,7 @@ class ValidatedConnectionTests(unittest.TestCase):
         self.assertEqual(self.store.count(), 0)
 
     def test_rejects_nonconsecutive_validated_height(self):
-        with self.assertRaisesRegex(ValueError, "genesis at height zero"):
+        with self.assertRaisesRegex(ValueError, "above validated header-chain tip"):
             self.store.connect_validated_block(self.genesis, 1, self.headers)
         self.assertIsNone(self.store.tip())
 
