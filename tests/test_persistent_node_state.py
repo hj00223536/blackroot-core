@@ -52,6 +52,41 @@ class PersistentNodeStateTests(unittest.TestCase):
             self.genesis_block.header,
         )
 
+    def test_rejects_shared_header_and_utxo_database_path(self):
+        shared = self.root / "shared.sqlite"
+        with self.assertRaisesRegex(ValueError, "sharing a SQLite file"):
+            PersistentNodeState(
+                shared,
+                shared,
+                POW_LIMIT,
+                self.genesis_block.header,
+            )
+        self.assertFalse(shared.exists())
+
+    def test_rejects_recovery_journal_alias_of_utxo_database(self):
+        shared = self.root / "utxos.sqlite"
+        with self.assertRaisesRegex(ValueError, "recovery journal databases"):
+            PersistentNodeState(
+                self.root / "headers.sqlite",
+                shared,
+                POW_LIMIT,
+                self.genesis_block.header,
+                recovery_journal_path=shared,
+            )
+        self.assertFalse(shared.exists())
+
+    def test_rejects_path_aliases_through_relative_components(self):
+        headers = self.root / "headers.sqlite"
+        alias = self.root / "nested" / ".." / "headers.sqlite"
+        with self.assertRaisesRegex(ValueError, "header and UTXO databases"):
+            PersistentNodeState(
+                headers,
+                alias,
+                POW_LIMIT,
+                self.genesis_block.header,
+            )
+        self.assertFalse(headers.exists())
+
     def test_connects_and_recovers_matching_persistent_tip(self):
         state = self.state()
         self.assertEqual(state.connect_best_block(self.genesis_block, 0), 0)
