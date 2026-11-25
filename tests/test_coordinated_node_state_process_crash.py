@@ -44,7 +44,7 @@ def make_block(previous, height, timestamp):
     tx = Transaction(
         1,
         (TxInput(OutPoint(ZERO_TXID, 0xFFFFFFFF),
-                 script_sig=bytes([height + 1, 1])),),
+                 script_sig=bytes([height + 1, timestamp])),),
         (TxOutput(block_subsidy(height), b"miner"),),
     )
     return Block(mine(previous, merkle_root([tx.txid]), timestamp), (tx,))
@@ -100,7 +100,7 @@ def make_block(previous, height, timestamp):
     tx = Transaction(
         1,
         (TxInput(OutPoint(ZERO_TXID, COINBASE_INDEX),
-                 script_sig=bytes([height + 1, 1])),),
+                 script_sig=bytes([height + 1, timestamp])),),
         (TxOutput(block_subsidy(height), b"miner"),),
     )
     header = mine_header(previous, merkle_root([tx.txid]), timestamp)
