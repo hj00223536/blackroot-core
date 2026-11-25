@@ -132,6 +132,26 @@ class TestnetConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "missing"):
                 TestnetConfig.from_json_file(path)
 
+    def test_checked_in_local_node_configs_share_candidate_genesis(self):
+        root = Path(__file__).resolve().parents[1]
+        node_a = TestnetConfig.from_json_file(
+            root / "examples" / "testnet-local-node-a.json"
+        )
+        node_b = TestnetConfig.from_json_file(
+            root / "examples" / "testnet-local-node-b.json"
+        )
+
+        self.assertEqual(node_a.network_id, node_b.network_id)
+        self.assertEqual(node_a.message_magic, node_b.message_magic)
+        self.assertEqual(node_a.genesis_header, node_b.genesis_header)
+        self.assertEqual(node_a.genesis_hash, node_b.genesis_hash)
+        self.assertEqual(node_a.genesis_header.display_hash,
+                         "12d0a70715fcc771e2228e8a8e2f85b4ada2b1bf2991c2a564553c0b9c922269")
+        self.assertEqual(node_a.p2p_port, 18444)
+        self.assertEqual(node_b.p2p_port, 18445)
+        self.assertEqual(node_a.validate_bind_host("127.0.0.1"), "127.0.0.1")
+        self.assertEqual(node_b.validate_bind_host("127.0.0.1"), "127.0.0.1")
+
     def test_cli_peer_endpoint_accepts_only_literal_loopback(self):
         settings = config()
         self.assertEqual(parse_connect_endpoint("127.0.0.1:18444", settings), ("127.0.0.1", 18444))
