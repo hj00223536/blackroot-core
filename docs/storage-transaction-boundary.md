@@ -18,20 +18,22 @@ Automated tests cover:
 - process termination before commit (reopens to old durable state) and immediately after commit (reopens to new durable state);
 - guarded store connection ownership;
 - coordinated tip-disconnect and UTXO write scopes;
-- independent process writers contending for the same SQLite database, using `BEGIN IMMEDIATE`, and serialized rather than interleaved writes.
+- independent process writers contending for the same SQLite database, using `BEGIN IMMEDIATE`, and serialized rather than interleaved writes;
+- four independent processes each committing 12 transactions (48 writes total), with no missing rows;
+- concurrent first-open WAL initialization, including retrying a transient lock while another process enables WAL.
 
 The process termination tests do not simulate physical power loss, filesystem corruption, controller-cache loss, or storage-device failure. The multi-process test demonstrates SQLite writer serialization for the tested scenario; it is not a broad stress, performance, or multi-host test. WAL is intended for local filesystem use and does not establish safe shared-network-filesystem operation.
 
-## Safe migration requirements — not implemented
+## Safe migration tooling — staging only
 
-No migration from the legacy three-file layout has been performed. Do not point the coordinated mode at existing live database files or manually merge them.
+The repository now contains read-only legacy-store preflight, WAL-consistent SQLite snapshots, cross-store header/UTXO consistency checks, a fail-closed schema merge planner, a staging importer, and a validator that reopens the staged database through the coordinated node stores. An end-to-end fixture verifies a synthetic one-block legacy store can be snapshotted, imported, and reopened. No production cutover has been performed. Do not point coordinated mode at existing live database files or manually merge them.
 
-A future migration must be versioned and backup-first, preserve all source files, stage copies, validate SQLite integrity and schema versions, verify header/UTXO tips and block-body/undo consistency, refuse ambiguous or corrupt inputs, and publish the destination only after complete validation. Migration tests must prove the originals remain unchanged after both success and failure. The legacy constructor remains the default until this work is independently reviewed.
+The migration tooling still needs long-chain and large-dataset coverage, backup restoration drills, broader fault injection, disk-full and interrupted-copy tests, operational cutover/rollback procedures, and independent review. Source databases are preserved by the current snapshot/import path; the legacy constructor remains the default.
 
 ## Remaining engineering work
 
-- Implement and test a backup-first migration utility for legacy databases.
-- Expand multi-process contention coverage to timeouts, rollback under contention, and repeated writer stress.
+- Expand migration coverage to multi-block histories, large datasets, backup restoration, interrupted copies, and disk-full fault injection.
+- Expand multi-process contention coverage to timeout handling, rollback under contention, and longer stress runs.
 - Define operational lifecycle behavior for graceful shutdown, interrupted startup, backups, restore drills, and disk-full handling.
 - Complete consensus, script/signature, networking, wallet, mining, fuzzing, independent implementation, and external security-review requirements listed in `docs/mainnet-launch-gates.md`.
 
