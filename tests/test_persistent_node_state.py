@@ -83,6 +83,35 @@ class PersistentNodeStateTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "merkle root is corrupt"):
             state.utxos.load_block_body(self.genesis_block.header.hash)
 
+    def test_recovers_when_persisted_headers_are_ahead_of_utxo_tip(self):
+        state = self.state()
+        state.connect_best_block(self.genesis_block, 0)
+
+        candidate = make_block(self.genesis_block.header.hash, 1, 2)
+        state.add_header(candidate.header, adjusted_time=2)
+
+        # Simulate a crash after the header DB commit but before body/UTXO commit.
+        reopened = self.state()
+        self.assertEqual(
+            reopened.utxos.tip(),
+            (0, self.genesis_block.header.hash),
+        )
+        self.assertEqual(
+            reopened.headers.chain.best_hash,
+            candidate.header.hash,
+        )
+
+        # Recovery is explicit: supply the body, then let normal validation/reorg run.
+        reopened.archive_block_body(candidate)
+        self.assertEqual(
+            reopened.reorganize_best(),
+            (1, candidate.header.hash),
+        )
+        self.assertEqual(
+            reopened.utxos.tip(),
+            (1, candidate.header.hash),
+        )
+
     def test_reorganizes_to_archived_best_branch_after_reopen(self):
         state = self.state()
         state.connect_best_block(self.genesis_block, 0)
