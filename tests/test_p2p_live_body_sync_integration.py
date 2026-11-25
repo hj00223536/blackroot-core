@@ -31,7 +31,7 @@ def mined_block(height, previous, timestamp):
         1,
         (TxInput(
             OutPoint(ZERO_TXID, COINBASE_INDEX),
-            b"\\x01" + bytes([height & 0xff]),
+            bytes((1, height & 0xff)),
         ),),
         (TxOutput(block_subsidy(height), b"miner"),),
     )
