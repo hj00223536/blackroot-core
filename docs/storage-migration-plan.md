@@ -94,3 +94,18 @@ the exact network genesis and proof-of-work limit through
 `PersistentNodeState.open_coordinated`, then pass node-level recovery,
 transaction, script, and independent consensus review. No automatic cutover,
 legacy-source deletion, wallet release, or mainnet launch occurs.
+
+## Coordinated node reopen validation
+
+A separate validator now reopens a staging database using
+`PersistentNodeState.open_coordinated` with caller-supplied trusted
+`pow_limit` and genesis parameters. It checks coordinated mode, UTXO
+integrity, replayed header/active-tip agreement, and absence of pending
+recovery intents, then closes the node-owned connection. The validator does
+not infer or rewrite network parameters from the candidate database.
+
+Passing this check establishes only that the current prototype stores can
+reopen this database under the supplied network parameters. It does not prove
+full consensus correctness, script completeness, transaction-history
+completeness, peer-network agreement, operational resilience, or production
+readiness. No cutover is performed.
