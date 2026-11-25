@@ -17,6 +17,78 @@ MAX_TRANSACTION_SIZE = 4_000_000
 MAX_MONEY_ATOMS = MAX_MONEY
 
 
+def _read_compact_size(raw: bytes, offset: int) -> tuple[int, int]:
+    if offset >= len(raw):
+        raise ValueError("truncated CompactSize")
+    prefix = raw[offset]
+    offset += 1
+    if prefix < 253:
+        return prefix, offset
+    widths = {253: 2, 254: 4, 255: 8}
+    width = widths[prefix]
+    if offset + width > len(raw):
+        raise ValueError("truncated CompactSize payload")
+    value = int.from_bytes(raw[offset:offset + width], "little")
+    minimum = {253: 253, 254: 0x10000, 255: 0x100000000}[prefix]
+    if value < minimum:
+        raise ValueError("non-canonical CompactSize encoding")
+    return value, offset + width
+
+
+def _read_varbytes(raw: bytes, offset: int, *, limit: int = MAX_SCRIPT_SIZE) -> tuple[bytes, int]:
+    length, offset = _read_compact_size(raw, offset)
+    if length > limit:
+        raise ValueError("serialized byte vector exceeds size limit")
+    end = offset + length
+    if end > len(raw):
+        raise ValueError("truncated byte vector")
+    return raw[offset:end], end
+
+
+def _deserialize_transaction_from(raw: bytes, offset: int = 0) -> tuple["Transaction", int]:
+    if not isinstance(raw, bytes):
+        raise TypeError("serialized transaction must be bytes")
+    start = offset
+    if offset < 0 or offset + 4 > len(raw):
+        raise ValueError("truncated transaction version")
+    version = struct.unpack_from("<i", raw, offset)[0]
+    offset += 4
+    input_count, offset = _read_compact_size(raw, offset)
+    if not 1 <= input_count <= MAX_VECTOR_ITEMS:
+        raise ValueError("unsupported transaction input count")
+    inputs = []
+    for _ in range(input_count):
+        if offset + 36 > len(raw):
+            raise ValueError("truncated transaction outpoint")
+        txid = raw[offset:offset + 32]
+        index = struct.unpack_from("<I", raw, offset + 32)[0]
+        offset += 36
+        script_sig, offset = _read_varbytes(raw, offset)
+        if offset + 4 > len(raw):
+            raise ValueError("truncated transaction input sequence")
+        sequence = struct.unpack_from("<I", raw, offset)[0]
+        offset += 4
+        inputs.append(TxInput(OutPoint(txid, index), script_sig, sequence))
+    output_count, offset = _read_compact_size(raw, offset)
+    if not 1 <= output_count <= MAX_VECTOR_ITEMS:
+        raise ValueError("unsupported transaction output count")
+    outputs = []
+    for _ in range(output_count):
+        if offset + 8 > len(raw):
+            raise ValueError("truncated transaction output value")
+        value = struct.unpack_from("<Q", raw, offset)[0]
+        offset += 8
+        script_pubkey, offset = _read_varbytes(raw, offset)
+        outputs.append(TxOutput(value, script_pubkey))
+    if offset + 4 > len(raw):
+        raise ValueError("truncated transaction lock_time")
+    lock_time = struct.unpack_from("<I", raw, offset)[0]
+    offset += 4
+    if offset - start > MAX_TRANSACTION_SIZE:
+        raise ValueError("serialized transaction exceeds prototype size limit")
+    return Transaction(version, tuple(inputs), tuple(outputs), lock_time), offset
+
+
 def compact_size(value: int) -> bytes:
     """Encode an unsigned Bitcoin-style CompactSize integer."""
     if not isinstance(value, int) or isinstance(value, bool) or value < 0:
@@ -113,6 +185,14 @@ class Transaction:
             raise TypeError("all inputs must be TxInput instances")
         if not all(isinstance(item, TxOutput) for item in self.outputs):
             raise TypeError("all outputs must be TxOutput instances")
+
+    @classmethod
+    def deserialize(cls, raw: bytes) -> "Transaction":
+        """Parse one canonical legacy transaction; reject trailing or truncated bytes."""
+        tx, offset = _deserialize_transaction_from(raw)
+        if offset != len(raw):
+            raise ValueError("trailing bytes after serialized transaction")
+        return tx
 
     def serialize(self) -> bytes:
         result = struct.pack("<i", self.version) + compact_size(len(self.inputs))
