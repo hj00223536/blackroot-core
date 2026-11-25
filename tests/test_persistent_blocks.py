@@ -133,6 +133,35 @@ class PersistentBlockTests(unittest.TestCase):
         self.assertIsNone(self.store.get(OutPoint(next_cb.txid, 0)))
         self.assertIsNone(self.store.get(OutPoint(spend.txid, 0)))
 
+
+    def test_persistent_store_rejects_immature_coinbase_spend_and_persists_origin(self):
+        point = _mul(1)
+        pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
+        locking_script = p2pkh_script(_hash160(pubkey))
+        genesis_cb = coinbase(block_subsidy(0), b"\x01\x01", locking_script)
+        genesis = block_for([genesis_cb])
+        self.store.connect_block(genesis, 0)
+        coinbase_point = OutPoint(genesis_cb.txid, 0)
+        with self.store._connect() as db:
+            row = db.execute(
+                "SELECT created_height, is_coinbase FROM utxos WHERE txid=? AND output_index=?",
+                (coinbase_point.txid, coinbase_point.index),
+            ).fetchone()
+        self.assertEqual(row, (0, 1))
+        reopened = UTXOStore(self.path)
+        self.assertEqual(reopened.get(coinbase_point), TxOutput(block_subsidy(0), locking_script))
+
+        spend = signed_spend(
+            coinbase_point, TxOutput(block_subsidy(0), locking_script),
+            block_subsidy(0) - 100,
+        )
+        next_cb = coinbase(block_subsidy(1) + 100, b"\x01\x02")
+        immature = block_for([next_cb, spend], previous=genesis.header.hash, timestamp=2)
+        with self.assertRaisesRegex(ValueError, "premature coinbase"):
+            reopened.connect_block(immature, 1)
+        self.assertEqual(reopened.tip(), (0, genesis.header.hash))
+        self.assertEqual(reopened.get(coinbase_point), TxOutput(block_subsidy(0), locking_script))
+
     def test_disconnect_rejects_wrong_hash_without_mutation(self):
         cb = coinbase(block_subsidy(0), b"\x01\x01")
         block = block_for([cb])
