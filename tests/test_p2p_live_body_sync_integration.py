@@ -15,9 +15,7 @@ from src.blackroot_chain import BlockHeader, ZERO_HASH
 from src.blackroot_consensus import block_subsidy, check_proof_of_work, decode_compact_target
 from src.blackroot_node_runtime import BlackrootNodeRuntime
 from src.blackroot_node_state import PersistentNodeState
-from src.blackroot_p2p_getheaders import decode_getheaders
 from src.blackroot_p2p_handshake import VersionMessage
-from src.blackroot_p2p_headers import decode_headers
 from src.blackroot_p2p_header_sync import PeerHeaderSync
 from src.blackroot_p2p_inventory import decode_inventory, INV_TYPE_BLOCK
 from src.blackroot_p2p_manager import PeerManager
