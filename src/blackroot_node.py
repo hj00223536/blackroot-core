@@ -75,6 +75,16 @@ async def run_node(config: TestnetConfig, data_dir: Path, bind_host: str, connec
             peer = await runtime.connect(remote_host, remote_port)
             await wait_for_peer_handshake(peer)
             await runtime.synchronize()
+        # Install handlers before publishing readiness: a supervisor may send
+        # SIGTERM immediately after reading the startup record.
+        stop = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(sig, stop.set)
+            except (NotImplementedError, RuntimeError):
+                pass
+
         print(json.dumps({
             "event": "node_started",
             "network_id": config.network_id,
@@ -88,13 +98,6 @@ async def run_node(config: TestnetConfig, data_dir: Path, bind_host: str, connec
             "warning": "local prototype; test coins have no value; not a public network",
         }, sort_keys=True), flush=True)
 
-        stop = asyncio.Event()
-        loop = asyncio.get_running_loop()
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            try:
-                loop.add_signal_handler(sig, stop.set)
-            except (NotImplementedError, RuntimeError):
-                pass
         await stop.wait()
     finally:
         if runtime is not None:
