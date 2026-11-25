@@ -91,3 +91,17 @@ Do not invent or manually select a genesis hash. Until this gate passes, nodes c
 **Do not announce or expose a public testnet yet.** The immediate engineering sequence is: freeze a testnet-only specification; implement and independently reproduce genesis; build a runnable node CLI/configuration; then pass a multi-process network smoke test and the remaining security gates.
 
 Passing the existing unit suite is useful regression evidence, but it does not satisfy these launch gates.
+
+
+## Node data-directory process lock
+
+The loopback CLI now acquires an exclusive POSIX `flock` on
+`.blackroot-node.lock` inside its resolved data directory before opening the
+coordinated SQLite database. A second CLI process using the same directory is
+rejected; the kernel releases the advisory lock when the owner exits, including
+after abrupt process termination. The lock file is intentionally retained to
+avoid unlink/recreate races. Automated tests cover competing owners, clean
+release, and kernel release after killing the owner process. This protects the
+CLI entry point only: callers that construct persistent stores directly must
+provide their own single-writer discipline, and this mechanism has not been
+validated on non-POSIX platforms.
