@@ -137,12 +137,13 @@ def validate_relative_sequence_locks(
     tx: Transaction,
     parent_provenance: dict[OutPoint, UTXOProvenance] | None,
     candidate_height: int,
+    median_time_past: int | None = None,
 ) -> None:
-    """Enforce BIP68 height-based relative locks; reject unsupported time locks.
+    """Enforce BIP68 height- and time-based relative locks.
 
-    BIP68 applies only to version >= 2. Inputs with the disable flag are
-    ignored. Timestamp-based relative locks are rejected until UTXO creation
-    MTP is authenticated and persisted.
+    Time locks use the authenticated MTP of the block preceding the candidate
+    block and the MTP of the block preceding UTXO creation. Missing metadata
+    fails closed.
     """
     if tx.version < 2:
         return
@@ -150,17 +151,24 @@ def validate_relative_sequence_locks(
         sequence = txin.sequence
         if sequence & SEQUENCE_LOCKTIME_DISABLE_FLAG:
             continue
-        if sequence & SEQUENCE_LOCKTIME_TYPE_FLAG:
-            raise ValueError("time-based relative sequence locks are not supported")
         if parent_provenance is None:
             raise ValueError("authenticated UTXO provenance is required for relative sequence locks")
         provenance = parent_provenance.get(txin.previous_output)
         if provenance is None:
             raise ValueError("missing authenticated UTXO provenance for relative sequence lock")
-        relative_blocks = sequence & SEQUENCE_LOCKTIME_MASK
-        minimum_height = provenance.created_height + relative_blocks
-        if candidate_height < minimum_height:
-            raise ValueError("transaction violates relative height sequence lock")
+        relative_value = sequence & SEQUENCE_LOCKTIME_MASK
+        if sequence & SEQUENCE_LOCKTIME_TYPE_FLAG:
+            if median_time_past is None:
+                raise ValueError("authenticated parent median-time-past is required for time-based relative sequence lock")
+            if provenance.created_median_time_past is None:
+                raise ValueError("authenticated UTXO creation median-time-past is required for time-based relative sequence lock")
+            minimum_time = provenance.created_median_time_past + (relative_value << 9)
+            if median_time_past < minimum_time:
+                raise ValueError("transaction violates relative time sequence lock")
+        else:
+            minimum_height = provenance.created_height + relative_value
+            if candidate_height < minimum_height:
+                raise ValueError("transaction violates relative height sequence lock")
 
 
 def validate_block_transactions(
@@ -215,7 +223,9 @@ def validate_block_transactions(
     for tx in block.transactions[1:]:
         if not is_final_transaction(tx, height, median_time_past):
             raise ValueError("transaction is non-final for candidate block height/time")
-        validate_relative_sequence_locks(tx, working_provenance, height)
+        validate_relative_sequence_locks(
+            tx, working_provenance, height, median_time_past
+        )
         if parent_provenance is not None:
             for txin in tx.inputs:
                 provenance = working_provenance.get(txin.previous_output)
@@ -228,7 +238,9 @@ def validate_block_transactions(
             for txin in tx.inputs:
                 working_provenance.pop(txin.previous_output, None)
             for index, _output in enumerate(tx.outputs):
-                working_provenance[OutPoint(tx.txid, index)] = UTXOProvenance(height, False)
+                working_provenance[OutPoint(tx.txid, index)] = UTXOProvenance(
+                    height, False, median_time_past
+                )
         fees += fee
         if fees > MAX_MONEY:
             raise ValueError("total block fees exceed money range")
