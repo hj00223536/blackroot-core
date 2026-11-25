@@ -138,7 +138,6 @@ class P2PServiceReorganizationLoopbackTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.tip(), (2, self.fork_two.header.hash))
         self.assertEqual(self.service.reorg.pool.pending_hashes, ())
         self.assertEqual(self.service.reorg._requested_at, {})
-        self.assertEqual(set(self.store.iter_utxos()), set(self.store.iter_utxos()))
 
 
 if __name__ == "__main__":
