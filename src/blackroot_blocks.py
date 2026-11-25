@@ -1,9 +1,9 @@
-"""Block structure and transaction-accounting validation prototype.
+"""Block transaction validation with fail-closed legacy P2PKH authorization.
 
 This module checks transaction ordering, merkle commitment, duplicate txids,
-UTXO value conservation, and the coinbase reward ceiling. It deliberately does
-NOT execute scripts, verify signatures, enforce coinbase maturity, or validate
-header difficulty/timestamps. It is not production consensus.
+P2PKH signatures, UTXO value conservation, and the coinbase reward ceiling.
+It is still not production consensus: coinbase maturity, complete Script,
+header PoW/difficulty/timestamps and other rules remain unimplemented.
 """
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 from .blackroot_consensus import block_subsidy, MAX_MONEY
 from .blackroot_chain import BlockHeader
+from .blackroot_script import validate_transaction_scripts
 from .blackroot_transactions import (
     OutPoint,
     Transaction,
@@ -94,6 +95,8 @@ def validate_block_transactions(
     working = dict(parent_utxos)
     fees = 0
     for tx in block.transactions[1:]:
+        # Authorization is consensus-critical: reject unsupported or invalid scripts.
+        validate_transaction_scripts(tx, working)
         fee = apply_transaction(tx, working)
         fees += fee
         if fees > MAX_MONEY:
