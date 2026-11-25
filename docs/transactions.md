@@ -47,3 +47,27 @@ a caller-supplied map. It does not prove that a spender is authorized to spend
 the referenced outputs. All values and scripts are untrusted input until a
 complete consensus script engine and signature verification are implemented
 and independently reviewed.
+
+
+## Experimental P2PKH authorization module
+
+`src/blackroot_script.py` adds a fail-closed authorization verifier for the
+legacy P2PKH template only. It checks the exact locking-script template,
+two direct pushes in scriptSig, HASH160(pubkey), secp256k1 ECDSA, strict DER
+integer encoding, low-S signatures, and legacy SIGHASH_ALL transaction
+digests. Unknown script templates, malformed pushes, wrong keys, invalid
+signatures, and unsupported sighash modes fail verification.
+
+This is deliberately a separate API:
+`validate_transaction_scripts(tx, utxos)`. It is **not yet wired into**
+`validate_transaction`, block connection, or UTXO reorganization, so existing
+accounting-only test fixtures remain isolated from this authorization layer.
+Do not treat a transaction or block as fully valid until the block-validation
+pipeline requires this check for every non-coinbase input.
+
+Limitations: no general Bitcoin Script interpreter, P2SH, SegWit, multisig,
+timelocks, script opcodes, sighash variants, or script resource accounting.
+The pure-Python elliptic-curve implementation is an auditable prototype, not
+a hardened constant-time cryptographic library. Production use requires
+independent cryptographic review, differential test vectors, and a vetted
+constant-time implementation.
