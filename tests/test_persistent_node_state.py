@@ -62,6 +62,29 @@ class PersistentNodeStateTests(unittest.TestCase):
         self.assertEqual(reopened.utxos.tip(), (0, self.genesis_block.header.hash))
         self.assertEqual(reopened.headers.chain.node(self.genesis_block.header.hash).height, 0)
 
+    def test_reorganizes_to_archived_best_branch_after_reopen(self):
+        state = self.state()
+        state.connect_best_block(self.genesis_block, 0)
+
+        first = make_block(self.genesis_block.header.hash, 1, 2)
+        second = make_block(first.header.hash, 2, 3)
+        state.add_header(first.header, adjusted_time=2)
+        state.add_header(second.header, adjusted_time=3)
+        state.archive_block_body(first)
+        state.archive_block_body(second)
+
+        reopened = self.state()
+        self.assertEqual(reopened.reorganize_best(), (2, second.header.hash))
+        self.assertEqual(reopened.utxos.tip(), (2, second.header.hash))
+        self.assertEqual(reopened.utxos.load_block_body(first.header.hash), first)
+        self.assertEqual(reopened.utxos.load_block_body(second.header.hash), second)
+
+    def test_refuses_to_archive_body_for_unknown_header(self):
+        state = self.state()
+        unknown = make_block(ZERO_HASH, 0, 2)
+        with self.assertRaisesRegex(ValueError, "unknown header"):
+            state.archive_block_body(unknown)
+
     def test_rejects_invalid_height_before_header_chain_comparison(self):
         state = self.state()
         for invalid_height in (True, -1, "0", 0.5):
