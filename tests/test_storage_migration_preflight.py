@@ -162,6 +162,22 @@ class SQLiteSnapshotTests(unittest.TestCase):
         self.assertEqual(report["snapshot_preflight"]["status"], "snapshot_set_consistent")
         self.assertEqual(len(list(out.glob("*.sqlite"))), 3)
 
+
+    def test_snapshot_set_rejects_active_utxo_block_missing_from_header_store(self):
+        out = self.root / "snapshots"
+        out.mkdir()
+        with sqlite3.connect(self.utxo) as db:
+            db.execute(
+                "INSERT INTO blocks(height, block_hash, prev_hash, header, tx_count, total_fees) "
+                "VALUES(0, ?, ?, ?, 1, 0)",
+                (bytes.fromhex("11" * 32), bytes(32), bytes(80)),
+            )
+        with self.assertRaisesRegex(RuntimeError, "missing from the header snapshot"):
+            snapshot_legacy_node_databases(
+                self.header, self.utxo, self.journal, out
+            )
+        self.assertEqual(list(out.iterdir()), [])
+
     def test_all_store_snapshot_refuses_existing_destination_before_any_copy(self):
         out = self.root / "snapshots"
         out.mkdir()
