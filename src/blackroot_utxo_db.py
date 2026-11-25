@@ -543,10 +543,12 @@ class UTXOStore:
 
         The active database tip must already exist in the supplied header DAG.
         Every connecting body must be supplied by its exact header hash and its
-        serialized header must match. HeaderChain validates header-level rules;
-        this method validates transaction accounting and commits the UTXO switch
-        atomically. Script/signature and other unimplemented consensus checks
-        remain the caller's responsibility.
+        serialized header must match. HeaderChain validates the implemented
+        header-level rules; this method validates each replacement body's
+        transactions and scripts against authenticated UTXO/provenance state,
+        then commits the UTXO switch atomically. Incomplete protocol rules,
+        external interoperability, and production consensus review remain
+        unresolved; this method does not make this prototype production-ready.
         """
         if not isinstance(header_chain, HeaderChain):
             raise TypeError("header_chain must be a HeaderChain")
@@ -604,9 +606,13 @@ class UTXOStore:
         """Atomically disconnect an active suffix and connect a replacement.
 
         disconnect_hashes must be ordered tip-first; connect_blocks must be
-        ordered fork-first. The caller remains responsible for independently
-        validating consensus, scripts, proof of work, and greater chainwork.
-        Any failure rolls the entire reorganization back.
+        ordered fork-first. Each connecting block's transactions and scripts
+        are checked against the authenticated UTXO/provenance snapshot, and any
+        failure rolls the entire database reorganization back. This lower-level
+        method does not independently establish header ancestry, proof of work,
+        difficulty, or greater chainwork; callers must establish those before
+        invoking it. Use reorganize_to_best() to select a branch from HeaderChain.
+        Remaining protocol rules and production consensus review are incomplete.
         """
         if not isinstance(disconnect_hashes, tuple) or not isinstance(connect_blocks, tuple):
             raise TypeError("disconnect_hashes and connect_blocks must be tuples")
