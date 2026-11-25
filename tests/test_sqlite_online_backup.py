@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import contextmanager
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,6 +8,19 @@ from tests.test_reorg_atomicity import POW_LIMIT, mined_block
 from src.blackroot_chain import HeaderChain, ZERO_HASH
 from src.blackroot_utxo_db import UTXOStore
 
+
+
+@contextmanager
+def managed_sqlite(connection):
+    try:
+        yield connection
+        connection.commit()
+    except BaseException:
+        if connection.in_transaction:
+            connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 class SQLiteBackupRecoveryTests(unittest.TestCase):
     def test_online_backup_restores_validated_chain_and_archived_bodies(self):
@@ -20,17 +34,17 @@ class SQLiteBackupRecoveryTests(unittest.TestCase):
             source.connect_validated_block(genesis, 0, chain)
             expected_tip = source.tip()
             expected_headers = source.active_block_headers()
-            with source._connect() as db:
+            with managed_sqlite(source._connect()) as db:
                 expected_utxos = db.execute(
                     'SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp FROM utxos ORDER BY txid, output_index'
                 ).fetchall()
-            with sqlite3.connect(source_path) as source_db:
-                with sqlite3.connect(backup_path) as backup_db:
+            with managed_sqlite(sqlite3.connect(source_path)) as source_db:
+                with managed_sqlite(sqlite3.connect(backup_path)) as backup_db:
                     source_db.backup(backup_db)
             restored = UTXOStore(backup_path)
             self.assertEqual(restored.tip(), expected_tip)
             self.assertEqual(restored.active_block_headers(), expected_headers)
-            with restored._connect() as db:
+            with managed_sqlite(restored._connect()) as db:
                 restored_utxos = db.execute(
                     'SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp FROM utxos ORDER BY txid, output_index'
                 ).fetchall()
@@ -50,7 +64,7 @@ class SQLiteBackupRecoveryTests(unittest.TestCase):
             source.store_block_body(genesis)
             source.connect_validated_block(genesis, 0, chain)
 
-            with source._connect() as db:
+            with managed_sqlite(source._connect()) as db:
                 source_rows = {
                     table: db.execute(f'SELECT * FROM {table} ORDER BY 1, 2').fetchall()
                     for table in (
@@ -59,13 +73,13 @@ class SQLiteBackupRecoveryTests(unittest.TestCase):
                     )
                 }
 
-            with sqlite3.connect(source_path) as source_db:
-                with sqlite3.connect(backup_path) as backup_db:
+            with managed_sqlite(sqlite3.connect(source_path)) as source_db:
+                with managed_sqlite(sqlite3.connect(backup_path)) as backup_db:
                     source_db.backup(backup_db)
 
             # Keep the SQLite file structurally readable while corrupting the
             # archived block bytes so the domain-level integrity check rejects it.
-            with sqlite3.connect(backup_path) as backup_db:
+            with managed_sqlite(sqlite3.connect(backup_path)) as backup_db:
                 row = backup_db.execute(
                     'SELECT raw_block FROM block_bodies WHERE block_hash=?',
                     (genesis.header.hash,),
@@ -85,7 +99,7 @@ class SQLiteBackupRecoveryTests(unittest.TestCase):
 
             # Validation of the damaged copy must never write to the source.
             source.verify_integrity()
-            with source._connect() as db:
+            with managed_sqlite(source._connect()) as db:
                 source_rows_after = {
                     table: db.execute(f'SELECT * FROM {table} ORDER BY 1, 2').fetchall()
                     for table in (
