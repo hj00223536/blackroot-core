@@ -406,6 +406,9 @@ class UTXOStore:
                         parent[outpoint] = TxOutput(value, bytes(script))
                         provenance[outpoint] = UTXOProvenance(created_height, bool(is_coinbase_flag))
                     updated, fees = validate_block_transactions(block, parent, height, provenance)
+                    updated_provenance = self._advance_provenance(block, provenance, height)
+                    if set(updated) != set(updated_provenance):
+                        raise RuntimeError("UTXO/provenance state diverged")
 
                     db.execute(
                         "INSERT INTO blocks(height, block_hash, prev_hash, header, tx_count, total_fees) "
