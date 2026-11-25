@@ -5,7 +5,7 @@ from pathlib import Path
 from src.blackroot_blocks import Block, COINBASE_INDEX, ZERO_TXID
 from src.blackroot_chain import BlockHeader, HeaderChain, ZERO_HASH
 from src.blackroot_consensus import block_subsidy, check_proof_of_work, decode_compact_target
-from src.blackroot_p2p_inventory import decode_inventory
+from src.blackroot_p2p_inventory import InventoryVector, decode_inventory, encode_inventory
 from src.blackroot_p2p_reorg_sync import MultiPeerReorganizationSync
 from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput, merkle_root
 from src.blackroot_utxo_db import UTXOStore
@@ -107,6 +107,23 @@ class MultiPeerReorganizationSyncTests(unittest.IsolatedAsyncioTestCase):
     async def test_expire_requests_rejects_nonpositive_timeout(self):
         with self.assertRaisesRegex(ValueError, "positive"):
             self.sync.expire_requests(0)
+
+    async def test_notfound_from_assigned_peer_releases_and_retries_body(self):
+        assignments = await self.sync.request_missing_bodies(self.peers)
+        block_hash = self.fork_one.header.hash
+        original_peer = assignments[block_hash]
+        other_peer = "p2" if original_peer == "p1" else "p1"
+        payload = encode_inventory([InventoryVector(2, block_hash)])
+
+        self.assertEqual(self.sync.peer_notfound("unassigned", payload), ())
+        self.assertEqual(self.sync.pool.assigned_peer(block_hash), original_peer)
+        released = self.sync.peer_notfound(original_peer, payload)
+        self.assertEqual(released, (block_hash,))
+        self.peers[original_peer].connected = False
+
+        retried = await self.sync.retry_released_bodies(released, self.peers)
+        self.assertEqual(retried, {block_hash: other_peer})
+        self.assertEqual(self.sync.pool.assigned_peer(block_hash), other_peer)
 
     async def test_disconnect_releases_fork_requests(self):
         assignments = await self.sync.request_missing_bodies(self.peers)
