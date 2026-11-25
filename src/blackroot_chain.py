@@ -83,6 +83,19 @@ class HeaderChain:
     def node(self, block_hash: bytes) -> HeaderNode | None:
         return self._nodes.get(block_hash)
 
+    def median_time_past(self, parent_hash: bytes) -> int:
+        """Return the median timestamp of up to 11 ancestors ending at parent."""
+        if parent_hash not in self._nodes:
+            raise ValueError("unknown parent header")
+        times = []
+        current = parent_hash
+        while current != ZERO_HASH and len(times) < 11:
+            node = self._nodes[current]
+            times.append(node.header.timestamp)
+            current = node.parent_hash
+        times.sort()
+        return times[len(times) // 2]
+
     def add(self, header: BlockHeader) -> str:
         if header.prev_hash != self.best_hash:
             raise ValueError("header does not extend current tip")
@@ -103,8 +116,8 @@ class HeaderChain:
             if parent is None:
                 raise ValueError("unknown parent header")
             height, parent_work = parent.height + 1, parent.chainwork
-            if header.timestamp <= parent.header.timestamp:
-                raise ValueError("timestamp must be greater than previous header")
+            if header.timestamp <= self.median_time_past(header.prev_hash):
+                raise ValueError("timestamp must be greater than median-time-past")
         target = decode_compact_target(header.bits)
         if target > self.pow_limit:
             raise ValueError("target exceeds network proof-of-work limit")
