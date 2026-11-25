@@ -179,15 +179,43 @@ class BlockValidationTests(unittest.TestCase):
         )
         self.assertNotIn(self.funding, result)
 
-    def test_bip68_time_relative_lock_is_rejected_until_mtp_provenance_exists(self):
+    def test_bip68_time_relative_lock_enforces_512_second_boundary(self):
+        spend = signed_spend(
+            self.funding, self.previous_output, version=2,
+            sequence=(1 << 22) | 1,
+        )
+        provenance = {self.funding: UTXOProvenance(0, False, 1_000)}
+        block = make_block([make_coinbase(1), spend])
+        with self.assertRaisesRegex(ValueError, "relative time sequence lock"):
+            validate_block_transactions(
+                block, self.parent, 1, provenance, median_time_past=1_511
+            )
+        result, _fees = validate_block_transactions(
+            block, self.parent, 1, provenance, median_time_past=1_512
+        )
+        self.assertNotIn(self.funding, result)
+
+    def test_bip68_time_relative_lock_requires_authenticated_parent_mtp(self):
+        spend = signed_spend(
+            self.funding, self.previous_output, version=2,
+            sequence=(1 << 22) | 1,
+        )
+        provenance = {self.funding: UTXOProvenance(0, False, 1_000)}
+        with self.assertRaisesRegex(ValueError, "parent median-time-past is required"):
+            validate_block_transactions(
+                make_block([make_coinbase(1), spend]), self.parent, 1, provenance
+            )
+
+    def test_bip68_time_relative_lock_requires_creation_mtp_provenance(self):
         spend = signed_spend(
             self.funding, self.previous_output, version=2,
             sequence=(1 << 22) | 1,
         )
         provenance = {self.funding: UTXOProvenance(0, False)}
-        with self.assertRaisesRegex(ValueError, "time-based relative sequence locks are not supported"):
+        with self.assertRaisesRegex(ValueError, "creation median-time-past is required"):
             validate_block_transactions(
-                make_block([make_coinbase(1), spend]), self.parent, 1, provenance
+                make_block([make_coinbase(1), spend]), self.parent, 1,
+                provenance, median_time_past=2_000,
             )
 
     def test_bip68_requires_authenticated_provenance_for_enabled_sequence(self):
