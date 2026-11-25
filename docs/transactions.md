@@ -33,6 +33,10 @@ The in-memory reference checks:
 - outputs do not exceed inputs; and
 - applying a valid transaction removes spent outputs and creates new outputs.
 
+## Cross-language transaction regression vector
+
+`scripts/verify_transaction_vectors.mjs` is a separate Node.js implementation using only built-in primitives. It checks a fixed 64-byte legacy transaction serialization and txid, CompactSize boundary encodings, rejection of non-canonical CompactSize values, truncated fields, and trailing bytes. CI runs this alongside the genesis candidate verifier. This provides a second-language regression check inside this repository; it is not a separately maintained external client, complete protocol implementation, or independent audit.
+
 ## Critical omissions — do not use for funds
 
 The accounting-only `validate_transaction` and `apply_transaction` helpers do not
