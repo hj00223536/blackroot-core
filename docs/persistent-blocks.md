@@ -57,3 +57,24 @@ an autonomous consensus reorganization engine. It does not decide whether the
 replacement has greater chainwork and does not validate header PoW, difficulty,
 timestamps, scripts/signatures, coinbase maturity, or branch-specific full
 consensus. A caller must establish all those conditions before calling it.
+
+
+## Header-chain-driven best-branch activation
+
+`UTXOStore.reorganize_to_best(header_chain, replacement_blocks)` now connects
+the in-memory HeaderChain fork-choice result to the atomic UTXO transition.
+It requires the database tip to be present at the same height in the header
+DAG, requires the candidate best tip to have strictly greater cumulative
+chainwork, derives the disconnect/connect paths from the common ancestor, and
+requires an exact block body for every connecting header. Each supplied body
+must serialize to the exact header stored in HeaderChain. Missing or mismatched
+bodies are rejected before the UTXO transition.
+
+The final disconnect/connect is committed through the existing single SQLite
+transaction. Tests cover a two-block higher-work fork, missing bodies, and
+header/body mismatch while preserving the old active state on failure.
+
+This is still not production-ready consensus. HeaderChain's header checks are
+not a complete network specification, and block-body validation still omits
+script/signature execution, coinbase maturity, and other consensus rules.
+The caller must not advertise a block as fully valid until those checks exist.
