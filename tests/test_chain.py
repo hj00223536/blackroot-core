@@ -1,24 +1,23 @@
 import unittest
 
 from src.blackroot_chain import BlockHeader, HeaderChain, ZERO_HASH
-from src.blackroot_consensus import decode_compact_target
+from src.blackroot_consensus import check_proof_of_work, decode_compact_target
 
 BITS = 0x207FFFFF
 POW_LIMIT = decode_compact_target(BITS)
 
 
-def mine_header(prev_hash, timestamp):
+def mine_header(prev_hash, timestamp, bits=BITS, pow_limit=POW_LIMIT):
     for nonce in range(1000):
         candidate = BlockHeader(
             version=1,
             prev_hash=prev_hash,
             merkle_root=bytes([timestamp % 256]) * 32,
             timestamp=timestamp,
-            bits=BITS,
+            bits=bits,
             nonce=nonce,
         )
-        from src.blackroot_consensus import check_proof_of_work
-        if check_proof_of_work(candidate.serialize(), BITS, POW_LIMIT):
+        if check_proof_of_work(candidate.serialize(), bits, pow_limit):
             return candidate
     raise AssertionError("test nonce search unexpectedly exhausted")
 
@@ -47,10 +46,12 @@ class HeaderChainTests(unittest.TestCase):
             chain.add(same_time)
 
     def test_rejects_target_above_pow_limit(self):
-        genesis = mine_header(ZERO_HASH, 1)
-        chain = HeaderChain(POW_LIMIT // 2, genesis)
+        strict_bits = 0x201FFFFF
+        strict_limit = decode_compact_target(strict_bits)
+        genesis = mine_header(ZERO_HASH, 1, strict_bits, strict_limit)
+        chain = HeaderChain(strict_limit, genesis)
         with self.assertRaisesRegex(ValueError, "exceeds"):
-            chain.add(mine_header(genesis.hash, 2))
+            chain.add(mine_header(genesis.hash, 2, BITS, POW_LIMIT))
 
 
 if __name__ == "__main__":
