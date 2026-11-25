@@ -332,6 +332,7 @@ def import_snapshot_set_to_coordinated_database(
     descriptor = os.open(destination, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
     os.close(descriptor)
     target: sqlite3.Connection | None = None
+    source_dbs: dict[str, sqlite3.Connection] = {}
     try:
         source_dbs = {
             kind: _readonly_connection(path) for kind, path in sources.items()
@@ -417,6 +418,8 @@ def import_snapshot_set_to_coordinated_database(
             ],
         }
     except BaseException:
+        for source in source_dbs.values():
+            source.close()
         if target is not None:
             try:
                 target.rollback()
