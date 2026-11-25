@@ -15,6 +15,7 @@ from .blackroot_chain import BlockHeader
 from .blackroot_header_store import PersistentHeaderStore
 from .blackroot_utxo_db import UTXOStore
 from .blackroot_recovery_journal import NodeRecoveryJournal
+from .blackroot_sqlite import SQLiteTransactionCoordinator
 
 
 def _validate_distinct_database_paths(
@@ -57,7 +58,32 @@ class PersistentNodeState:
         pow_limit: int,
         genesis: BlockHeader,
         recovery_journal_path: str | Path | None = None,
+        *,
+        database_path: str | Path | None = None,
     ) -> None:
+        self._coordinator: SQLiteTransactionCoordinator | None = None
+        if database_path is not None:
+            coordinator = SQLiteTransactionCoordinator(database_path)
+            coordinator.__enter__()
+            self._coordinator = coordinator
+            try:
+                with coordinator.transaction() as connection:
+                    self.headers = PersistentHeaderStore(
+                        database_path, pow_limit, genesis, connection=connection
+                    )
+                    self.utxos = UTXOStore(database_path, connection=connection)
+                    self.recovery_journal = NodeRecoveryJournal(
+                        database_path, connection=connection
+                    )
+                    self.utxos.verify_integrity()
+                    self._verify_persistent_tip()
+                    self.recovery_journal.reconcile(self.utxos.tip())
+            except BaseException:
+                coordinator.__exit__(None, None, None)
+                self._coordinator = None
+                raise
+            return
+
         journal_path = (Path(str(utxo_path) + ".recovery.sqlite")
                         if recovery_journal_path is None else recovery_journal_path)
         _validate_distinct_database_paths(header_path, utxo_path, journal_path)
@@ -67,6 +93,21 @@ class PersistentNodeState:
         self.utxos.verify_integrity()
         self._verify_persistent_tip()
         self.recovery_journal.reconcile(self.utxos.tip())
+
+    @property
+    def coordinated(self) -> bool:
+        return self._coordinator is not None
+
+    def close(self) -> None:
+        """Close the node-owned SQLite connection."""
+        if self._coordinator is not None:
+            self._coordinator.__exit__(None, None, None)
+            self._coordinator = None
+
+    def _require_coordinator(self) -> SQLiteTransactionCoordinator:
+        if self._coordinator is None:
+            raise RuntimeError("operation requires coordinated database mode")
+        return self._coordinator
 
     def _verify_persistent_tip(self) -> None:
         records = self.utxos.active_block_headers()
@@ -105,11 +146,20 @@ class PersistentNodeState:
         max_future_seconds: int = 7_200,
     ) -> str:
         """Validate and persist a header; block body is deliberately separate."""
-        return self.headers.add_to_branch(
-            header,
-            adjusted_time=adjusted_time,
-            max_future_seconds=max_future_seconds,
-        )
+        if not self.coordinated:
+            return self.headers.add_to_branch(
+                header,
+                adjusted_time=adjusted_time,
+                max_future_seconds=max_future_seconds,
+            )
+        with self._require_coordinator().transaction():
+            result = self.headers.add_to_branch(
+                header,
+                adjusted_time=adjusted_time,
+                max_future_seconds=max_future_seconds,
+            )
+        self.headers.reload()
+        return result
 
     def connect_best_block(self, block: Block, height: int) -> int:
         """Connect a body only if its header is selected at that best-chain height."""
@@ -122,6 +172,20 @@ class PersistentNodeState:
         selected = self.headers.chain.get(height)
         if selected.hash != block.header.hash:
             raise ValueError("block body is not selected by persistent best header chain")
+        if self.coordinated:
+            with self._require_coordinator().transaction():
+                self.utxos.store_block_body(block)
+                old_tip = self.utxos.tip()
+                new_tip = (height, block.header.hash)
+                if old_tip == new_tip:
+                    raise ValueError("block is already the active UTXO tip")
+                self.recovery_journal.prepare(old_tip, new_tip)
+                result = self.utxos.connect_validated_block(
+                    block, height, self.headers.chain
+                )
+                self.recovery_journal.reconcile(self.utxos.tip())
+            return result
+
         self.utxos.store_block_body(block)
         old_tip = self.utxos.tip()
         new_tip = (height, block.header.hash)
@@ -142,10 +206,32 @@ class PersistentNodeState:
             raise TypeError("block must be a Block")
         if self.headers.chain.node(block.header.hash) is None:
             raise ValueError("cannot archive a body for an unknown header")
+        if self.coordinated:
+            with self._require_coordinator().transaction():
+                return self.utxos.store_block_body(block)
         return self.utxos.store_block_body(block)
 
     def reorganize_best(self, replacement_blocks: dict[bytes, Block] | None = None) -> tuple[int, bytes]:
         """Switch to the greater-work branch using supplied or archived block bodies."""
+        if self.coordinated:
+            with self._require_coordinator().transaction():
+                old_tip = self.utxos.tip()
+                best_node = self.headers.chain.node(self.headers.chain.best_hash)
+                if best_node is None:
+                    raise RuntimeError("header chain has no best node")
+                new_tip = (best_node.height, best_node.header.hash)
+                if old_tip == new_tip:
+                    return self.utxos.reorganize_to_best(
+                        self.headers.chain, replacement_blocks
+                    )
+                self.recovery_journal.prepare(old_tip, new_tip)
+                result = self.utxos.reorganize_to_best(
+                    self.headers.chain, replacement_blocks
+                )
+                self.recovery_journal.reconcile(self.utxos.tip())
+            self._verify_persistent_tip()
+            return result
+
         old_tip = self.utxos.tip()
         best_node = self.headers.chain.node(self.headers.chain.best_hash)
         if best_node is None:
