@@ -69,9 +69,6 @@ class ThreeNodeLoopbackTests(unittest.IsolatedAsyncioTestCase):
             await manager.start_server("127.0.0.1", 0)
             self.remote_managers.append(manager)
 
-        async def central_message_factory(peer):
-            return self.sync_service.on_peer_message_factory(peer)
-
         self.central = PeerManager(
             magic=MAGIC,
             local_version=version(200),
@@ -82,10 +79,12 @@ class ThreeNodeLoopbackTests(unittest.IsolatedAsyncioTestCase):
             on_peer_disconnected=self.sync_service.peer_disconnected,
         )
         self.peer_map = {}
+        self.peer_names = {}
         for peer_name, manager in zip(("peer-1", "peer-2"), self.remote_managers):
             host, port, *_ = manager.sockets[0].getsockname()
             peer = await self.central.connect(host, port)
             self.peer_map[peer_name] = peer
+            self.peer_names[peer] = peer_name
 
         async def wait_handshakes():
             while not all(peer.connected for peer in self.peer_map.values()):
@@ -101,12 +100,13 @@ class ThreeNodeLoopbackTests(unittest.IsolatedAsyncioTestCase):
         selected = await self.scheduler.request_block(
             self.block.header.hash, self.sync_service.peers
         )
-        await asyncio.wait_for(self.remote_requests[selected].wait(), timeout=2)
+        selected_name = self.peer_names[selected]
+        await asyncio.wait_for(self.remote_requests[selected_name].wait(), timeout=2)
         async def wait_for_store():
             while self.store.connect_validated_block.call_count == 0:
                 await asyncio.sleep(0.01)
         await asyncio.wait_for(wait_for_store(), timeout=2)
-        other = "peer-2" if selected == "peer-1" else "peer-1"
+        other = "peer-2" if selected_name == "peer-1" else "peer-1"
         self.assertFalse(self.remote_requests[other].is_set())
         self.store.connect_validated_block.assert_called_once()
         self.assertEqual(self.scheduler.pool.pending_hashes, ())
