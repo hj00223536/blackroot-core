@@ -40,6 +40,66 @@ class SQLiteBackupRecoveryTests(unittest.TestCase):
             self.assertEqual(restored_body.serialize(), genesis.serialize())
             restored.verify_integrity()
 
+    def test_corrupt_backup_is_rejected_without_mutating_source_database(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = Path(directory) / 'source.sqlite'
+            backup_path = Path(directory) / 'backup.sqlite'
+            source = UTXOStore(source_path)
+            genesis = mined_block(0, ZERO_HASH, 2)
+            chain = HeaderChain(POW_LIMIT, genesis.header)
+            source.store_block_body(genesis)
+            source.connect_validated_block(genesis, 0, chain)
+
+            with source._connect() as db:
+                source_rows = {
+                    table: db.execute(f'SELECT * FROM {table} ORDER BY 1, 2').fetchall()
+                    for table in (
+                        'blocks', 'block_transactions', 'block_undo_spent',
+                        'block_undo_created', 'utxos', 'block_bodies', 'metadata',
+                    )
+                }
+
+            with sqlite3.connect(source_path) as source_db:
+                with sqlite3.connect(backup_path) as backup_db:
+                    source_db.backup(backup_db)
+
+            # Keep the SQLite file structurally readable while corrupting the
+            # archived block bytes so the domain-level integrity check rejects it.
+            with sqlite3.connect(backup_path) as backup_db:
+                row = backup_db.execute(
+                    'SELECT raw_block FROM block_bodies WHERE block_hash=?',
+                    (genesis.header.hash,),
+                ).fetchone()
+                self.assertIsNotNone(row)
+                corrupted = bytearray(row[0])
+                corrupted[0] ^= 1
+                backup_db.execute(
+                    'UPDATE block_bodies SET raw_block=? WHERE block_hash=?',
+                    (bytes(corrupted), genesis.header.hash),
+                )
+                backup_db.commit()
+
+            damaged_restore = UTXOStore(backup_path)
+            with self.assertRaisesRegex(RuntimeError, 'archived block body header hash does not match archive key'):
+                damaged_restore.verify_integrity()
+
+            # Validation of the damaged copy must never write to the source.
+            source.verify_integrity()
+            with source._connect() as db:
+                source_rows_after = {
+                    table: db.execute(f'SELECT * FROM {table} ORDER BY 1, 2').fetchall()
+                    for table in (
+                        'blocks', 'block_transactions', 'block_undo_spent',
+                        'block_undo_created', 'utxos', 'block_bodies', 'metadata',
+                    )
+                }
+            self.assertEqual(source_rows_after, source_rows)
+            self.assertEqual(source.tip(), (0, genesis.header.hash))
+            self.assertEqual(
+                source.load_block_body(genesis.header.hash).serialize(),
+                genesis.serialize(),
+            )
+
 
 if __name__ == '__main__':
     unittest.main()
