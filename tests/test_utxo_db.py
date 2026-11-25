@@ -1,3 +1,4 @@
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -54,6 +55,28 @@ class UTXOStoreTests(unittest.TestCase):
         with self.assertRaises(Exception):
             self.store.add_genesis_output(self.funding, TxOutput(900, b"duplicate"))
         self.assertEqual(self.store.count(), 1)
+
+
+    def test_refuses_unsafe_schema_v1_database_with_live_utxos(self):
+        legacy_path = Path(self.tempdir.name) / "legacy-v1.sqlite"
+        with sqlite3.connect(legacy_path) as db:
+            db.execute("CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            db.execute("INSERT INTO metadata(key, value) VALUES('schema_version', '1')")
+            db.execute("""
+                CREATE TABLE utxos (
+                    txid BLOB NOT NULL,
+                    output_index INTEGER NOT NULL,
+                    value INTEGER NOT NULL,
+                    script_pubkey BLOB NOT NULL,
+                    PRIMARY KEY(txid, output_index)
+                )
+            """)
+            db.execute(
+                "INSERT INTO utxos VALUES(?, ?, ?, ?)",
+                (bytes.fromhex("66" * 32), 0, 50, b"legacy"),
+            )
+        with self.assertRaisesRegex(RuntimeError, "unsafe schema-v1 migration"):
+            UTXOStore(legacy_path)
 
 
 if __name__ == "__main__":
