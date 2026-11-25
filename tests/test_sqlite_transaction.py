@@ -114,6 +114,50 @@ class SQLiteTransactionCoordinatorTests(unittest.TestCase):
             self.assertFalse(db.in_transaction)
             self.assertEqual(db.execute("SELECT value FROM sample").fetchall(), [(9,)])
 
+    def test_multiple_processes_complete_repeated_coordinated_writes_without_loss(self):
+        with sqlite3.connect(self.path) as db:
+            db.execute(
+                "CREATE TABLE writes (writer INTEGER NOT NULL, sequence INTEGER NOT NULL, "
+                "PRIMARY KEY(writer, sequence))"
+            )
+
+        worker_code = """
+import sys
+from src.blackroot_sqlite import SQLiteTransactionCoordinator
+database, writer, iterations = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
+with SQLiteTransactionCoordinator(database, timeout=20) as owner:
+    for sequence in range(iterations):
+        with owner.transaction() as db:
+            db.execute(
+                "INSERT INTO writes(writer, sequence) VALUES(?, ?)",
+                (writer, sequence),
+            )
+"""
+        workers = [
+            subprocess.Popen(
+                [sys.executable, "-c", worker_code, str(self.path), str(writer), "12"],
+                cwd=Path(__file__).resolve().parents[1],
+            )
+            for writer in range(4)
+        ]
+        try:
+            for process in workers:
+                self.assertEqual(process.wait(timeout=35), 0)
+        finally:
+            for process in workers:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait(timeout=5)
+
+        with sqlite3.connect(self.path) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM writes").fetchone()[0], 48)
+            self.assertEqual(
+                db.execute(
+                    "SELECT writer, COUNT(*) FROM writes GROUP BY writer ORDER BY writer"
+                ).fetchall(),
+                [(0, 12), (1, 12), (2, 12), (3, 12)],
+            )
+
     def test_independent_process_writers_are_serialized_by_begin_immediate(self):
         with sqlite3.connect(self.path) as db:
             db.execute("CREATE TABLE writes (value INTEGER PRIMARY KEY)")
