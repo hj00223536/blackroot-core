@@ -2,6 +2,7 @@ import hashlib
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from src.blackroot_chain import BlockHeader, ZERO_HASH
@@ -390,6 +391,48 @@ class SQLiteSnapshotTests(unittest.TestCase):
         self.assertIsNone(report["utxo_tip"])
         self.assertEqual(report["recovery_intents_pending"], 0)
         self.assertFalse(report["production_cutover_performed"])
+
+    def test_staged_import_cleans_up_when_later_source_open_fails(self):
+        snapshot_dir = self.root / "snapshots-open-failure"
+        snapshot_dir.mkdir()
+        snapshot_legacy_node_databases(
+            self.header, self.utxo, self.journal, snapshot_dir
+        )
+        snapshots = [
+            snapshot_dir / f"blackroot-{kind}-snapshot.sqlite"
+            for kind in ("header", "utxo", "journal")
+        ]
+        before = [path.read_bytes() for path in snapshots]
+        destination = self.root / "must-not-survive.sqlite"
+
+        from src import blackroot_storage_migration as migration
+
+        original_open = migration._readonly_connection
+        opened = []
+
+        def fail_on_second_source(path):
+            if opened:
+                raise OSError("injected second-source open failure")
+            connection = original_open(path)
+            opened.append(connection)
+            return connection
+
+        with patch(
+            "src.blackroot_storage_migration._readonly_connection",
+            side_effect=fail_on_second_source,
+        ):
+            with self.assertRaisesRegex(OSError, "injected second-source"):
+                import_snapshot_set_to_coordinated_database(
+                    *snapshots, destination
+                )
+
+        self.assertEqual(len(opened), 1)
+        with self.assertRaises(sqlite3.ProgrammingError):
+            opened[0].execute("SELECT 1")
+        self.assertFalse(destination.exists())
+        self.assertFalse(Path(str(destination) + "-wal").exists())
+        self.assertFalse(Path(str(destination) + "-shm").exists())
+        self.assertEqual(before, [path.read_bytes() for path in snapshots])
 
     def test_staged_import_refuses_existing_destination_without_overwrite(self):
         snapshot_dir = self.root / "snapshots-existing"
