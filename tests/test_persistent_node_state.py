@@ -308,7 +308,10 @@ class PersistentNodeStateTests(unittest.TestCase):
         original = self.root / "original.sqlite"
         alias = self.root / "hard-link.sqlite"
         original.write_bytes(b"existing database placeholder")
-        alias.hardlink_to(original)
+        try:
+            alias.hardlink_to(original)
+        except (NotImplementedError, OSError) as exc:
+            self.skipTest(f"hard links are unsupported on this platform: {exc}")
         with self.assertRaisesRegex(ValueError, "header and UTXO databases"):
             PersistentNodeState(
                 original,
