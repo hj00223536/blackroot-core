@@ -1,7 +1,9 @@
-"""Deterministic transaction encoding and basic UTXO accounting prototype.
+"""Deterministic transaction encoding and basic UTXO accounting primitives.
 
-WARNING: This module does NOT execute scripts or verify signatures. It is not
-safe for validating spend authorization and must not be used by a live network.
+This module checks serialization and value accounting only. Block-level
+consensus validation and the prototype's restricted P2PKH authorization
+checks live in blackroot_blocks and blackroot_script respectively. The
+implementation is not a complete Bitcoin Script or consensus engine.
 """
 from __future__ import annotations
 
