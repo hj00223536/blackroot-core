@@ -1,4 +1,8 @@
+import os
+import subprocess
+import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -68,6 +72,80 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
         self.assertEqual(self.store.tip(), before_tip)
         self.assertEqual(self.store.count(), before_count)
         self.assertEqual(self.store.active_block_headers(), before_headers)
+
+
+    def test_concurrent_writers_cannot_connect_the_same_extension(self):
+        path = Path(self.temp.name) / "concurrent-extension.sqlite"
+        contender = mined_block(2, self.old_one.header.hash, 5)
+        barrier = Path(self.temp.name) / "release-writers"
+        ready_a = Path(self.temp.name) / "writer-a.ready"
+        ready_b = Path(self.temp.name) / "writer-b.ready"
+        result_a = Path(self.temp.name) / "writer-a.result"
+        result_b = Path(self.temp.name) / "writer-b.result"
+        worker = r"""
+import sys
+import time
+from pathlib import Path
+from src.blackroot_blocks import Block
+from src.blackroot_utxo_db import UTXOStore
+
+db, raw, barrier, ready, result = sys.argv[1:]
+store = UTXOStore(db)
+Path(ready).write_text("ready")
+deadline = time.monotonic() + 15
+while not Path(barrier).exists():
+    if time.monotonic() >= deadline:
+        raise SystemExit("barrier timeout")
+    time.sleep(0.01)
+try:
+    store.connect_block(Block.deserialize(bytes.fromhex(raw)), 2)
+    outcome = "accepted"
+except ValueError:
+    outcome = "rejected"
+Path(result).write_text(outcome)
+"""
+        raw_block = contender.serialize().hex()
+        processes = [
+            subprocess.Popen(
+                [
+                    sys.executable, "-c", worker, str(path), raw_block,
+                    str(barrier), str(ready_a), str(result_a),
+                ],
+                cwd=Path.cwd(),
+            ),
+            subprocess.Popen(
+                [
+                    sys.executable, "-c", worker, str(path), raw_block,
+                    str(barrier), str(ready_b), str(result_b),
+                ],
+                cwd=Path.cwd(),
+            ),
+        ]
+        try:
+            deadline = time.monotonic() + 15
+            while not (ready_a.exists() and ready_b.exists()):
+                if time.monotonic() >= deadline:
+                    self.fail("concurrent writers did not become ready")
+                if any(process.poll() not in (None, 0) for process in processes):
+                    self.fail("a concurrent writer exited before the barrier")
+                time.sleep(0.01)
+            barrier.write_text("go")
+            for process in processes:
+                self.assertEqual(process.wait(timeout=20), 0)
+        finally:
+            for process in processes:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait()
+
+        outcomes = [result_a.read_text(), result_b.read_text()]
+        self.assertCountEqual(outcomes, ["accepted", "rejected"])
+        expected_tip = (2, contender.header.hash)
+        self.assertEqual(self.store.tip(), expected_tip)
+        active = self.store.active_block_headers()
+        self.assertEqual(len(active), 3)
+        self.assertEqual(active[-1], contender.header.hash)
+        self.store.verify_integrity()
 
     def test_reorganizes_utxo_store_to_greater_work_branch(self):
         self.assertEqual(self.headers.tip.hash, self.side_two.header.hash)
