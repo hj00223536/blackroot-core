@@ -25,3 +25,12 @@ script execution, signatures, coinbase maturity, block size/weight, or
 transaction finality. It supports only direct extension of one stored chain;
 there are no side branches, undo records, or reorganization support. The
 first block's UTXO state is not a real generated genesis distribution.
+
+
+## Tip disconnection and undo records
+
+The prototype now records two undo tables atomically with each connected block: `block_undo_spent` stores parent-state outputs spent by regular transactions, and `block_undo_created` records every output created by the block. The `disconnect_tip(expected_tip_hash)` operation requires an exact tip hash, removes outputs created by that block, restores only outputs that existed in the parent UTXO snapshot, and deletes the block row (cascading its transactions and undo records) in one SQLite transaction.
+
+Tests cover restoring a spent parent output, removing block-created outputs, wrong-hash rejection, empty-chain rejection, and cleanup of genesis undo data.
+
+This is only a **single-tip storage rollback primitive**. It is not full chain reorganization: there is no side-branch index, competing-chain selection, validated cumulative work, or automatic disconnect/connect orchestration. The caller must not use it to accept an unvalidated replacement branch. Script and signature verification, proof-of-work/header validation, coinbase maturity, and other consensus rules remain absent.
