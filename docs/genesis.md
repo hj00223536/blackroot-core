@@ -1,38 +1,32 @@
-# Genesis block requirements
+# Genesis block status and requirements
 
-The BLACKROOT genesis block has **not** been generated. This document records the work required before one can be committed as a network constant.
+**Status: deterministic Testnet v1 candidate vector exists; it is NOT an activated network constant.**
 
-## Required decisions
+See [testnet-genesis-candidate.md](testnet-genesis-candidate.md) for the exact candidate transaction, header, and hash. The candidate has been checked by the repository's primary encoders and by a separate stdlib-only test that independently reconstructs the bytes and SHA-256d hashes.
 
-- Exact genesis timestamp and human-readable coinbase message
-- Genesis coinbase transaction serialization
-- Merkle-root construction and byte order
-- Initial compact difficulty target
-- Nonce and resulting block hash
-- Chain/network identifier and message-start bytes
-- Whether the genesis coinbase output is intentionally unspendable (recommended for a Bitcoin-style convention)
+That second test is a useful regression cross-check, not an external audit, a separately maintained client, or proof that the candidate parameters are suitable for a public network. The timestamp, coinbase convention, easy proof-of-work limit, and all network settings remain subject to review.
 
-## Deterministic generation procedure
+## Remaining decisions before activation
 
-1. Freeze and publish the complete genesis parameters in a reviewed specification.
-2. Serialize the coinbase transaction using the final transaction format.
-3. Compute the merkle root from the exact serialized transaction.
-4. Serialize the 80-byte header using the specified byte order.
-5. Search nonce (and, if necessary, timestamp/extra-nonce fields) until SHA-256d meets the initial target.
-6. Have at least two independent implementations reproduce the same transaction ID, merkle root, header bytes, and block hash.
-7. Add immutable test vectors and assert them in CI.
-8. Publish the genesis parameters and source revision before enabling public peers or mining.
+- Review and approve the timestamp and coinbase message convention.
+- Decide whether the zero-value OP_RETURN genesis output is the final unspendable-output convention.
+- Freeze a unique chain identifier and four-byte P2P message-start value.
+- Freeze address encodings, ports, protocol version, payload limits, and peer policy.
+- Publish a normative specification for every consensus rule, including retarget boundaries, timestamp policy, block body validation, scripts, and coinbase maturity.
+- Build a runnable node CLI that loads only the explicitly selected testnet configuration.
+- Verify the exact candidate in a separately maintained client and obtain external consensus/security review.
+- Pass a multi-process TCP test in which independently launched nodes verify the same genesis and converge on the same best-chain tip.
 
 ## Verification record
 
 | Field | Status |
 |---|---|
-| Timestamp/message | Not selected |
-| Coinbase transaction | Not implemented |
-| Merkle root | Not computed |
-| Initial target | Not selected |
-| Nonce | Not mined |
-| Genesis hash | Not generated |
-| Independent reproduction | Not performed |
+| Candidate transaction, merkle root, header, and hash | Recorded in candidate document |
+| Repository encoder regression test | Passing in CI |
+| Separate stdlib-only byte/hash reconstruction | Passing in CI |
+| External independent client reproduction | Pending |
+| Normative parameter approval | Pending |
+| Network identity and P2P settings | Pending |
+| Runnable node and multi-process convergence | Pending |
 
-A fabricated or hand-picked genesis hash is not acceptable. A genesis block is a deterministic protocol constant, not a marketing graphic.
+Do not describe this candidate as a launched network genesis. Do not mine public blocks or invite public peers until all activation gates are reviewed and passed.
