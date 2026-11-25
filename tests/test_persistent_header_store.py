@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import contextmanager
 import tempfile
 import unittest
 from pathlib import Path
@@ -20,6 +21,19 @@ def mine(prev_hash, timestamp):
             return header
     raise AssertionError("nonce search exhausted")
 
+
+
+@contextmanager
+def managed_sqlite(connection):
+    try:
+        yield connection
+        connection.commit()
+    except BaseException:
+        if connection.in_transaction:
+            connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 class PersistentHeaderStoreTests(unittest.TestCase):
     def setUp(self):
@@ -63,14 +77,14 @@ class PersistentHeaderStoreTests(unittest.TestCase):
 
     def test_replay_fails_closed_on_corrupt_chainwork(self):
         PersistentHeaderStore(self.path, POW_LIMIT, self.genesis)
-        with sqlite3.connect(self.path) as db:
+        with managed_sqlite(sqlite3.connect(self.path)) as db:
             db.execute("UPDATE headers SET chainwork='999' WHERE height=0")
         with self.assertRaisesRegex(RuntimeError, "metadata mismatch"):
             PersistentHeaderStore(self.path, POW_LIMIT, self.genesis)
 
     def test_replay_fails_closed_when_genesis_header_is_missing(self):
         PersistentHeaderStore(self.path, POW_LIMIT, self.genesis)
-        with sqlite3.connect(self.path) as db:
+        with managed_sqlite(sqlite3.connect(self.path)) as db:
             db.execute("DELETE FROM headers WHERE block_hash=?", (self.genesis.hash,))
         with self.assertRaisesRegex(RuntimeError, "missing its genesis header"):
             PersistentHeaderStore(self.path, POW_LIMIT, self.genesis)
@@ -98,7 +112,7 @@ class PersistentHeaderStoreTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "duplicate"):
             store.add_to_branch(child)
         self.assertEqual(store.chain.height, 1)
-        with sqlite3.connect(self.path) as db:
+        with managed_sqlite(sqlite3.connect(self.path)) as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM headers").fetchone()[0], 2)
 
     def test_coordinator_owned_header_store_publishes_after_commit_and_reload(self):
