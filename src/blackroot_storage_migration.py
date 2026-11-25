@@ -22,6 +22,15 @@ _REQUIRED_TABLES = {
 }
 
 
+def _sha256_file(path: Path) -> str:
+    """Hash a potentially large snapshot without loading it into memory."""
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _readonly_connection(path: Path) -> sqlite3.Connection:
     uri = f"file:{quote(str(path), safe='/')}?mode=ro"
     db = sqlite3.connect(uri, uri=True, timeout=5.0)
@@ -186,7 +195,7 @@ def create_consistent_sqlite_snapshot(
         page_count = snapshot_db.execute("PRAGMA page_count").fetchone()[0]
         snapshot_db.close()
         snapshot_db = None
-        snapshot_sha256 = hashlib.sha256(destination.read_bytes()).hexdigest()
+        snapshot_sha256 = _sha256_file(destination)
         return {
             "status": "snapshot_created",
             "source": str(source),
