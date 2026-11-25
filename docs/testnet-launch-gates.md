@@ -43,6 +43,7 @@ Do not invent or manually select a genesis hash. Until this gate passes, nodes c
 
 ### 4. Complete and harden protocol behavior
 - [ ] Finish block/header validation and ensure every state mutation follows validated best-chain selection.
+- [x] Header synchronization fails closed if no clock provider is configured; the local CLI explicitly supplies its system UTC clock as a provisional future-time bound. A public network still needs a reviewed network-adjusted peer-time policy.
 - [ ] Finish side-branch body retrieval, reorganization, and recovery semantics.
 - [ ] Add peer scoring, connection limits, timeouts, bans/backoff, request limits, message-size limits, and DoS protections.
 - [ ] Define peer discovery and bootstrap policy; do not publish seed addresses until operators have agreed to run nodes.
