@@ -13,10 +13,11 @@ from pathlib import Path
 from .blackroot_transactions import OutPoint, Transaction, TxOutput, validate_transaction
 from .blackroot_blocks import Block, validate_block_transactions
 from .blackroot_chain import HeaderChain
+from .blackroot_maturity import UTXOProvenance
 
 
 class UTXOStore:
-    SCHEMA_VERSION = 1
+    SCHEMA_VERSION = 2
 
     def __init__(self, path: str | Path):
         self.path = str(path)
@@ -43,6 +44,8 @@ class UTXOStore:
                     output_index INTEGER NOT NULL CHECK(output_index >= 0 AND output_index <= 4294967295),
                     value INTEGER NOT NULL CHECK(value >= 0),
                     script_pubkey BLOB NOT NULL,
+                    created_height INTEGER NOT NULL CHECK(created_height >= 0),
+                    is_coinbase INTEGER NOT NULL CHECK(is_coinbase IN (0, 1)),
                     PRIMARY KEY (txid, output_index)
                 ) WITHOUT ROWID
             """)
@@ -53,6 +56,13 @@ class UTXOStore:
                     (str(self.SCHEMA_VERSION),),
                 )
             elif row[0] != str(self.SCHEMA_VERSION):
+                if row[0] == "1":
+                    blocks_exist = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='blocks'").fetchone()
+                    live = db.execute("SELECT COUNT(*) FROM utxos").fetchone()[0]
+                    block_count = db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0] if blocks_exist else 0
+                    if live or block_count:
+                        raise RuntimeError("unsafe schema-v1 migration: non-empty state requires verified reindex from genesis")
+                    raise RuntimeError("schema-v1 migration requires an explicit empty-database rebuild")
                 raise RuntimeError("unsupported UTXO database schema version")
             db.execute("""
                 CREATE TABLE IF NOT EXISTS blocks (
@@ -80,6 +90,8 @@ class UTXOStore:
                     output_index INTEGER NOT NULL CHECK(output_index >= 0 AND output_index <= 4294967295),
                     value INTEGER NOT NULL CHECK(value >= 0),
                     script_pubkey BLOB NOT NULL,
+                    created_height INTEGER NOT NULL CHECK(created_height >= 0),
+                    is_coinbase INTEGER NOT NULL CHECK(is_coinbase IN (0, 1)),
                     PRIMARY KEY(height, txid, output_index)
                 ) WITHOUT ROWID
             """)
