@@ -34,6 +34,16 @@ def parse_connect_endpoint(endpoint: str, config: TestnetConfig) -> tuple[str, i
     return host, int(port_text)
 
 
+async def wait_for_peer_handshake(peer, *, timeout: float = 10.0) -> None:
+    """Wait until the managed session completes version/verack or closes."""
+    async def poll() -> None:
+        while not peer.connected:
+            if peer.writer.is_closing():
+                raise ConnectionError("peer disconnected before handshake completed")
+            await asyncio.sleep(0.01)
+    await asyncio.wait_for(poll(), timeout=timeout)
+
+
 async def run_node(config: TestnetConfig, data_dir: Path, bind_host: str, connect_to: tuple[str, int] | None = None) -> None:
     bind_host = config.validate_bind_host(bind_host)
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -62,7 +72,8 @@ async def run_node(config: TestnetConfig, data_dir: Path, bind_host: str, connec
         if connect_to is not None:
             remote_host, remote_port = connect_to
             config.validate_bind_host(remote_host)
-            await runtime.connect(remote_host, remote_port)
+            peer = await runtime.connect(remote_host, remote_port)
+            await wait_for_peer_handshake(peer)
             await runtime.synchronize()
         print(json.dumps({
             "event": "node_started",
