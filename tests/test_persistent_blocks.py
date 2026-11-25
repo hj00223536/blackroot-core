@@ -1,3 +1,4 @@
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -81,6 +82,37 @@ class PersistentBlockTests(unittest.TestCase):
         reopened = UTXOStore(self.path)
         self.assertEqual(reopened.tip(), (0, block.header.hash))
         self.assertEqual(reopened.get(point), TxOutput(block_subsidy(0), b"miner"))
+
+    def test_block_body_archive_survives_reopen(self):
+        block = block_for([coinbase(block_subsidy(0), b"\\x01\\x01")])
+        block_hash = self.store.store_block_body(block)
+        reopened = UTXOStore(self.path)
+        self.assertEqual(block_hash, block.header.hash)
+        self.assertEqual(reopened.load_block_body(block_hash), block)
+
+    def test_block_body_archive_rejects_corrupt_serialized_size(self):
+        block = block_for([coinbase(block_subsidy(0), b"\\x01\\x01")])
+        block_hash = self.store.store_block_body(block)
+        with sqlite3.connect(self.path) as db:
+            db.execute(
+                "UPDATE block_bodies SET serialized_size=serialized_size+1 WHERE block_hash=?",
+                (block_hash,),
+            )
+        with self.assertRaisesRegex(RuntimeError, "size metadata is corrupt"):
+            self.store.load_block_body(block_hash)
+
+    def test_block_body_archive_rejects_unknown_or_mismatched_header(self):
+        block = block_for([coinbase(block_subsidy(0), b"\\x01\\x01")])
+        self.assertIsNone(self.store.load_block_body(block.header.hash))
+        wrong_hash = bytes.fromhex("99" * 32)
+        self.store.store_block_body(block)
+        with self.assertRaisesRegex(RuntimeError, "header hash does not match"):
+            with sqlite3.connect(self.path) as db:
+                db.execute(
+                    "UPDATE block_bodies SET block_hash=? WHERE block_hash=?",
+                    (wrong_hash, block.header.hash),
+                )
+            self.store.load_block_body(wrong_hash)
 
     def test_rejects_wrong_height_without_mutation(self):
         cb = coinbase(block_subsidy(0), b"\x01\x01")
