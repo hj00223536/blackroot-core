@@ -25,6 +25,7 @@ class P2PSyncService:
         protocol_version: int,
         request_timeout: float = 30.0,
         adjusted_time=None,
+        persist_headers=None,
     ) -> None:
         if not isinstance(chain, HeaderChain):
             raise TypeError("chain must be a HeaderChain")
@@ -43,6 +44,9 @@ class P2PSyncService:
         manager.on_peer_disconnected = self.peer_disconnected
         self.protocol_version = protocol_version
         self.adjusted_time = adjusted_time
+        if persist_headers is not None and not callable(persist_headers):
+            raise TypeError("persist_headers must be callable")
+        self.persist_headers = persist_headers
 
     def _peers(self) -> dict[object, object]:
         return {peer: peer for peer in self.manager.peers if getattr(peer, "connected", False)}
@@ -62,6 +66,8 @@ class P2PSyncService:
         async def dispatch(command: str, payload: bytes) -> None:
             if command in ("headers", "getheaders"):
                 await self._header_sync[peer].handle_message(peer, command, payload)
+                if command == "headers" and self.persist_headers is not None:
+                    self.persist_headers(self.chain)
                 # A fresh node has no active UTXO tip until its genesis body is
                 # explicitly bootstrapped. Header sync must remain usable without
                 # turning that expected bootstrap state into a peer-disconnect error.
