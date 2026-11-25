@@ -83,7 +83,8 @@ class PeerConnectionTests(unittest.IsolatedAsyncioTestCase):
         await self.peer.send("version", encode_version(version(101)))
         self.peer.handshake.mark_local_version_sent()
         with self.assertRaisesRegex(PeerProtocolError, "unsupported"):
-            await self.peer.handle_message("version", encode_version(version(202, protocol=0)))
+            self.peer.min_protocol_version = 2
+        await self.peer.handle_message("version", encode_version(version(202, protocol=1)))
 
     async def test_application_messages_are_forwarded_after_handshake(self):
         received = []
