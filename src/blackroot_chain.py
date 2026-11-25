@@ -83,6 +83,14 @@ class HeaderChain:
     def node(self, block_hash: bytes) -> HeaderNode | None:
         return self._nodes.get(block_hash)
 
+    @property
+    def nodes(self) -> tuple[HeaderNode, ...]:
+        """Return an immutable, deterministic snapshot of every known DAG node."""
+        return tuple(sorted(
+            self._nodes.values(),
+            key=lambda node: (node.height, node.header.hash),
+        ))
+
     def median_time_past(self, parent_hash: bytes) -> int:
         """Return the median timestamp of up to 11 ancestors ending at parent."""
         if parent_hash not in self._nodes:
