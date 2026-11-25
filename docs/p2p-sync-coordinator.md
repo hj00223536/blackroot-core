@@ -229,3 +229,13 @@ This is lifecycle composition coverage only. Header and UTXO data remain in
 separate SQLite databases; there is no cross-database atomic commit or complete
 crash-recovery protocol. The runtime is not a production node or a public
 mainnet release.
+
+### Runtime restart persistence test
+
+`tests/test_node_runtime.py` now closes a running runtime after connecting
+the genesis block, reopens the same header and UTXO SQLite paths through a new
+`PersistentNodeState`, and starts a fresh runtime/listener. It asserts that
+the replayed genesis header and active UTXO tip match the pre-shutdown state.
+This is a clean shutdown/reopen test, not a simulated power loss: SQLite
+cross-database atomicity, interrupted writes, fsync guarantees, and automatic
+recovery of a header-ahead-of-UTXO crash window remain unresolved.
