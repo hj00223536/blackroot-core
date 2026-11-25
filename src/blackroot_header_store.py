@@ -210,6 +210,42 @@ class PersistentHeaderStore:
             self._chain = candidate
         return display_hash
 
+    def persist_chain(self, chain: HeaderChain) -> None:
+        """Persist headers accepted by the live sync chain without replacing it.
+
+        P2P header synchronization validates into a shared in-memory HeaderChain.
+        This method durably records that validated DAG before block bodies can be
+        connected, so a restart can replay the same header ancestry.
+        """
+        if not isinstance(chain, HeaderChain):
+            raise TypeError("chain must be a HeaderChain")
+        if chain.get(0).hash != self.chain.get(0).hash:
+            raise ValueError("cannot persist a chain with a different genesis")
+        live_nodes = sorted(chain.nodes, key=lambda node: (node.height, node.header.hash))
+        with self._write_scope() as db:
+            rows = db.execute(
+                "SELECT block_hash, height, version, prev_hash, merkle_root, timestamp, bits, nonce, chainwork FROM headers"
+            ).fetchall()
+            persisted = {bytes(row[0]): row[1:] for row in rows}
+            live_hashes = {node.header.hash for node in live_nodes}
+            if not set(persisted).issubset(live_hashes):
+                raise RuntimeError("persistent header store contains headers absent from live sync chain")
+            for node in live_nodes:
+                block_hash = node.header.hash
+                header = node.header
+                expected = (
+                    node.height, header.version, header.prev_hash, header.merkle_root,
+                    header.timestamp, header.bits, header.nonce, str(node.chainwork),
+                )
+                if block_hash in persisted:
+                    actual = persisted[block_hash]
+                    normalized = (actual[0], actual[1], bytes(actual[2]), bytes(actual[3]),
+                                  actual[4], actual[5], actual[6], actual[7])
+                    if normalized != expected:
+                        raise RuntimeError("persisted header metadata conflicts with live validated chain")
+                else:
+                    self._insert_node(db, chain, block_hash)
+
     def reload(self) -> HeaderChain:
         """Replay persisted headers after an externally-owned transaction commits."""
         with self._connect() as db:
