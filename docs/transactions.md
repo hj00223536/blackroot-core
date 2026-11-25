@@ -60,7 +60,7 @@ digests. Unknown script templates, malformed pushes, wrong keys, invalid
 signatures, and unsupported sighash modes fail verification.
 
 This is deliberately a separate API:
-`validate_transaction_scripts(tx, utxos)`. It is **not yet wired into**
+`validate_transaction_scripts(tx, utxos)`. It is wired into the current block-validation pipeline for regular inputs, but remains a narrow legacy P2PKH verifier and not a general Script engine.
 `validate_transaction`, block connection, or UTXO reorganization, so existing
 accounting-only test fixtures remain isolated from this authorization layer.
 Do not treat a transaction or block as fully valid until the block-validation
