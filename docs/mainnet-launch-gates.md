@@ -86,3 +86,8 @@ Block transaction validation is tested to reject two separately valid transactio
 ### Transaction output-collision protection
 
 The in-memory transaction application path now has a regression test proving that a transaction whose derived output outpoint already exists is rejected before any input is removed or output is written. The test snapshots the full UTXO map and asserts it is unchanged after rejection. This is a local state-integrity check, not a substitute for full consensus, script, or persistence testing.
+
+
+### UTXO creation-height invariant
+
+Authenticated UTXO provenance is now checked against the spending block height for every output type: no output may be spent at a height earlier than the height at which it was created. Coinbase outputs additionally require the configured maturity interval. Regression tests cover both coinbase and ordinary outputs with future creation heights. This closes a temporal-state validation gap in the maturity helper; it does not establish complete consensus readiness.
