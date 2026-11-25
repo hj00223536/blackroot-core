@@ -80,14 +80,21 @@ class MultiPeerReorganizationSync:
         block_hash = block.header.hash
         if self.pool.assigned_peer(block_hash) != peer_id:
             raise ValueError("fork block came from an unassigned peer")
-        node = self.chain.node(block_hash)
-        if node is None or node.header.serialize() != block.header.serialize():
-            raise ValueError("fork block header is not in the validated header DAG")
-        if merkle_root(tx.txid for tx in block.transactions) != block.header.merkle_root:
-            raise ValueError("fork block Merkle root mismatch")
-        self.store.store_block_body(block)
-        if not self.pool.complete(block_hash, peer_id):
-            raise RuntimeError("fork body assignment disappeared during acceptance")
+        try:
+            node = self.chain.node(block_hash)
+            if node is None or node.header.serialize() != block.header.serialize():
+                raise ValueError("fork block header is not in the validated header DAG")
+            if merkle_root(tx.txid for tx in block.transactions) != block.header.merkle_root:
+                raise ValueError("fork block Merkle root mismatch")
+            self.store.store_block_body(block)
+            if not self.pool.complete(block_hash, peer_id):
+                raise RuntimeError("fork body assignment disappeared during acceptance")
+        except BaseException:
+            # Invalid or unpersistable responses must not pin the request slot.
+            # The caller may disconnect the peer; another peer can then retry.
+            self.pool.cancel(block_hash)
+            self._requested_at.pop(block_hash, None)
+            raise
         self._requested_at.pop(block_hash, None)
         if not self.missing_best_branch_bodies() and not self.pool.pending_hashes:
             return self.store.reorganize_to_best(self.chain)
