@@ -144,3 +144,7 @@ coordinated transaction can commit. It checks that the previous active tip,
 UTXO count, integrity, and empty recovery-journal state are restored, then
 retries the same reorganization successfully. This tests application-level
 transaction rollback, not sudden power loss or storage-device failure.
+
+The schema planner also rejects SQLite virtual tables explicitly. Their
+implementation depends on virtual-table modules and hidden/shadow-table
+semantics that a generic table-and-index copier cannot safely preserve.
