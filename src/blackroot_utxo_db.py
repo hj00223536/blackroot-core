@@ -190,6 +190,22 @@ class UTXOStore:
         return None if row is None else bytes(row[0])
 
 
+    def active_block_headers(self) -> tuple[tuple[int, bytes, bytes, bytes], ...]:
+        """Return active-chain header records ordered by height.
+
+        Each entry is (height, block_hash, previous_hash, serialized_header).
+        The caller can compare this complete sequence with the validated header DAG.
+        """
+        with self._connect() as db:
+            rows = db.execute(
+                "SELECT height, block_hash, prev_hash, header FROM blocks ORDER BY height"
+            ).fetchall()
+        return tuple(
+            (height, bytes(block_hash), bytes(prev_hash), bytes(header))
+            for height, block_hash, prev_hash, header in rows
+        )
+
+
     @staticmethod
     def _advance_provenance(block, parent_provenance, height):
         updated = dict(parent_provenance)
