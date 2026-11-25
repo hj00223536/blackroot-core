@@ -34,11 +34,27 @@ class NodePeerSyncService:
             raise ValueError("peer ID is already registered")
         self._peers[peer_id] = peer
 
-    def on_peer_message_factory(self, peer_id: object):
-        """Return the callback factory shape accepted by PeerManager."""
-        async def on_message(peer, command: str, payload: bytes) -> None:
+    def _resolve_peer_id(self, peer_or_id: object) -> object:
+        if peer_or_id in self._peers:
+            return peer_or_id
+        for peer_id, peer in self._peers.items():
+            if peer is peer_or_id:
+                return peer_id
+        raise ValueError("peer is not registered")
+
+    def on_peer_message_factory(self, peer: object):
+        """Return the MessageHandler expected by PeerManager for this peer."""
+        try:
+            peer_id = self._resolve_peer_id(peer)
+        except ValueError:
+            # PeerManager creates the connection before invoking this factory;
+            # use the connection object itself as its stable in-process ID.
+            peer_id = peer
+            self.register_peer(peer_id, peer)
+
+        async def on_message(command: str, payload: bytes) -> None:
             await self.handle_message(peer_id, peer, command, payload)
-        return lambda _peer: on_message
+        return on_message
 
     async def handle_message(self, peer_id: object, peer: object,
                              command: str, payload: bytes) -> None:
@@ -94,6 +110,7 @@ class NodePeerSyncService:
 
     async def peer_disconnected(self, peer_id: object) -> dict[bytes, object]:
         """Release a peer's requests and immediately reassign where possible."""
+        peer_id = self._resolve_peer_id(peer_id)
         self._peers.pop(peer_id, None)
         released = self.scheduler.peer_disconnected(peer_id)
         return await self._retry_hashes(released)
