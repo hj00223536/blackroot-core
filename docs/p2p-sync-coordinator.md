@@ -129,3 +129,13 @@ and sends new `getdata` requests. The peer lifecycle owner must call
 `peer_disconnected(peer_id)` on disconnect and schedule retries for the
 returned hashes. This keeps network scheduling explicit and avoids hidden
 background tasks.
+
+
+### Peer-manager disconnect hook
+
+`PeerManager` now accepts an optional `on_peer_disconnected(peer)` callback.
+It is invoked after the connection is closed and removed from the manager's
+active peer set; asynchronous callbacks are awaited. A node-level owner can
+use this hook to remove the peer from its registry and call both the ordinary
+block scheduler's and fork downloader's disconnect cleanup methods. The hook
+does not itself select replacement peers or run a retry loop.
