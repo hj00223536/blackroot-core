@@ -74,6 +74,36 @@ class SQLiteTransactionCoordinatorTests(unittest.TestCase):
                 db.close()
             self.assertEqual(db.execute("SELECT 1").fetchone(), (1,))
 
+    def test_executescript_cannot_escape_and_commit_outer_transaction(self):
+        with SQLiteTransactionCoordinator(self.path) as coordinator:
+            with self.assertRaisesRegex(ValueError, "abort outer transaction"):
+                with coordinator.transaction() as db:
+                    db.execute("CREATE TABLE protected (value INTEGER)")
+                    with self.assertRaisesRegex(RuntimeError, "executescript is disabled"):
+                        db.executescript(
+                            "INSERT INTO protected(value) VALUES(1);"
+                        )
+                    self.assertTrue(db.in_transaction)
+                    raise ValueError("abort outer transaction")
+            self.assertEqual(
+                db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='protected'"
+                ).fetchall(),
+                [],
+            )
+
+    def test_cursor_facades_do_not_expose_raw_connection(self):
+        with SQLiteTransactionCoordinator(self.path) as coordinator:
+            db = coordinator.connection
+            execute_cursor = db.execute("SELECT 7")
+            direct_cursor = db.cursor()
+            self.assertEqual(execute_cursor.fetchone(), (7,))
+            with self.assertRaises(AttributeError):
+                _ = execute_cursor.connection
+            with self.assertRaises(AttributeError):
+                _ = direct_cursor.connection
+            direct_cursor.close()
+
     def test_store_context_manager_does_not_commit_outer_transaction(self):
         with SQLiteTransactionCoordinator(self.path) as coordinator:
             with coordinator.transaction() as db:
