@@ -458,6 +458,9 @@ class SQLiteSnapshotTests(unittest.TestCase):
             batch_size=2,
         )
         self.assertEqual(imported["status"], "coordinated_staging_database_created")
+        artifact = inspect_staged_import_artifact(staged)
+        self.assertEqual(artifact["status"], "complete_import_manifest_present")
+        self.assertFalse(artifact["production_validated"])
         reopened = validate_coordinated_staging_database(
             staged, pow_limit=pow_limit, genesis=genesis,
             require_import_manifest=True, verify_manifest_counts=True,
