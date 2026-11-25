@@ -45,6 +45,16 @@ class UTXOStore:
         connection.execute("PRAGMA busy_timeout = 10000")
         return connection
 
+    @contextmanager
+    def _connection_scope(self) -> Iterator[sqlite3.Connection | SQLiteTransactionConnection]:
+        """Borrow the coordinator connection or own and close a local one."""
+        db = self._connect()
+        try:
+            yield db
+        finally:
+            if self._external_connection is None:
+                db.close()
+
     def _require_standalone_transaction(self, operation: str) -> None:
         if self._external_connection is not None:
             raise RuntimeError(
@@ -60,7 +70,7 @@ class UTXOStore:
                 raise RuntimeError("coordinator-owned UTXO writes require an active outer transaction")
             yield self._external_connection
             return
-        with self._connect() as db:
+        with self._connection_scope() as db:
             db.execute("BEGIN IMMEDIATE")
             try:
                 yield db
@@ -71,7 +81,7 @@ class UTXOStore:
                 raise
 
     def _initialize(self) -> None:
-        with self._connect() as db:
+        with self._connection_scope() as db:
             if self._external_connection is None:
                 db.execute("PRAGMA journal_mode = WAL")
             db.execute("""
@@ -210,7 +220,7 @@ class UTXOStore:
         """Load and integrity-check a previously archived serialized block body."""
         if not isinstance(block_hash, bytes) or len(block_hash) != 32:
             raise ValueError("block_hash must be exactly 32 bytes")
-        with self._connect() as db:
+        with self._connection_scope() as db:
             row = db.execute(
                 "SELECT raw_block, serialized_size FROM block_bodies WHERE block_hash=?",
                 (block_hash,),
@@ -232,7 +242,7 @@ class UTXOStore:
         """Insert a trusted bootstrap output; caller must authenticate its origin."""
         if not isinstance(outpoint, OutPoint) or not isinstance(output, TxOutput):
             raise TypeError("expected OutPoint and TxOutput")
-        with self._connect() as db:
+        with self._connection_scope() as db:
             if db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0]:
                 raise RuntimeError("bootstrap outputs cannot be added after chain activation")
             db.execute(
@@ -241,7 +251,7 @@ class UTXOStore:
             )
 
     def get(self, outpoint: OutPoint) -> TxOutput | None:
-        with self._connect() as db:
+        with self._connection_scope() as db:
             row = db.execute(
                 "SELECT value, script_pubkey FROM utxos WHERE txid=? AND output_index=?",
                 (outpoint.txid, outpoint.index),
@@ -249,7 +259,7 @@ class UTXOStore:
         return None if row is None else TxOutput(row[0], bytes(row[1]))
 
     def count(self) -> int:
-        with self._connect() as db:
+        with self._connection_scope() as db:
             return db.execute("SELECT COUNT(*) FROM utxos").fetchone()[0]
 
     def apply(self, tx: Transaction) -> int:
@@ -286,7 +296,7 @@ class UTXOStore:
 
     def verify_integrity(self) -> None:
         """Fail closed on SQLite, relational, transaction-record, or body corruption."""
-        with self._connect() as db:
+        with self._connection_scope() as db:
             integrity = db.execute("PRAGMA integrity_check").fetchall()
             if integrity != [("ok",)]:
                 raise RuntimeError(f"UTXO SQLite integrity check failed: {integrity!r}")
@@ -345,7 +355,7 @@ class UTXOStore:
 
     def tip(self) -> tuple[int, bytes] | None:
         """Return the stored tip height and hash, or None."""
-        with self._connect() as db:
+        with self._connection_scope() as db:
             row = db.execute(
                 "SELECT height, block_hash FROM blocks ORDER BY height DESC LIMIT 1"
             ).fetchone()
@@ -356,7 +366,7 @@ class UTXOStore:
         """Return the exact serialized header persisted at a connected height."""
         if not isinstance(height, int) or isinstance(height, bool) or height < 0:
             raise ValueError("height must be a non-negative integer")
-        with self._connect() as db:
+        with self._connection_scope() as db:
             row = db.execute(
                 "SELECT header FROM blocks WHERE height=?", (height,)
             ).fetchone()
@@ -369,7 +379,7 @@ class UTXOStore:
         Each entry is (height, block_hash, previous_hash, serialized_header).
         The caller can compare this complete sequence with the validated header DAG.
         """
-        with self._connect() as db:
+        with self._connection_scope() as db:
             rows = db.execute(
                 "SELECT height, block_hash, prev_hash, header FROM blocks ORDER BY height"
             ).fetchall()
