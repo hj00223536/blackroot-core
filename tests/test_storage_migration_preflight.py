@@ -1,4 +1,6 @@
 import hashlib
+import multiprocessing
+import os
 import src.blackroot_storage_migration as migration_module
 import sqlite3
 import tempfile
@@ -20,6 +22,25 @@ from src.blackroot_storage_migration import (
     snapshot_legacy_node_databases,
     validate_coordinated_staging_database,
 )
+
+
+
+
+def _crash_import_after_copy(header, utxo, journal, destination):
+    original_hash = migration_module._sha256_file
+    calls = 0
+
+    def crash_on_first_post_copy_hash(path):
+        nonlocal calls
+        calls += 1
+        if calls == 4:  # Three initial fingerprints, then the post-copy pass.
+            os._exit(73)
+        return original_hash(path)
+
+    with patch.object(migration_module, "_sha256_file", crash_on_first_post_copy_hash):
+        import_snapshot_set_to_coordinated_database(
+            header, utxo, journal, destination, batch_size=2
+        )
 
 
 class LegacyStoragePreflightTests(unittest.TestCase):
@@ -294,6 +315,46 @@ class SQLiteSnapshotTests(unittest.TestCase):
             )
             self.assertEqual(
                 db.execute("SELECT COUNT(*) FROM block_transactions").fetchone()[0], 0
+            )
+
+    def test_process_interruption_before_manifest_is_rejected_by_strict_validation(self):
+        snapshot_dir = self.root / "snapshots-for-crash"
+        snapshot_dir.mkdir()
+        snapshot_legacy_node_databases(
+            self.header, self.utxo, self.journal, snapshot_dir
+        )
+        header = snapshot_dir / "blackroot-header-snapshot.sqlite"
+        utxo = snapshot_dir / "blackroot-utxo-snapshot.sqlite"
+        journal = snapshot_dir / "blackroot-journal-snapshot.sqlite"
+        destination = self.root / "interrupted-staging.sqlite"
+
+        process = multiprocessing.get_context("fork").Process(
+            target=_crash_import_after_copy,
+            args=(str(header), str(utxo), str(journal), str(destination)),
+        )
+        process.start()
+        process.join(15)
+        if process.is_alive():
+            process.terminate()
+            process.join()
+            self.fail("crash-test child did not terminate at the injected interruption")
+        self.assertEqual(process.exitcode, 73)
+        self.assertTrue(destination.is_file())
+
+        with sqlite3.connect(destination) as db:
+            self.assertEqual(db.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+            marker = db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='blackroot_import_manifest'"
+            ).fetchone()
+        self.assertIsNone(marker)
+
+        genesis = BlockHeader(1, bytes(32), bytes(32), 1, 0x207fffff, 0)
+        pow_limit = decode_compact_target(0x207fffff)
+        with self.assertRaisesRegex(RuntimeError, "no completed import manifest"):
+            validate_coordinated_staging_database(
+                destination, pow_limit=pow_limit, genesis=genesis,
+                require_import_manifest=True,
             )
 
     def test_real_legacy_stores_snapshot_import_and_reopen_with_active_genesis(self):
