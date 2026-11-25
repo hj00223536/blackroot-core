@@ -97,6 +97,17 @@ class NodePeerSyncServiceTests(unittest.IsolatedAsyncioTestCase):
                          survivor_id)
         self.assertNotIn(first, self.service.peers)
 
+    async def test_manager_factory_uses_peerconnection_callback_signature(self):
+        service = NodePeerSyncService(self.scheduler)
+        peer = FakePeer()
+        handler = service.on_peer_message_factory(peer)
+        self.assertTrue(callable(handler))
+        payload = encode_inventory([
+            InventoryVector(INV_TYPE_BLOCK, self.block.header.hash)
+        ])
+        await handler("inv", payload)
+        self.assertEqual(service.peers.get(peer), peer)
+
     async def test_unassigned_notfound_does_not_cancel_another_peer_request(self):
         payload = encode_inventory([
             InventoryVector(INV_TYPE_BLOCK, self.block.header.hash)
