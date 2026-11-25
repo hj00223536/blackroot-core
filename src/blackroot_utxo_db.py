@@ -71,6 +71,24 @@ class UTXOStore:
                     PRIMARY KEY(height, position)
                 ) WITHOUT ROWID
             """)
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS block_undo_spent (
+                    height INTEGER NOT NULL REFERENCES blocks(height) ON DELETE CASCADE,
+                    txid BLOB NOT NULL CHECK(length(txid) = 32),
+                    output_index INTEGER NOT NULL CHECK(output_index >= 0 AND output_index <= 4294967295),
+                    value INTEGER NOT NULL CHECK(value >= 0),
+                    script_pubkey BLOB NOT NULL,
+                    PRIMARY KEY(height, txid, output_index)
+                ) WITHOUT ROWID
+            """)
+            db.execute("""
+                CREATE TABLE IF NOT EXISTS block_undo_created (
+                    height INTEGER NOT NULL REFERENCES blocks(height) ON DELETE CASCADE,
+                    txid BLOB NOT NULL CHECK(length(txid) = 32),
+                    output_index INTEGER NOT NULL CHECK(output_index >= 0 AND output_index <= 4294967295),
+                    PRIMARY KEY(height, txid, output_index)
+                ) WITHOUT ROWID
+            """)
 
     def add_genesis_output(self, outpoint: OutPoint, output: TxOutput) -> None:
         """Insert a trusted bootstrap output; caller must authenticate its origin."""
@@ -174,6 +192,28 @@ class UTXOStore:
                     parent[OutPoint(bytes(txid), index)] = TxOutput(value, bytes(script))
 
                 updated, fees = validate_block_transactions(block, parent, height)
+
+                # Record inverse operations before committing the new UTXO set.
+                # Only inputs present in the parent snapshot are restored on disconnect;
+                # outputs created and spent within this same block are not parent UTXOs.
+                for tx in block.transactions[1:]:
+                    for txin in tx.inputs:
+                        previous = txin.previous_output
+                        spent_output = parent.get(previous)
+                        if spent_output is not None:
+                            db.execute(
+                                "INSERT INTO block_undo_spent(height, txid, output_index, value, script_pubkey) "
+                                "VALUES(?, ?, ?, ?, ?)",
+                                (height, previous.txid, previous.index,
+                                 spent_output.value, spent_output.script_pubkey),
+                            )
+                for tx in block.transactions:
+                    for index, _output in enumerate(tx.outputs):
+                        db.execute(
+                            "INSERT INTO block_undo_created(height, txid, output_index) VALUES(?, ?, ?)",
+                            (height, tx.txid, index),
+                        )
+
                 db.execute(
                     "INSERT INTO blocks(height, block_hash, prev_hash, header, tx_count, total_fees) "
                     "VALUES(?, ?, ?, ?, ?, ?)",
@@ -195,6 +235,57 @@ class UTXOStore:
                 )
                 db.commit()
                 return fees
+            except Exception:
+                db.rollback()
+                raise
+
+    def disconnect_tip(self, expected_tip_hash: bytes) -> tuple[int, bytes]:
+        """Disconnect exactly the current tip using its recorded UTXO undo data.
+
+        This is a storage primitive, not a complete chain reorganization engine.
+        The caller must independently establish that the replacement branch has
+        valid consensus, scripts, proof of work, timestamps, and greater chainwork.
+        """
+        if not isinstance(expected_tip_hash, bytes) or len(expected_tip_hash) != 32:
+            raise ValueError("expected_tip_hash must be exactly 32 bytes")
+
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                tip = db.execute(
+                    "SELECT height, block_hash FROM blocks ORDER BY height DESC LIMIT 1"
+                ).fetchone()
+                if tip is None:
+                    raise ValueError("cannot disconnect an empty chain")
+                height, block_hash = tip[0], bytes(tip[1])
+                if block_hash != expected_tip_hash:
+                    raise ValueError("expected tip hash does not match stored tip")
+
+                created = db.execute(
+                    "SELECT txid, output_index FROM block_undo_created WHERE height=?",
+                    (height,),
+                ).fetchall()
+                for txid, index in created:
+                    db.execute(
+                        "DELETE FROM utxos WHERE txid=? AND output_index=?",
+                        (txid, index),
+                    )
+
+                spent = db.execute(
+                    "SELECT txid, output_index, value, script_pubkey "
+                    "FROM block_undo_spent WHERE height=?",
+                    (height,),
+                ).fetchall()
+                for txid, index, value, script in spent:
+                    db.execute(
+                        "INSERT INTO utxos(txid, output_index, value, script_pubkey) "
+                        "VALUES(?, ?, ?, ?)",
+                        (txid, index, value, script),
+                    )
+
+                db.execute("DELETE FROM blocks WHERE height=?", (height,))
+                db.commit()
+                return height, block_hash
             except Exception:
                 db.rollback()
                 raise
