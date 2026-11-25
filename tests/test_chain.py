@@ -129,6 +129,13 @@ class HeaderChainTests(unittest.TestCase):
 
         candidate_height = DIFFICULTY_INTERVAL
         required = chain.expected_bits(parent.hash, candidate_height)
+        # Candidate height 2016 uses parent height 2015 minus ancestor
+        # height 0: 2015 timestamp intervals against the 2016-interval target.
+        from src.blackroot_consensus import retarget_compact
+        expected = retarget_compact(
+            BITS, 2015 * 600, POW_LIMIT, DIFFICULTY_INTERVAL * 600
+        )
+        self.assertEqual(required, expected)
         self.assertNotEqual(required, BITS)
         wrong = mine_header(parent.hash, 1 + candidate_height * 600, BITS)
         with self.assertRaisesRegex(ValueError, "difficulty bits"):
