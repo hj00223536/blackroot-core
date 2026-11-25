@@ -45,6 +45,13 @@ class UTXOStore:
         connection.execute("PRAGMA busy_timeout = 10000")
         return connection
 
+    def _require_standalone_transaction(self, operation: str) -> None:
+        if self._external_connection is not None:
+            raise RuntimeError(
+                f"{operation} still owns an internal transaction and is not yet "
+                "available with a coordinator-owned connection"
+            )
+
     @contextmanager
     def _write_scope(self) -> Iterator[sqlite3.Connection | SQLiteTransactionConnection]:
         """Use an outer transaction when injected; otherwise own one locally."""
