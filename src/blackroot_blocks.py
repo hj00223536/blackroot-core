@@ -3,7 +3,7 @@
 This module checks transaction ordering, merkle commitment, duplicate txids,
 P2PKH signatures, UTXO value conservation, and the coinbase reward ceiling.
 It is still not production consensus: coinbase maturity, complete Script,
-header PoW/difficulty/timestamps and other rules remain unimplemented.
+header PoW/difficulty/future-time and other rules remain incomplete; relative sequence locks (BIP68) and full Script are not implemented.
 """
 from __future__ import annotations
 
