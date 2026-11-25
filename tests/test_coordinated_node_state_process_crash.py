@@ -55,7 +55,7 @@ candidate = make_block(genesis.header.hash, 1, 2)
 if mode in ("during_transaction", "after_commit"):
     state.add_header(candidate.header, adjusted_time=2)
 
-if mode in ("reorg_during_transaction", "reorg_after_commit", "reorg_crash_with_waiter"):
+if mode in ("reorg_after_intent", "reorg_during_transaction", "reorg_after_commit", "reorg_crash_with_waiter"):
     state.connect_best_block(genesis, 0)
     old = make_block(genesis.header.hash, 1, 2)
     state.add_header(old.header, adjusted_time=2)
