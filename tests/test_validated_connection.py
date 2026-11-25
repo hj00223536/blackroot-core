@@ -91,9 +91,8 @@ class ValidatedConnectionTests(unittest.TestCase):
     def test_coordinator_mode_requires_active_outer_transaction_for_block_write(self):
         shared_path = Path(self.tmp.name) / "no-outer.sqlite"
         with SQLiteTransactionCoordinator(shared_path) as coordinator:
-            store = UTXOStore(shared_path, connection=coordinator.connection)
             with self.assertRaisesRegex(RuntimeError, "active outer transaction"):
-                store.connect_block(self.genesis, 0)
+                UTXOStore(shared_path, connection=coordinator.connection)
 
 
 if __name__ == "__main__":
