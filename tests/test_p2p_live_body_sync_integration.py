@@ -71,7 +71,8 @@ class ThreeNodeLiveBlockBodySyncTests(unittest.IsolatedAsyncioTestCase):
             )
             source_state.connect_best_block(genesis, 0)
             source_state.connect_best_block(next_block, 1)
-            destination_state.connect_best_block(genesis, 0)
+            for state in destination_states:
+                state.connect_best_block(genesis, 0)
 
             served_requests = []
             source_header_sync = PeerHeaderSync(
