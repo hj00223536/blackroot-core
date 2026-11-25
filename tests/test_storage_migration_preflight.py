@@ -19,6 +19,7 @@ from src.blackroot_storage_migration import (
     create_consistent_sqlite_snapshot,
     inspect_legacy_node_databases,
     import_snapshot_set_to_coordinated_database,
+    inspect_staged_import_artifact,
     plan_coordinated_schema_merge,
     snapshot_legacy_node_databases,
     validate_coordinated_staging_database,
@@ -224,6 +225,27 @@ class SQLiteSnapshotTests(unittest.TestCase):
             db.execute("""CREATE TABLE recovery_intent (
                 singleton INTEGER PRIMARY KEY, old_height INTEGER, old_hash BLOB,
                 new_height INTEGER, new_hash BLOB)""")
+
+    def test_staging_artifact_inspection_classifies_missing_and_non_sqlite_files(self):
+        missing = inspect_staged_import_artifact(self.root / "missing.sqlite")
+        self.assertEqual(missing["status"], "missing")
+        not_sqlite = self.root / "not-sqlite.sqlite"
+        not_sqlite.write_bytes(b"not a database")
+        result = inspect_staged_import_artifact(not_sqlite)
+        self.assertEqual(result["status"], "not_readable_sqlite")
+        self.assertEqual(not_sqlite.read_bytes(), b"not a database")
+
+    def test_staging_artifact_inspection_identifies_interrupted_import_without_mutation(self):
+        database = self.root / "partial-import.sqlite"
+        with sqlite3.connect(database) as db:
+            db.execute("CREATE TABLE copied_rows(value INTEGER)")
+            db.execute("INSERT INTO copied_rows VALUES(1)")
+        before = database.read_bytes()
+        result = inspect_staged_import_artifact(database)
+        self.assertEqual(result["status"], "incomplete_import_no_manifest")
+        self.assertEqual(result["integrity_result"], "ok")
+        self.assertEqual(database.read_bytes(), before)
+
 
     def test_individual_snapshot_captures_wal_without_mutating_source(self):
         source = self.root / "wal.sqlite"
