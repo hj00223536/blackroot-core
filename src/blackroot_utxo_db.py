@@ -15,24 +15,43 @@ from .blackroot_transactions import OutPoint, Transaction, TxOutput, validate_tr
 from .blackroot_blocks import Block, validate_block_transactions
 from .blackroot_chain import HeaderChain
 from .blackroot_maturity import UTXOProvenance
+from .blackroot_sqlite import SQLiteTransactionConnection
 
 
 class UTXOStore:
     SCHEMA_VERSION = 2
 
-    def __init__(self, path: str | Path):
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        connection: SQLiteTransactionConnection | None = None,
+    ):
         self.path = str(path)
+        self._external_connection = connection
+        if connection is not None and not isinstance(connection, SQLiteTransactionConnection):
+            raise TypeError("connection must be a SQLiteTransactionConnection")
         self._initialize()
 
-    def _connect(self) -> sqlite3.Connection:
+    def _connect(self):
+        if self._external_connection is not None:
+            return self._external_connection
         connection = sqlite3.connect(self.path, timeout=10.0)
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("PRAGMA busy_timeout = 10000")
         return connection
 
+    def _require_standalone_transaction(self, operation: str) -> None:
+        if self._external_connection is not None:
+            raise RuntimeError(
+                f"{operation} still owns an internal transaction and is not yet "
+                "available with a coordinator-owned connection"
+            )
+
     def _initialize(self) -> None:
         with self._connect() as db:
-            db.execute("PRAGMA journal_mode = WAL")
+            if self._external_connection is None:
+                db.execute("PRAGMA journal_mode = WAL")
             db.execute("""
                 CREATE TABLE IF NOT EXISTS metadata (
                     key TEXT PRIMARY KEY,
@@ -189,6 +208,7 @@ class UTXOStore:
         """Atomically spend inputs and create outputs; returns fee in atomic units."""
         if not isinstance(tx, Transaction):
             raise TypeError("tx must be a Transaction")
+        self._require_standalone_transaction("apply")
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             if db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0]:
@@ -359,6 +379,7 @@ class UTXOStore:
             raise TypeError("block must be a Block")
         if not isinstance(height, int) or isinstance(height, bool) or height < 0:
             raise ValueError("height must be a non-negative integer")
+        self._require_standalone_transaction("connect_block")
 
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
@@ -508,6 +529,7 @@ class UTXOStore:
         """
         if not isinstance(disconnect_hashes, tuple) or not isinstance(connect_blocks, tuple):
             raise TypeError("disconnect_hashes and connect_blocks must be tuples")
+        self._require_standalone_transaction("reorganize")
         if not disconnect_hashes and not connect_blocks:
             raise ValueError("reorganization must change at least one block")
         if any(not isinstance(item, bytes) or len(item) != 32 for item in disconnect_hashes):
