@@ -288,5 +288,29 @@ class PersistentNodeStateTests(unittest.TestCase):
             self.state()
 
 
+    def test_startup_fails_closed_when_active_transaction_record_is_corrupt(self):
+        state = self.state()
+        state.connect_best_block(self.genesis_block, 0)
+        with sqlite3.connect(self.root / "utxos.sqlite") as db:
+            db.execute(
+                "UPDATE block_transactions SET raw_transaction=? WHERE height=0 AND position=0",
+                (b"corrupt",),
+            )
+        with self.assertRaisesRegex(RuntimeError, "stored active transaction is malformed"):
+            self.state()
+
+    def test_startup_fails_closed_when_archived_body_is_corrupt(self):
+        state = self.state()
+        state.connect_best_block(self.genesis_block, 0)
+        raw = self.genesis_block.serialize()
+        with sqlite3.connect(self.root / "utxos.sqlite") as db:
+            db.execute(
+                "UPDATE block_bodies SET raw_block=? WHERE block_hash=?",
+                (raw[:-1] + bytes([raw[-1] ^ 1]), self.genesis_block.header.hash),
+            )
+        with self.assertRaisesRegex(RuntimeError, "archived block body failed integrity verification"):
+            self.state()
+
+
 if __name__ == "__main__":
     unittest.main()
