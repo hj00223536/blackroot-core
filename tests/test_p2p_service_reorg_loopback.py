@@ -183,11 +183,25 @@ class P2PServiceReorganizationLoopbackTests(unittest.IsolatedAsyncioTestCase):
         }
         self.assertEqual(set(assignments), expected)
 
-        async def wait_for_invalid_branch_rejection():
-            while self.service.reorg.pool.pending_hashes:
+        async def wait_for_all_fork_bodies_to_be_archived():
+            while not all(
+                self.store.load_block_body(block_hash) is not None
+                for block_hash in expected
+            ):
                 await asyncio.sleep(0.01)
-            # Allow the peer dispatcher to finish its rejection/cleanup path.
-            await asyncio.sleep(0.05)
+
+        # Observe the complete downloaded fork before asserting rejection cleanup;
+        # this avoids treating an empty request queue as proof that validation ended.
+        await asyncio.wait_for(
+            wait_for_all_fork_bodies_to_be_archived(), timeout=5
+        )
+
+        async def wait_for_invalid_branch_rejection():
+            while self.service.reorg.pool.pending_hashes or any(
+                self.store.load_block_body(block_hash) is not None
+                for block_hash in expected
+            ):
+                await asyncio.sleep(0.01)
 
         await asyncio.wait_for(wait_for_invalid_branch_rejection(), timeout=5)
         self.assertEqual(self.store.tip(), original_tip)
