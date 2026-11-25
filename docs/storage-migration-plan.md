@@ -28,7 +28,10 @@ These names are a source-code inventory, not proof that any particular user's fi
 ## Implemented safety primitives
 
 - `inspect_legacy_node_databases(...)` opens the three legacy inputs read-only and checks required tables, known schema versions, SQLite integrity, foreign keys, path aliases, and a clean recovery journal. It does not prove consensus or full domain consistency.
-- `create_consistent_sqlite_snapshot(source_path, snapshot_path)` opens the source read-only, reserves a new destination exclusively, copies through SQLite's backup API, validates integrity and foreign keys on the snapshot, and removes only its own incomplete destination on failure. It refuses overwrite and source/destination identity. Tests exercise committed WAL data, source-file stability, overwrite refusal, alias refusal, and failed-backup cleanup.
+- `create_consistent_sqlite_snapshot(source_path, snapshot_path)` opens the source read-only, reserves a new destination exclusively, copies through SQLite's backup API, validates integrity and foreign keys on the snapshot, and removes only its own incomplete destination on failure. It refuses overwrite and source/destination identity.
+- `snapshot_legacy_node_databases(...)` preflights all three sources, creates three separate snapshots, re-runs preflight on the snapshots, and cleans up only snapshots created by the call if any stage fails.
+- `validate_snapshot_set_consistency(...)` checks active UTXO heights/parent linkage and requires each active UTXO block's serialized header to match the corresponding header-store row. It also checks the UTXO genesis against header metadata. This is a cross-file structural check, not a substitute for full header replay, block/transaction validation, or consensus review.
+- Tests cover committed WAL data, source-file stability, overwrite refusal, partial cleanup, clean three-store snapshots, and rejection of an active UTXO block absent from the header snapshot.
 - These helpers are not a migration command. They do not import or publish a coordinated node database.
 
 ## Required validation sequence
