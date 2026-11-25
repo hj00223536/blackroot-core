@@ -573,9 +573,8 @@ class PersistentNodeStateTests(unittest.TestCase):
                 "UPDATE block_bodies SET raw_block=? WHERE block_hash=?",
                 (raw[:-1] + bytes([raw[-1] ^ 1]), self.genesis_block.header.hash),
             )
-        reopened = self.state()
         with self.assertRaisesRegex(RuntimeError, "archived block body merkle root is corrupt"):
-            reopened.utxos.load_block_body(self.genesis_block.header.hash)
+            self.state()
 
 
 if __name__ == "__main__":
