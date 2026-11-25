@@ -247,7 +247,7 @@ class UTXOStore:
         """Insert a trusted bootstrap output; caller must authenticate its origin."""
         if not isinstance(outpoint, OutPoint) or not isinstance(output, TxOutput):
             raise TypeError("expected OutPoint and TxOutput")
-        with self._connection_scope() as db:
+        with self._write_scope() as db:
             if db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0]:
                 raise RuntimeError("bootstrap outputs cannot be added after chain activation")
             db.execute(
