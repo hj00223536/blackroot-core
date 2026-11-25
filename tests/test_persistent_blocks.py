@@ -162,6 +162,37 @@ class PersistentBlockTests(unittest.TestCase):
         self.assertEqual(reopened.tip(), (0, genesis.header.hash))
         self.assertEqual(reopened.get(coinbase_point), TxOutput(block_subsidy(0), locking_script))
 
+
+    def test_persistent_store_accepts_coinbase_spend_at_height_100(self):
+        point = _mul(1)
+        pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
+        locking_script = p2pkh_script(_hash160(pubkey))
+        genesis_cb = coinbase(block_subsidy(0), b"\x00\x00", locking_script)
+        previous = block_for([genesis_cb], timestamp=1)
+        self.store.connect_block(previous, 0)
+
+        for height in range(1, 100):
+            cb = coinbase(block_subsidy(height), bytes([height & 255, (height >> 8) & 255]))
+            previous = block_for([cb], previous=previous.header.hash, timestamp=height + 1)
+            self.store.connect_block(previous, height)
+
+        genesis_point = OutPoint(genesis_cb.txid, 0)
+        genesis_output = TxOutput(block_subsidy(0), locking_script)
+        spend = signed_spend(genesis_point, genesis_output, block_subsidy(0) - 100)
+        final_cb = coinbase(block_subsidy(100) + 100, b"\x64\x00")
+        final_block = block_for(
+            [final_cb, spend], previous=previous.header.hash, timestamp=101
+        )
+        self.assertEqual(self.store.connect_block(final_block, 100), 100)
+        self.assertIsNone(self.store.get(genesis_point))
+        final_point = OutPoint(final_cb.txid, 0)
+        with self.store._connect() as db:
+            row = db.execute(
+                "SELECT created_height, is_coinbase FROM utxos WHERE txid=? AND output_index=?",
+                (final_point.txid, final_point.index),
+            ).fetchone()
+        self.assertEqual(row, (100, 1))
+
     def test_disconnect_rejects_wrong_hash_without_mutation(self):
         cb = coinbase(block_subsidy(0), b"\x01\x01")
         block = block_for([cb])
