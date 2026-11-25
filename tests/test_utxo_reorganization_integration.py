@@ -59,8 +59,8 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(tip, (2, self.side_two.header.hash))
         self.assertEqual(self.store.tip(), tip)
-        self.assertIsNotNone(self.store.get_block(self.side_two.header.hash))
-        self.assertIsNone(self.store.get_block(self.old_one.header.hash))
+        self.assertIsNotNone(self.store.load_block_body(self.side_two.header.hash))
+        self.assertIsNone(self.store.load_block_body(self.old_one.header.hash))
 
     def test_missing_replacement_body_leaves_active_database_unchanged(self):
         before = self.store.tip()
@@ -72,11 +72,15 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
         self.assertEqual(self.store.tip(), before)
         self.assertEqual(self.store.tip(), (1, self.old_one.header.hash))
 
-    def test_equal_or_lower_work_does_not_reorganize(self):
-        self.assertEqual(
-            self.store.reorganize_to_best(self.headers, {}),
-            (2, self.side_two.header.hash),
-        )
+    def test_reorganization_is_idempotent_after_switch(self):
+        replacement = {
+            self.side_one.header.hash: self.side_one,
+            self.side_two.header.hash: self.side_two,
+        }
+        first = self.store.reorganize_to_best(self.headers, replacement)
+        second = self.store.reorganize_to_best(self.headers, replacement)
+        self.assertEqual(first, second)
+        self.assertEqual(second, (2, self.side_two.header.hash))
 
 
 if __name__ == "__main__":
