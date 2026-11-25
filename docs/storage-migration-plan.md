@@ -76,3 +76,21 @@ CREATE statements and row values, execute in an exclusively-created staging
 database, verify row counts and integrity, reopen through
 `PersistentNodeState.open_coordinated`, and retain all source snapshots. No
 production migration is authorized by the planner result.
+
+## Exclusive staged import (not production cutover)
+
+A guarded importer now accepts a previously validated three-snapshot set and an
+unused destination path. It reserves the destination with exclusive creation,
+recreates the original table DDL in dependency order, copies rows in bounded
+batches, recreates explicit indexes, and checks row counts, SQLite integrity,
+and foreign keys. It records SHA-256 digests for each source and the completed
+staging database. On failure it removes only the destination file it created;
+source snapshots remain read-only.
+
+The importer currently rejects schema features that the planner cannot safely
+reproduce (including views and triggers). The resulting file is a staging
+artifact, not a migrated production database. It must still be reopened using
+the exact network genesis and proof-of-work limit through
+`PersistentNodeState.open_coordinated`, then pass node-level recovery,
+transaction, script, and independent consensus review. No automatic cutover,
+legacy-source deletion, wallet release, or mainnet launch occurs.
