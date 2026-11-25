@@ -96,7 +96,7 @@ class ThreeNodeLoopbackTests(unittest.IsolatedAsyncioTestCase):
         for manager in self.remote_managers:
             await manager.close()
 
-    async def test_three_real_loopback_nodes_download_from_assigned_source(self):
+    async def test_three_peer_managers_download_from_assigned_source_with_mock_store(self):
         selected = await self.scheduler.request_block(
             self.block.header.hash, self.sync_service.peers
         )
