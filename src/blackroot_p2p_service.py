@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from .blackroot_chain import HeaderChain
 from .blackroot_p2p_header_sync import PeerHeaderSync
+from .blackroot_p2p_multi_peer_sync import MultiPeerBlockScheduler
+from .blackroot_p2p_inventory import INV_TYPE_BLOCK, decode_inventory
 from .blackroot_p2p_reorg_sync import MultiPeerReorganizationSync
 
 
@@ -33,6 +35,7 @@ class P2PSyncService:
         self.store = store
         self.request_timeout = float(request_timeout)
         self.reorg = MultiPeerReorganizationSync(chain, store)
+        self.blocks = MultiPeerBlockScheduler(chain, store)
         self._header_sync: dict[object, PeerHeaderSync] = {}
         self._previous_factory = getattr(manager, "on_peer_message_factory", None)
         self._previous_disconnect = getattr(manager, "on_peer_disconnected", None)
@@ -59,16 +62,51 @@ class P2PSyncService:
         async def dispatch(command: str, payload: bytes) -> None:
             if command in ("headers", "getheaders"):
                 await self._header_sync[peer].handle_message(peer, command, payload)
-                await self.reorg.request_missing_bodies(self._peers())
+                peers = self._peers()
+                await self.reorg.request_missing_bodies(peers)
+            elif command == "inv":
+                unknown_headers = False
+                for item in decode_inventory(payload):
+                    if item.kind != INV_TYPE_BLOCK:
+                        continue
+                    node = self.chain.node(item.item_hash)
+                    if node is None:
+                        unknown_headers = True
+                    elif self.chain.get(node.height).hash == item.item_hash:
+                        try:
+                            await self.blocks.request_block(item.item_hash, self._peers())
+                        except ValueError as exc:
+                            if "already has an assigned source" not in str(exc) and "already outstanding" not in str(exc):
+                                raise
+                if unknown_headers:
+                    await self._header_sync[peer].request_headers(peer)
             elif command == "block":
-                self.reorg.accept_block(peer, payload)
+                from .blackroot_blocks import Block
+                block_hash = Block.deserialize(payload).header.hash
+                if self.reorg.pool.assigned_peer(block_hash) == peer:
+                    self.reorg.accept_block(peer, payload)
+                elif self.blocks.pool.assigned_peer(block_hash) == peer:
+                    self.blocks.accept_block(peer, payload)
+                else:
+                    raise ValueError("block response was not assigned to this peer")
             elif command == "notfound":
-                released = self.reorg.peer_notfound(peer, payload)
-                if released:
-                    alternatives = self._peers()
-                    alternatives.pop(peer, None)
+                released_forks = self.reorg.peer_notfound(peer, payload)
+                released_best = []
+                for item in decode_inventory(payload):
+                    if item.kind == INV_TYPE_BLOCK and self.blocks.pool.assigned_peer(item.item_hash) == peer:
+                        if self.blocks.pool.cancel(item.item_hash):
+                            self.blocks.tracker.cancel(item.item_hash)
+                            released_best.append(item.item_hash)
+                alternatives = self._peers()
+                alternatives.pop(peer, None)
+                if released_forks and alternatives:
+                    await self.reorg.retry_released_bodies(released_forks, alternatives)
+                for block_hash in released_best:
                     if alternatives:
-                        await self.reorg.retry_released_bodies(released, alternatives)
+                        try:
+                            await self.blocks.request_block(block_hash, alternatives)
+                        except ValueError:
+                            pass
             elif previous is not None:
                 result = previous(command, payload)
                 if hasattr(result, "__await__"):
@@ -95,14 +133,20 @@ class P2PSyncService:
     async def peer_disconnected(self, peer) -> None:
         """Release a disconnected source and immediately retry on remaining peers."""
         self._header_sync.pop(peer, None)
-        released = self.reorg.peer_disconnected(peer)
-        if released:
+        released_forks = self.reorg.peer_disconnected(peer)
+        released_best = self.blocks.peer_disconnected(peer)
+        remaining = self._peers()
+        if released_forks:
             try:
-                await self.reorg.retry_released_bodies(released, self._peers())
+                await self.reorg.retry_released_bodies(released_forks, remaining)
             except ValueError:
-                # No eligible peer is currently available; the caller can
-                # initiate another sync attempt when a new peer connects.
                 pass
+        for block_hash in released_best:
+            if remaining:
+                try:
+                    await self.blocks.request_block(block_hash, remaining)
+                except ValueError:
+                    pass
         if self._previous_disconnect is not None:
             result = self._previous_disconnect(peer)
             if hasattr(result, "__await__"):
