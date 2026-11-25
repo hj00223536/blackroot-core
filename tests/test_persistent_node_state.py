@@ -165,6 +165,63 @@ class PersistentNodeStateTests(unittest.TestCase):
         finally:
             reopened.close()
 
+    def test_coordinated_multi_block_reorg_failure_rolls_back_entire_branch_switch(self):
+        state = self.coordinated_state()
+        try:
+            state.connect_best_block(self.genesis_block, 0)
+
+            def branch_block(parent_hash, height, timestamp, branch_tag):
+                tx = Transaction(
+                    1,
+                    (TxInput(
+                        OutPoint(ZERO_TXID, COINBASE_INDEX),
+                        script_sig=branch_tag + bytes([height + 1]),
+                    ),),
+                    (TxOutput(block_subsidy(height), b"miner-" + branch_tag),),
+                )
+                header = mine_header(parent_hash, merkle_root([tx.txid]), timestamp)
+                return Block(header, (tx,))
+
+            a1 = branch_block(self.genesis_block.header.hash, 1, 2, b"A")
+            a2 = branch_block(a1.header.hash, 2, 3, b"A")
+            for block, timestamp in ((a1, 2), (a2, 3)):
+                state.add_header(block.header, adjusted_time=timestamp)
+                state.archive_block_body(block)
+            state.reorganize_best()
+            original_tip = state.utxos.tip()
+            original_count = state.utxos.count()
+
+            b1 = branch_block(self.genesis_block.header.hash, 1, 4, b"B")
+            b2 = branch_block(b1.header.hash, 2, 5, b"B")
+            b3 = branch_block(b2.header.hash, 3, 6, b"B")
+            for block, timestamp in ((b1, 4), (b2, 5), (b3, 6)):
+                state.add_header(block.header, adjusted_time=timestamp)
+                state.archive_block_body(block)
+
+            original_reorganize = state.utxos.reorganize
+
+            def fail_after_full_utxo_switch(disconnect_hashes, connect_blocks):
+                result = original_reorganize(disconnect_hashes, connect_blocks)
+                raise RuntimeError("injected failure after replacement branch writes")
+
+            state.utxos.reorganize = fail_after_full_utxo_switch
+            with self.assertRaisesRegex(RuntimeError, "after replacement branch writes"):
+                state.reorganize_best()
+            state.utxos.reorganize = original_reorganize
+
+            self.assertEqual(state.utxos.tip(), original_tip)
+            self.assertEqual(state.utxos.count(), original_count)
+            self.assertFalse(state.recovery_journal.pending())
+            state.utxos.verify_integrity()
+            state._verify_persistent_tip()
+
+            # The same greater-work branch can be applied cleanly after rollback.
+            self.assertEqual(state.reorganize_best(), (3, b3.header.hash))
+            self.assertEqual(state.utxos.tip(), (3, b3.header.hash))
+            self.assertFalse(state.recovery_journal.pending())
+        finally:
+            state.close()
+
     def test_coordinated_reorganization_rolls_back_utxo_and_journal_on_fault(self):
         state = self.coordinated_state()
         try:
