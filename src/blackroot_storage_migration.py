@@ -500,8 +500,10 @@ def inspect_staged_import_artifact(database_path: str | Path) -> dict:
         return {"status": "not_readable_sqlite", "database": str(path)}
 
     try:
+        checked_sqlite = False
         try:
             integrity = db.execute("PRAGMA quick_check").fetchone()
+            checked_sqlite = True
             if integrity is None or integrity[0] != "ok":
                 return {
                     "status": "sqlite_integrity_failed",
@@ -565,7 +567,8 @@ def inspect_staged_import_artifact(database_path: str | Path) -> dict:
                 "production_validated": False,
             }
         except sqlite3.DatabaseError:
-            return {"status": "sqlite_inspection_failed", "database": str(path)}
+            status = "sqlite_inspection_failed" if checked_sqlite else "not_readable_sqlite"
+            return {"status": status, "database": str(path)}
     finally:
         db.close()
 
