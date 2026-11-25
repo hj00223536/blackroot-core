@@ -13,11 +13,11 @@
 | Work hash | SHA-256d |
 | Target block interval | 600 seconds |
 | Retarget interval | 2,016 blocks |
-| Initial subsidy | 5,000,000,000 atomic units (50 BROOT) |
+| Initial subsidy | 5,000,000,000 atomic units (50 BRT) |
 | Halving interval | 210,000 blocks |
-| Precision | 100,000,000 atomic units per BROOT |
+| Precision | 100,000,000 atomic units per BRT |
 | Premine | None proposed |
-| Supply ceiling | 2,100,000,000,000,000 atomic units (21 million BROOT) |
+| Supply ceiling | 2,100,000,000,000,000 atomic units (21 million BRT) |
 
 These are design targets, not a frozen network specification or a promise
 that any token has been issued or has monetary value.
