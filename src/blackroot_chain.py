@@ -150,13 +150,13 @@ class HeaderChain:
             height, parent_work = parent.height + 1, parent.chainwork
             if header.timestamp <= self.median_time_past(header.prev_hash):
                 raise ValueError("timestamp must be greater than median-time-past")
+        target = decode_compact_target(header.bits)
+        if target > self.pow_limit:
+            raise ValueError("target exceeds network proof-of-work limit")
         if header.prev_hash != ZERO_HASH:
             required_bits = self.expected_bits(header.prev_hash, height)
             if header.bits != required_bits:
                 raise ValueError("incorrect proof-of-work difficulty bits")
-        target = decode_compact_target(header.bits)
-        if target > self.pow_limit:
-            raise ValueError("target exceeds network proof-of-work limit")
         if not check_proof_of_work(header.serialize(), header.bits, self.pow_limit):
             raise ValueError("insufficient proof of work")
         node = HeaderNode(header, height, parent_work + block_work(target), header.prev_hash)
