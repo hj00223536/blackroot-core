@@ -1,12 +1,13 @@
 # Coinbase maturity: implementation contract
 
-**Status: PARTIALLY IMPLEMENTED (not active in persistent chain state).**
-`src/blackroot_maturity.py` defines the 100-block rule and authenticated
-provenance type. `validate_block_transactions` can enforce it when the caller
-supplies complete `parent_provenance`. The SQLite UTXO store does not yet persist
-that provenance or supply it, so its normal `connect_block` and reorganization
-paths do not currently enforce maturity. Do not treat the node prototype as
-having full coinbase-maturity consensus.
+**Status: IMPLEMENTED IN THE EXPERIMENTAL UTXO BLOCK PATH; NOT MAINNET-READY.**
+`src/blackroot_maturity.py` defines the 100-block rule. Schema v2 stores
+`created_height` and `is_coinbase` for live UTXOs and spent-output undo records.
+`connect_block` and replacement-branch connection supply complete provenance
+to the shared validator, so both paths reject premature coinbase spends.
+Disconnect/reorganization restore provenance. The standalone accounting-only
+`apply` helper is not a consensus path. Header consensus, safe v1 replay/reindex,
+and production review remain incomplete.
 
 ## Consensus rule
 
@@ -51,20 +52,15 @@ discard or relabel user state.
 ## Completed prototype tests
 
 The unit suite covers the height-99 rejection, height-100 acceptance, invalid
-or incomplete provenance rejection, and provenance metadata validation. These
-tests exercise the block validator's optional provenance-aware path; they do
-not prove persistent-store enforcement.
+or incomplete provenance rejection, persistent coinbase-origin storage, block
+connection rejection of an immature spend, reorganization rejection with full
+rollback, and safe refusal of schema-v1 databases with live UTXOs.
 
-## Required tests before marking implemented
+## Remaining tests and release gates
 
-- reject a spend at age 99 and accept at age 100;
-- reject a same-block coinbase spend;
-- preserve provenance after database reopen;
-- restore provenance after disconnect;
-- enforce maturity on replacement branches during reorganization;
-- roll back the entire reorganization if a replacement spend is immature;
-- refuse unsafe schema-v1 migration when provenance cannot be reconstructed;
-- replay/reindex produces the same UTXO set and metadata deterministically.
+- exercise a persistent-store spend at exact maturity height 100;
+- verify provenance restoration after disconnect and after a multi-block reorganization;
+- implement and test deterministic verified replay/reindex for schema v1, or continue refusing migration.
 
 ## Security boundary
 
