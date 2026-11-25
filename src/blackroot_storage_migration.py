@@ -334,6 +334,8 @@ def import_snapshot_set_to_coordinated_database(
     plan = plan_coordinated_schema_merge(
         sources["header"], sources["utxo"], sources["journal"]
     )
+    if any(item["name"] == "blackroot_import_manifest" for item in plan["objects"]):
+        raise RuntimeError("source schema uses reserved blackroot_import_manifest name")
     source_hashes = {kind: _sha256_file(path) for kind, path in sources.items()}
 
     descriptor = os.open(destination, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
