@@ -118,6 +118,10 @@ class PeerSyncCoordinator:
             if item.kind != INV_TYPE_BLOCK or self.block_provider is None:
                 unavailable.append(item)
                 continue
+            node = self.chain.node(item.item_hash)
+            if node is None or self.chain.get(node.height).hash != item.item_hash:
+                unavailable.append(item)
+                continue
             body = self.block_provider(item.item_hash)
             if body is None:
                 unavailable.append(item)
@@ -127,6 +131,8 @@ class PeerSyncCoordinator:
             block = Block.deserialize(body)
             if block.header.hash != item.item_hash:
                 raise ValueError("block provider returned a body for a different hash")
+            if block.header.serialize() != node.header.serialize():
+                raise ValueError("block provider body does not match selected validated header")
             await peer.send("block", body)
         if unavailable:
             await peer.send("notfound", encode_inventory(unavailable))
