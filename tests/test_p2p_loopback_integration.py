@@ -29,7 +29,7 @@ class LoopbackSyncIntegrationTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.chain = HeaderChain(POW_LIMIT, genesis())
         self.server_sync = PeerSyncCoordinator(
-            PeerHeaderSync(self.chain, protocol_version=1)
+            PeerHeaderSync(self.chain, protocol_version=1, adjusted_time=lambda: 1_800_000_000)
         )
         self.client_sync = PeerSyncCoordinator(
             PeerHeaderSync(self.chain, protocol_version=1)
