@@ -59,6 +59,27 @@ class SQLiteTransactionCoordinatorTests(unittest.TestCase):
                 (1,),
             )
 
+    def test_store_facade_cannot_commit_rollback_or_close_owner_connection(self):
+        with SQLiteTransactionCoordinator(self.path) as coordinator:
+            db = coordinator.connection
+            with self.assertRaisesRegex(RuntimeError, "cannot commit"):
+                db.commit()
+            with self.assertRaisesRegex(RuntimeError, "cannot roll back"):
+                db.rollback()
+            with self.assertRaisesRegex(RuntimeError, "cannot close"):
+                db.close()
+            self.assertEqual(db.execute("SELECT 1").fetchone(), (1,))
+
+    def test_store_context_manager_does_not_commit_outer_transaction(self):
+        with SQLiteTransactionCoordinator(self.path) as coordinator:
+            with coordinator.transaction() as db:
+                db.execute("CREATE TABLE sample (value INTEGER PRIMARY KEY)")
+                with db:
+                    db.execute("INSERT INTO sample(value) VALUES(9)")
+                self.assertTrue(db.in_transaction)
+            self.assertFalse(db.in_transaction)
+            self.assertEqual(db.execute("SELECT value FROM sample").fetchall(), [(9,)])
+
 
 if __name__ == "__main__":
     unittest.main()
