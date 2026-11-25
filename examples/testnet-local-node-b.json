@@ -1,0 +1,17 @@
+{
+  "network_id": "blackroot-local-candidate-2026-11-25",
+  "message_magic": "b2a1c3d4",
+  "protocol_version": 1,
+  "genesis_header": {
+    "version": 1,
+    "prev_hash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "merkle_root": "2ea49004101bc7a1b366021340f31f4d0c6abf24476a46723edd5530af3a9935",
+    "timestamp": 1795564800,
+    "bits": 545259519,
+    "nonce": 0
+  },
+  "genesis_hash": "6922929c0b3c5564a5c29129bfb1a2adb4852f8e8a8e22e271c7fc1507a7d012",
+  "pow_limit": "0x7fffff0000000000000000000000000000000000000000000000000000000000",
+  "max_peers": 4,
+  "p2p_port": 18445
+}
