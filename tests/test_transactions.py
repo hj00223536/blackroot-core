@@ -32,8 +32,8 @@ class TransactionTests(unittest.TestCase):
     def test_legacy_transaction_round_trip(self):
         tx = Transaction(
             2,
-            (TxInput(self.funding, b"\\x01\\x02", 0xFFFFFFFE),),
-            (TxOutput(123456, b"\\x51\\x21"),),
+            (TxInput(self.funding, b"\x01\x02", 0xFFFFFFFE),),
+            (TxOutput(123456, b"\x51\x21"),),
             42,
         )
         decoded = Transaction.deserialize(tx.serialize())
@@ -44,10 +44,10 @@ class TransactionTests(unittest.TestCase):
         tx = Transaction(1, (TxInput(self.funding),), (TxOutput(1, b"x"),))
         raw = tx.serialize()
         with self.assertRaisesRegex(ValueError, "trailing bytes"):
-            Transaction.deserialize(raw + b"\\x00")
+            Transaction.deserialize(raw + b"\x00")
         with self.assertRaisesRegex(ValueError, "truncated"):
             Transaction.deserialize(raw[:-1])
-        noncanonical = raw[:4] + b"\\xfd\\x01\\x00" + raw[5:]
+        noncanonical = raw[:4] + b"\xfd\x01\x00" + raw[5:]
         with self.assertRaisesRegex(ValueError, "non-canonical"):
             Transaction.deserialize(noncanonical)
 
