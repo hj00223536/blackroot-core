@@ -1,0 +1,77 @@
+import unittest
+
+from src.blackroot_chain import BlockHeader, ZERO_HASH
+from src.blackroot_consensus import decode_compact_target
+from src.blackroot_node_config import TestnetConfig
+from src.blackroot_p2p_handshake import VersionMessage
+
+BITS = 0x207FFFFF
+LIMIT = decode_compact_target(BITS)
+
+
+def valid_header():
+    # Fixed vector mined in-process solely for this unit fixture.
+    from src.blackroot_consensus import check_proof_of_work
+    for nonce in range(10000):
+        header = BlockHeader(1, ZERO_HASH, b"t" * 32, 1, BITS, nonce)
+        if check_proof_of_work(header.serialize(), BITS, LIMIT):
+            return header
+    raise AssertionError("could not create test fixture")
+
+
+def config(**overrides):
+    header = valid_header()
+    values = dict(
+        network_id="blackroot-local-testnet-candidate",
+        message_magic=bytes.fromhex("b2a1c3d4"),
+        protocol_version=1,
+        genesis_header=header,
+        genesis_hash=header.hash,
+        pow_limit=LIMIT,
+        p2p_port=0,
+        max_peers=4,
+    )
+    values.update(overrides)
+    return TestnetConfig(**values)
+
+
+class TestnetConfigTests(unittest.TestCase):
+    def test_explicit_config_creates_manager_with_matching_identity(self):
+        settings = config()
+        version = VersionMessage(1, 0, 1, 2, 0, "/blackroot:config-test/")
+        manager = settings.create_peer_manager(version)
+        self.assertEqual(manager.magic, settings.message_magic)
+        self.assertEqual(manager.local_version.protocol_version, 1)
+        self.assertEqual(manager.max_peers, 4)
+
+    def test_genesis_hash_must_match_header(self):
+        with self.assertRaisesRegex(ValueError, "does not match"):
+            config(genesis_hash=bytes(32))
+
+    def test_genesis_must_satisfy_configured_pow_limit(self):
+        with self.assertRaisesRegex(ValueError, "proof of work limit"):
+            config(pow_limit=1)
+
+    def test_reject_production_network_names_and_zero_magic(self):
+        with self.assertRaisesRegex(ValueError, "production network name"):
+            config(network_id="mainnet")
+        with self.assertRaisesRegex(ValueError, "all-zero"):
+            config(message_magic=bytes(4))
+
+    def test_manager_requires_matching_protocol_version(self):
+        settings = config()
+        version = VersionMessage(2, 0, 1, 2, 0, "/blackroot:test/")
+        with self.assertRaisesRegex(ValueError, "does not match"):
+            settings.create_peer_manager(version)
+
+    def test_listener_host_is_loopback_only(self):
+        settings = config()
+        self.assertEqual(settings.validate_bind_host("127.0.0.1"), "127.0.0.1")
+        self.assertEqual(settings.validate_bind_host("::1"), "::1")
+        for host in ("0.0.0.0", "192.0.2.1", "localhost"):
+            with self.subTest(host=host), self.assertRaises(ValueError):
+                settings.validate_bind_host(host)
+
+
+if __name__ == "__main__":
+    unittest.main()
