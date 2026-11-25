@@ -81,6 +81,10 @@ class PeerSyncCoordinator:
 
         raise ValueError(f"unsupported sync command: {command}")
 
+    def peer_disconnected(self) -> tuple[bytes, ...]:
+        """Release body requests owned by a peer that has disconnected."""
+        return self.requests.cancel_all()
+
     async def retry_expired_requests(self, peer, timeout: float, *, now: float | None = None) -> tuple[bytes, ...]:
         """Reissue expired body requests to this connected peer.
 
