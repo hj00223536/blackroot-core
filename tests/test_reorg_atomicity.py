@@ -165,5 +165,57 @@ class ReorganizationAtomicityTests(unittest.TestCase):
             store.verify_integrity()
 
 
+    def test_successful_reorganization_state_survives_store_reopen(self):
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "chain.sqlite"
+            store = UTXOStore(database)
+            genesis = mined_block(0, ZERO_HASH, 1)
+            chain = HeaderChain(POW_LIMIT, genesis.header)
+            old = mined_block(1, genesis.header.hash, 2)
+            chain.add(old.header)
+            store.connect_validated_block(genesis, 0, chain)
+            store.connect_validated_block(old, 1, chain)
+
+            fork_one = mined_block(1, genesis.header.hash, 3)
+            fork_two = mined_block(2, fork_one.header.hash, 4)
+            chain.add_to_branch(fork_one.header)
+            chain.add_to_branch(fork_two.header)
+            for block in (fork_one, fork_two):
+                store.store_block_body(block)
+
+            expected_tip = store.reorganize_to_best(chain)
+            self.assertEqual(expected_tip, (2, fork_two.header.hash))
+            expected_headers = store.active_block_headers()
+            with store._connection_scope() as db:
+                expected_utxos = db.execute(
+                    "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
+                    "FROM utxos ORDER BY txid, output_index"
+                ).fetchall()
+                expected_blocks = db.execute(
+                    "SELECT height, block_hash, prev_hash, header, tx_count, total_fees "
+                    "FROM blocks ORDER BY height"
+                ).fetchall()
+
+            reopened = UTXOStore(database)
+            self.assertEqual(reopened.tip(), expected_tip)
+            self.assertEqual(reopened.active_block_headers(), expected_headers)
+            with reopened._connection_scope() as db:
+                self.assertEqual(
+                    db.execute(
+                        "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
+                        "FROM utxos ORDER BY txid, output_index"
+                    ).fetchall(),
+                    expected_utxos,
+                )
+                self.assertEqual(
+                    db.execute(
+                        "SELECT height, block_hash, prev_hash, header, tx_count, total_fees "
+                        "FROM blocks ORDER BY height"
+                    ).fetchall(),
+                    expected_blocks,
+                )
+            reopened.verify_integrity()
+
+
 if __name__ == "__main__":
     unittest.main()
