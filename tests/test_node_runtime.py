@@ -1,3 +1,4 @@
+import asyncio
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,6 +7,7 @@ from src.blackroot_blocks import Block, COINBASE_INDEX, ZERO_TXID
 from src.blackroot_chain import BlockHeader, ZERO_HASH
 from src.blackroot_consensus import check_proof_of_work, decode_compact_target
 from src.blackroot_node_runtime import BlackrootNodeRuntime
+from src.blackroot_node import wait_for_peer_handshake
 from src.blackroot_node_state import PersistentNodeState
 from src.blackroot_p2p_handshake import VersionMessage
 from src.blackroot_p2p_manager import PeerManager
@@ -122,6 +124,52 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
             await self.runtime.listen()
         with self.assertRaisesRegex(RuntimeError, "runtime is closed"):
             await self.runtime.synchronize()
+
+    async def test_two_independent_runtimes_handshake_and_request_headers(self):
+        root = Path(self.temp.name)
+        genesis = self.state.headers.chain.get(0)
+        remote_state = PersistentNodeState(
+            root / "remote-headers.sqlite",
+            root / "remote-utxos.sqlite",
+            POW_LIMIT,
+            genesis,
+        )
+        remote_manager = PeerManager(
+            magic=MAGIC,
+            local_version=VersionMessage(
+                1, 0, 1_800_000_002, 303, 0, "/blackroot:remote-test/"
+            ),
+            max_peers=4,
+            handshake_timeout=2,
+            idle_timeout=5,
+        )
+        remote = BlackrootNodeRuntime(
+            remote_state, remote_manager, protocol_version=1, request_timeout=1
+        )
+        try:
+            host, port = await remote.listen("127.0.0.1", 0)
+            peer = await self.runtime.connect(host, port)
+            await wait_for_peer_handshake(peer, timeout=2)
+
+            async def wait_remote():
+                while not any(item.connected for item in remote.manager.peers):
+                    await asyncio.sleep(0.01)
+            await asyncio.wait_for(wait_remote(), timeout=2)
+
+            sent = await self.runtime.synchronize()
+            self.assertEqual(tuple(sent), (peer,))
+            self.assertEqual(peer.remote_version.protocol_version, 1)
+            self.assertEqual(
+                self.runtime.state.headers.chain.tip.hash,
+                remote.state.headers.chain.tip.hash,
+            )
+            self.assertEqual(
+                self.runtime.state.headers.chain.get(0).hash,
+                remote.state.headers.chain.get(0).hash,
+            )
+        finally:
+            await remote.close()
+            remote_state.close()
 
 
 if __name__ == "__main__":
