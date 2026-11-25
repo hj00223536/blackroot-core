@@ -24,7 +24,7 @@ def der_signature(r, s):
     return b"\x30" + bytes([len(body)]) + body
 
 
-def signed_spend(previous, previous_output, private_key=1):
+def signed_spend(previous, previous_output, private_key=1, output_script=b'pay'):
     point = _mul(private_key)
     pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
     unsigned = Transaction(
@@ -108,10 +108,8 @@ class BlockValidationTests(unittest.TestCase):
 
     def test_rejects_cross_transaction_double_spend_without_mutating_parent(self):
         first_spend = signed_spend(self.funding, self.previous_output)
-        second_spend = signed_spend(self.funding, self.previous_output, private_key=1)
-        # Different transaction serialization/txid, same consumed parent outpoint.
-        second_spend = Transaction(
-            2, second_spend.inputs, second_spend.outputs
+        second_spend = signed_spend(
+            self.funding, self.previous_output, output_script=b'other'
         )
         block = make_block([make_coinbase(1), first_spend, second_spend])
         original_parent = dict(self.parent)
