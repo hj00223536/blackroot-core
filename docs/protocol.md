@@ -7,7 +7,7 @@
 | Item | Current target |
 |---|---|
 | Network | Independent chain |
-| Asset | BROOT (provisional ticker) |
+| Asset | BRT (provisional ticker) |
 | Ledger | UTXO |
 | Consensus | Proof of Work |
 | Work hash | SHA-256d |
@@ -76,6 +76,8 @@ node application are not complete.
 - Wallet derivation, address checksums, backup/restore, and hardware-wallet
   compatibility
 - Upgrade/versioning and activation process
+
+A versioned engineering inventory of known parameters and unresolved launch gates is maintained in docs/testnet-protocol-v0.1-draft.md. That document is explicitly non-normative and does not authorize activation.
 
 No implementation may silently change a consensus rule after launch. Every
 consensus change needs a versioned specification, test vectors, compatibility
