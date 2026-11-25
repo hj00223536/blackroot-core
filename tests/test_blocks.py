@@ -141,6 +141,16 @@ class BlockValidationTests(unittest.TestCase):
         )
         self.assertNotIn(self.funding, result)
 
+    def test_bip68_does_not_apply_to_transaction_version_one(self):
+        spend = signed_spend(
+            self.funding, self.previous_output, version=1, sequence=100
+        )
+        provenance = {self.funding: UTXOProvenance(0, False)}
+        result, _fees = validate_block_transactions(
+            make_block([make_coinbase(1), spend]), self.parent, 1, provenance
+        )
+        self.assertNotIn(self.funding, result)
+
     def test_bip68_zero_height_lock_can_spend_prior_same_block_output(self):
         first = signed_spend(
             self.funding, self.previous_output,
