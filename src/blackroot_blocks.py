@@ -19,11 +19,14 @@ from .blackroot_transactions import (
     TxOutput,
     apply_transaction,
     merkle_root,
+    compact_size,
 )
 
 COINBASE_INDEX = 0xFFFFFFFF
 ZERO_TXID = bytes(32)
 MAX_BLOCK_TRANSACTIONS = 100_000
+# Provisional legacy-block byte ceiling; finalize only with protocol test vectors.
+MAX_BLOCK_SIZE = 1_000_000
 
 
 def is_coinbase(tx: Transaction) -> bool:
@@ -49,6 +52,16 @@ class Block:
             raise ValueError("block must contain a supported transaction count")
         if not all(isinstance(tx, Transaction) for tx in self.transactions):
             raise TypeError("all block entries must be transactions")
+
+        if self.serialized_size > MAX_BLOCK_SIZE:
+            raise ValueError("serialized block exceeds provisional size limit")
+
+    @property
+    def serialized_size(self) -> int:
+        """Return legacy serialized header, transaction count, and body size."""
+        return 80 + len(compact_size(len(self.transactions))) + sum(
+            len(tx.serialize()) for tx in self.transactions
+        )
 
 
 def _output_total(outputs: tuple[TxOutput, ...]) -> int:
