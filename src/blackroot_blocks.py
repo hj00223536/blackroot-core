@@ -8,6 +8,7 @@ header PoW/difficulty/timestamps and other rules remain unimplemented.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import struct
 
 from .blackroot_consensus import block_subsidy, MAX_MONEY
 from .blackroot_maturity import UTXOProvenance, validate_coinbase_maturity
@@ -20,6 +21,8 @@ from .blackroot_transactions import (
     apply_transaction,
     merkle_root,
     compact_size,
+    _read_compact_size,
+    _deserialize_transaction_from,
 )
 
 COINBASE_INDEX = 0xFFFFFFFF
@@ -55,6 +58,33 @@ class Block:
 
         if self.serialized_size > MAX_BLOCK_SIZE:
             raise ValueError("serialized block exceeds provisional size limit")
+
+    def serialize(self) -> bytes:
+        return self.header.serialize() + compact_size(len(self.transactions)) + b"".join(
+            tx.serialize() for tx in self.transactions
+        )
+
+    @classmethod
+    def deserialize(cls, raw: bytes) -> "Block":
+        """Parse a complete legacy block and reject malformed or trailing data."""
+        if not isinstance(raw, bytes):
+            raise TypeError("serialized block must be bytes")
+        if len(raw) < 81:
+            raise ValueError("truncated block header or transaction count")
+        if len(raw) > MAX_BLOCK_SIZE:
+            raise ValueError("serialized block exceeds provisional size limit")
+        version, prev_hash, root, timestamp, bits, nonce = struct.unpack("<i32s32sIII", raw[:80])
+        header = BlockHeader(version, prev_hash, root, timestamp, bits, nonce)
+        count, offset = _read_compact_size(raw, 80)
+        if not 1 <= count <= MAX_BLOCK_TRANSACTIONS:
+            raise ValueError("unsupported block transaction count")
+        transactions = []
+        for _ in range(count):
+            tx, offset = _deserialize_transaction_from(raw, offset)
+            transactions.append(tx)
+        if offset != len(raw):
+            raise ValueError("trailing bytes after serialized block")
+        return cls(header, tuple(transactions))
 
     @property
     def serialized_size(self) -> int:
