@@ -7,6 +7,7 @@ from src.blackroot_chain import BlockHeader, HeaderChain
 from src.blackroot_consensus import block_subsidy, check_proof_of_work, decode_compact_target
 from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput, merkle_root
 from src.blackroot_utxo_db import UTXOStore
+from src.blackroot_sqlite import SQLiteTransactionCoordinator
 
 BITS = 0x207fffff
 POW_LIMIT = decode_compact_target(BITS)
@@ -59,6 +60,40 @@ class ValidatedConnectionTests(unittest.TestCase):
     def test_rejects_wrong_header_chain_type(self):
         with self.assertRaisesRegex(TypeError, "header_chain"):
             self.store.connect_validated_block(self.genesis, 0, object())
+
+    def test_connect_block_uses_coordinator_owned_transaction(self):
+        shared_path = Path(self.tmp.name) / "shared.sqlite"
+        with SQLiteTransactionCoordinator(shared_path) as coordinator:
+            with coordinator.transaction() as connection:
+                store = UTXOStore(shared_path, connection=connection)
+                self.assertEqual(
+                    store.connect_validated_block(self.genesis, 0, self.headers), 0
+                )
+                self.assertEqual(store.tip(), (0, self.genesis.header.hash))
+        reopened = UTXOStore(shared_path)
+        self.assertEqual(reopened.tip(), (0, self.genesis.header.hash))
+
+    def test_outer_rollback_reverts_complete_utxo_block_connection(self):
+        shared_path = Path(self.tmp.name) / "rollback-block.sqlite"
+        with SQLiteTransactionCoordinator(shared_path) as coordinator:
+            with self.assertRaisesRegex(RuntimeError, "abort after block connection"):
+                with coordinator.transaction() as connection:
+                    store = UTXOStore(shared_path, connection=connection)
+                    store.connect_validated_block(self.genesis, 0, self.headers)
+                    self.assertEqual(store.tip(), (0, self.genesis.header.hash))
+                    raise RuntimeError("abort after block connection")
+        with __import__("sqlite3").connect(shared_path) as db:
+            tables = db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='blocks'"
+            ).fetchall()
+        self.assertEqual(tables, [])
+
+    def test_coordinator_mode_requires_active_outer_transaction_for_block_write(self):
+        shared_path = Path(self.tmp.name) / "no-outer.sqlite"
+        with SQLiteTransactionCoordinator(shared_path) as coordinator:
+            store = UTXOStore(shared_path, connection=coordinator.connection)
+            with self.assertRaisesRegex(RuntimeError, "active outer transaction"):
+                store.connect_block(self.genesis, 0)
 
 
 if __name__ == "__main__":
