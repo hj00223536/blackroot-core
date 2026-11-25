@@ -289,3 +289,93 @@ def snapshot_legacy_node_databases(
                 except FileNotFoundError:
                     pass
         raise
+
+
+def validate_snapshot_set_consistency(
+    header_snapshot_path: str | Path,
+    utxo_snapshot_path: str | Path,
+    recovery_journal_snapshot_path: str | Path,
+) -> dict:
+    """Cross-check active UTXO block headers against the replay source snapshot.
+
+    This performs structural cross-file checks only. Full consensus replay is
+    still performed when opening the staged database with the node stores.
+    """
+    reports = inspect_legacy_node_databases(
+        header_snapshot_path, utxo_snapshot_path, recovery_journal_snapshot_path
+    )
+    header_path = Path(header_snapshot_path).expanduser().resolve(strict=True)
+    utxo_path = Path(utxo_snapshot_path).expanduser().resolve(strict=True)
+    from .blackroot_chain import BlockHeader
+
+    header_db = _readonly_connection(header_path)
+    utxo_db = _readonly_connection(utxo_path)
+    try:
+        header_columns = {
+            row[1] for row in header_db.execute("PRAGMA table_info(headers)")
+        }
+        required_header_columns = {
+            "block_hash", "height", "version", "prev_hash", "merkle_root",
+            "timestamp", "bits", "nonce",
+        }
+        if not required_header_columns.issubset(header_columns):
+            raise RuntimeError("header snapshot lacks columns required for cross-store validation")
+
+        header_rows = header_db.execute(
+            "SELECT block_hash, height, version, prev_hash, merkle_root, timestamp, bits, nonce "
+            "FROM headers"
+        ).fetchall()
+        headers_by_hash = {}
+        for row in header_rows:
+            block_hash, height, version, prev_hash, merkle_root, timestamp, bits, nonce = row
+            header = BlockHeader(
+                version, bytes(prev_hash), bytes(merkle_root), timestamp, bits, nonce
+            )
+            if header.hash != bytes(block_hash):
+                raise RuntimeError("header snapshot contains a header hash mismatch")
+            headers_by_hash[bytes(block_hash)] = (height, header.serialize())
+
+        block_columns = {
+            row[1] for row in utxo_db.execute("PRAGMA table_info(blocks)")
+        }
+        required_block_columns = {
+            "height", "block_hash", "prev_hash", "header",
+        }
+        if not required_block_columns.issubset(block_columns):
+            raise RuntimeError("UTXO snapshot lacks columns required for cross-store validation")
+
+        active_rows = utxo_db.execute(
+            "SELECT height, block_hash, prev_hash, header FROM blocks ORDER BY height"
+        ).fetchall()
+        expected_parent = bytes(32)
+        for expected_height, (height, block_hash, prev_hash, raw_header) in enumerate(active_rows):
+            block_hash = bytes(block_hash)
+            prev_hash = bytes(prev_hash)
+            if height != expected_height:
+                raise RuntimeError("UTXO active block heights are not contiguous")
+            if prev_hash != expected_parent:
+                raise RuntimeError("UTXO active block parent linkage is inconsistent")
+            header_record = headers_by_hash.get(block_hash)
+            if header_record is None:
+                raise RuntimeError("active UTXO block is missing from the header snapshot")
+            header_height, serialized_header = header_record
+            if header_height != height or serialized_header != bytes(raw_header):
+                raise RuntimeError("active UTXO block header disagrees with header snapshot")
+            if height == 0 and block_hash != bytes.fromhex(
+                dict(header_db.execute("SELECT key, value FROM header_metadata"))
+                ["genesis_hash"]
+            ):
+                raise RuntimeError("UTXO genesis does not match header snapshot genesis")
+            expected_parent = block_hash
+
+        tip = None if not active_rows else (active_rows[-1][0], bytes(active_rows[-1][1]).hex())
+        return {
+            "status": "snapshot_set_consistent",
+            "migration_performed": False,
+            "active_utxo_blocks_checked": len(active_rows),
+            "active_utxo_tip": tip,
+            "preflight": reports,
+        }
+    finally:
+        header_db.close()
+        utxo_db.close()
