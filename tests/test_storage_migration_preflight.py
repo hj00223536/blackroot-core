@@ -5,9 +5,23 @@ import os
 import src.blackroot_storage_migration as migration_module
 import sqlite3
 import tempfile
+from contextlib import contextmanager
 import unittest
 from unittest.mock import patch
 from pathlib import Path
+
+@contextmanager
+def _managed_sqlite(path):
+    connection = sqlite3.connect(path)
+    try:
+        yield connection
+        connection.commit()
+    except BaseException:
+        if connection.in_transaction:
+            connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 from src.blackroot_chain import BlockHeader, ZERO_HASH
 from src.blackroot_blocks import Block, COINBASE_INDEX, ZERO_TXID
@@ -56,7 +70,7 @@ class LegacyStoragePreflightTests(unittest.TestCase):
         self._make_sources()
 
     def _make_sources(self):
-        with sqlite3.connect(self.header) as db:
+        with _managed_sqlite(self.header) as db:
             db.execute("CREATE TABLE header_metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
             db.execute("INSERT INTO header_metadata VALUES('schema_version', '1')")
             pow_limit = decode_compact_target(0x207fffff)
@@ -75,7 +89,7 @@ class LegacyStoragePreflightTests(unittest.TestCase):
                  str(block_work(pow_limit))),
             )
 
-        with sqlite3.connect(self.utxo) as db:
+        with _managed_sqlite(self.utxo) as db:
             db.execute("CREATE TABLE metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
             db.execute("INSERT INTO metadata VALUES('schema_version', '2')")
             db.execute("""CREATE TABLE blocks(
@@ -90,7 +104,7 @@ class LegacyStoragePreflightTests(unittest.TestCase):
                 "height INTEGER REFERENCES blocks(height) ON DELETE CASCADE)"
             )
 
-        with sqlite3.connect(self.journal) as db:
+        with _managed_sqlite(self.journal) as db:
             db.execute("""
                 CREATE TABLE recovery_intent (
                     singleton INTEGER PRIMARY KEY,
@@ -137,7 +151,7 @@ class LegacyStoragePreflightTests(unittest.TestCase):
         self.assertEqual(before, {p: p.read_bytes() for p in before})
 
     def test_schema_merge_plan_rejects_virtual_tables(self):
-        with sqlite3.connect(self.journal) as db:
+        with _managed_sqlite(self.journal) as db:
             try:
                 db.execute("CREATE VIRTUAL TABLE unsupported_search USING fts5(content)")
             except sqlite3.OperationalError as exc:
@@ -146,9 +160,9 @@ class LegacyStoragePreflightTests(unittest.TestCase):
             plan_coordinated_schema_merge(self.header, self.utxo, self.journal)
 
     def test_schema_merge_plan_rejects_global_index_name_collisions(self):
-        with sqlite3.connect(self.header) as db:
+        with _managed_sqlite(self.header) as db:
             db.execute("CREATE INDEX shared_name ON headers(height)")
-        with sqlite3.connect(self.journal) as db:
+        with _managed_sqlite(self.journal) as db:
             db.execute("CREATE INDEX shared_name ON recovery_intent(singleton)")
         with self.assertRaisesRegex(RuntimeError, "schema object name collision"):
             plan_coordinated_schema_merge(self.header, self.utxo, self.journal)
@@ -158,7 +172,7 @@ class LegacyStoragePreflightTests(unittest.TestCase):
             inspect_legacy_node_databases(self.header, self.utxo, self.header)
 
     def test_rejects_unresolved_recovery_intent(self):
-        with sqlite3.connect(self.journal) as db:
+        with _managed_sqlite(self.journal) as db:
             db.execute(
                 "INSERT INTO recovery_intent VALUES(1, NULL, NULL, 0, ?)",
                 (bytes(32),),
@@ -167,7 +181,7 @@ class LegacyStoragePreflightTests(unittest.TestCase):
             inspect_legacy_node_databases(self.header, self.utxo, self.journal)
 
     def test_rejects_unknown_utxo_schema(self):
-        with sqlite3.connect(self.utxo) as db:
+        with _managed_sqlite(self.utxo) as db:
             db.execute("UPDATE metadata SET value='99' WHERE key='schema_version'")
         with self.assertRaisesRegex(RuntimeError, "unsupported UTXO schema"):
             inspect_legacy_node_databases(self.header, self.utxo, self.journal)
@@ -190,7 +204,7 @@ class SQLiteSnapshotTests(unittest.TestCase):
         self._make_sources()
 
     def _make_sources(self):
-        with sqlite3.connect(self.header) as db:
+        with _managed_sqlite(self.header) as db:
             db.execute("CREATE TABLE header_metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
             db.execute("INSERT INTO header_metadata VALUES('schema_version', '1')")
             pow_limit = decode_compact_target(0x207fffff)
@@ -208,7 +222,7 @@ class SQLiteSnapshotTests(unittest.TestCase):
                  genesis.merkle_root, genesis.timestamp, genesis.bits, genesis.nonce,
                  str(block_work(pow_limit))),
             )
-        with sqlite3.connect(self.utxo) as db:
+        with _managed_sqlite(self.utxo) as db:
             db.execute("CREATE TABLE metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
             db.execute("INSERT INTO metadata VALUES('schema_version', '2')")
             db.execute("""CREATE TABLE blocks(
@@ -221,7 +235,7 @@ class SQLiteSnapshotTests(unittest.TestCase):
                 "CREATE TABLE block_transactions (id INTEGER PRIMARY KEY, "
                 "height INTEGER REFERENCES blocks(height) ON DELETE CASCADE)"
             )
-        with sqlite3.connect(self.journal) as db:
+        with _managed_sqlite(self.journal) as db:
             db.execute("""CREATE TABLE recovery_intent (
                 singleton INTEGER PRIMARY KEY, old_height INTEGER, old_hash BLOB,
                 new_height INTEGER, new_hash BLOB)""")
@@ -237,7 +251,7 @@ class SQLiteSnapshotTests(unittest.TestCase):
 
     def test_staging_artifact_inspection_identifies_interrupted_import_without_mutation(self):
         database = self.root / "partial-import.sqlite"
-        with sqlite3.connect(database) as db:
+        with _managed_sqlite(database) as db:
             db.execute("CREATE TABLE copied_rows(value INTEGER)")
             db.execute("INSERT INTO copied_rows VALUES(1)")
         before = database.read_bytes()
@@ -265,7 +279,7 @@ class SQLiteSnapshotTests(unittest.TestCase):
         )
         self.assertEqual(len(report["snapshot_sha256"]), 64)
         self.assertEqual(source.read_bytes(), before)
-        with sqlite3.connect(destination) as db:
+        with _managed_sqlite(destination) as db:
             self.assertEqual(db.execute("SELECT value FROM records").fetchone()[0],
                              "wal-committed")
         writer.close()
@@ -273,7 +287,7 @@ class SQLiteSnapshotTests(unittest.TestCase):
     def test_snapshot_refuses_overwrite_and_preserves_existing_file(self):
         source = self.root / "source.sqlite"
         destination = self.root / "existing.sqlite"
-        with sqlite3.connect(source) as db:
+        with _managed_sqlite(source) as db:
             db.execute("CREATE TABLE t(value)")
         destination.write_bytes(b"keep")
         with self.assertRaises(FileExistsError):
@@ -321,13 +335,13 @@ class SQLiteSnapshotTests(unittest.TestCase):
         self.assertEqual(result["integrity_check"], "ok")
         self.assertEqual(result["foreign_key_check"], "ok")
         self.assertEqual(result["completion_manifest"], "complete")
-        with sqlite3.connect(destination) as db:
+        with _managed_sqlite(destination) as db:
             marker = db.execute(
                 "SELECT format_version, status FROM blackroot_import_manifest WHERE singleton=1"
             ).fetchone()
         self.assertEqual(marker, (1, "complete"))
         self.assertEqual(before, {kind: path.read_bytes() for kind, path in snapshots.items()})
-        with sqlite3.connect(destination) as db:
+        with _managed_sqlite(destination) as db:
             self.assertEqual(
                 db.execute("SELECT value FROM header_metadata WHERE key='schema_version'").fetchone()[0],
                 "1",
@@ -364,7 +378,7 @@ class SQLiteSnapshotTests(unittest.TestCase):
         self.assertEqual(process.exitcode, 73)
         self.assertTrue(destination.is_file())
 
-        with sqlite3.connect(destination) as db:
+        with _managed_sqlite(destination) as db:
             self.assertEqual(db.execute("PRAGMA integrity_check").fetchone()[0], "ok")
             marker = db.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' "
@@ -512,7 +526,7 @@ class SQLiteSnapshotTests(unittest.TestCase):
         # The marker must agree with the actual imported table inventory and
         # row counts at initial acceptance. Later legitimate node writes do not
         # rewrite this historical import receipt.
-        with sqlite3.connect(staged) as db:
+        with _managed_sqlite(staged) as db:
             raw_counts = db.execute(
                 "SELECT row_counts_json FROM blackroot_import_manifest WHERE singleton=1"
             ).fetchone()[0]
@@ -529,7 +543,7 @@ class SQLiteSnapshotTests(unittest.TestCase):
                 staged, pow_limit=pow_limit, genesis=genesis,
                 require_import_manifest=True, verify_manifest_counts=True,
             )
-        with sqlite3.connect(staged) as db:
+        with _managed_sqlite(staged) as db:
             db.execute(
                 "UPDATE blackroot_import_manifest SET row_counts_json=? WHERE singleton=1",
                 (raw_counts,),
@@ -555,11 +569,11 @@ class SQLiteSnapshotTests(unittest.TestCase):
         state = PersistentNodeState.open_coordinated(database, pow_limit, genesis)
         state.close()
 
-        with sqlite3.connect(database) as db:
+        with _managed_sqlite(database) as db:
             db.execute("UPDATE metadata SET value='2' WHERE key='schema_version'")
 
         def snapshot():
-            with sqlite3.connect(database) as db:
+            with _managed_sqlite(database) as db:
                 tables = [
                     row[0] for row in db.execute(
                         "SELECT name FROM sqlite_master WHERE type='table' "
@@ -583,7 +597,7 @@ class SQLiteSnapshotTests(unittest.TestCase):
             )
 
         self.assertEqual(snapshot(), before)
-        with sqlite3.connect(database) as db:
+        with _managed_sqlite(database) as db:
             self.assertEqual(
                 db.execute(
                     "SELECT value FROM metadata WHERE key='schema_version'"
@@ -700,7 +714,7 @@ class SQLiteSnapshotTests(unittest.TestCase):
     def test_snapshot_set_rejects_incorrect_genesis_chainwork(self):
         out = self.root / "snapshots"
         out.mkdir()
-        with sqlite3.connect(self.header) as db:
+        with _managed_sqlite(self.header) as db:
             db.execute("UPDATE headers SET chainwork='1' WHERE height=0")
         with self.assertRaisesRegex(RuntimeError, "genesis metadata mismatch during replay"):
             snapshot_legacy_node_databases(
@@ -711,7 +725,7 @@ class SQLiteSnapshotTests(unittest.TestCase):
     def test_snapshot_set_rejects_malformed_genesis_metadata(self):
         out = self.root / "snapshots"
         out.mkdir()
-        with sqlite3.connect(self.header) as db:
+        with _managed_sqlite(self.header) as db:
             db.execute(
                 "UPDATE header_metadata SET value='00' WHERE key='genesis_hash'"
             )
@@ -724,7 +738,7 @@ class SQLiteSnapshotTests(unittest.TestCase):
     def test_snapshot_set_rejects_active_utxo_block_missing_from_header_store(self):
         out = self.root / "snapshots"
         out.mkdir()
-        with sqlite3.connect(self.utxo) as db:
+        with _managed_sqlite(self.utxo) as db:
             db.execute(
                 "INSERT INTO blocks(height, block_hash, prev_hash, header, tx_count, total_fees) "
                 "VALUES(0, ?, ?, ?, 1, 0)",
