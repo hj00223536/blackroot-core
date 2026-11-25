@@ -98,6 +98,17 @@ consensus interpretation ambiguity in the prototype; full header consensus
 still requires an independently frozen specification and cross-client tests.
 
 
+### Concurrent UTXO spend and duplicate block protection
+
+A two-process regression test starts both spenders from the same persisted UTXO
+snapshot and releases them together. The expected result is exactly one
+successful spend and one rejected spend, with one resulting output and no
+remaining funding output. A duplicate active-block test confirms that
+reconnecting the same height/block is rejected without changing the active tip,
+UTXO count, or active header records. These tests exercise SQLite writer
+serialization and duplicate-connect rejection; they do not constitute a
+high-load or crash/power-loss certification.
+
 ### Serialized block-body archive writer serialization
 
 Block-body archival now uses the immediate-write transaction scope for its
