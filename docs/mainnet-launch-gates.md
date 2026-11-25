@@ -81,3 +81,8 @@ A testnet is not a mainnet launch and has no promised monetary value.
 ### Block UTXO validation regression coverage
 
 Block transaction validation is tested to reject two separately valid transactions that attempt to spend the same parent outpoint. A later invalid transaction must also leave the caller's parent UTXO snapshot unchanged, because validation operates on a private working copy. These checks cover in-memory block validation only; they do not establish complete consensus compatibility or production readiness.
+
+
+### Transaction output-collision protection
+
+The in-memory transaction application path now has a regression test proving that a transaction whose derived output outpoint already exists is rejected before any input is removed or output is written. The test snapshots the full UTXO map and asserts it is unchanged after rejection. This is a local state-integrity check, not a substitute for full consensus, script, or persistence testing.
