@@ -10,6 +10,7 @@ from src.blackroot_consensus import block_work, decode_compact_target
 from src.blackroot_storage_migration import (
     create_consistent_sqlite_snapshot,
     inspect_legacy_node_databases,
+    import_snapshot_set_to_coordinated_database,
     plan_coordinated_schema_merge,
     snapshot_legacy_node_databases,
 )
@@ -236,6 +237,57 @@ class SQLiteSnapshotTests(unittest.TestCase):
 
 
 
+
+    def test_staged_import_preserves_rows_and_never_modifies_snapshots(self):
+        snapshot_dir = self.root / "snapshots-for-import"
+        snapshot_dir.mkdir()
+        snapshot_legacy_node_databases(
+            self.header, self.utxo, self.journal, snapshot_dir
+        )
+        snapshots = {
+            "header": snapshot_dir / "blackroot-header-snapshot.sqlite",
+            "utxo": snapshot_dir / "blackroot-utxo-snapshot.sqlite",
+            "journal": snapshot_dir / "blackroot-journal-snapshot.sqlite",
+        }
+        before = {kind: path.read_bytes() for kind, path in snapshots.items()}
+        destination = self.root / "coordinated-staging.sqlite"
+        result = import_snapshot_set_to_coordinated_database(
+            snapshots["header"], snapshots["utxo"], snapshots["journal"],
+            destination, batch_size=2,
+        )
+        self.assertEqual(result["status"], "coordinated_staging_database_created")
+        self.assertTrue(result["migration_performed"])
+        self.assertFalse(result["production_cutover_performed"])
+        self.assertFalse(result["source_files_modified"])
+        self.assertEqual(result["integrity_check"], "ok")
+        self.assertEqual(result["foreign_key_check"], "ok")
+        self.assertEqual(before, {kind: path.read_bytes() for kind, path in snapshots.items()})
+        with sqlite3.connect(destination) as db:
+            self.assertEqual(
+                db.execute("SELECT value FROM header_metadata WHERE key='schema_version'").fetchone()[0],
+                "1",
+            )
+            self.assertEqual(
+                db.execute("SELECT value FROM metadata WHERE key='schema_version'").fetchone()[0],
+                "2",
+            )
+            self.assertEqual(
+                db.execute("SELECT COUNT(*) FROM block_transactions").fetchone()[0], 0
+            )
+
+    def test_staged_import_refuses_existing_destination_without_overwrite(self):
+        snapshot_dir = self.root / "snapshots-existing"
+        snapshot_dir.mkdir()
+        snapshot_legacy_node_databases(
+            self.header, self.utxo, self.journal, snapshot_dir
+        )
+        snapshots = [snapshot_dir / f"blackroot-{kind}-snapshot.sqlite"
+                     for kind in ("header", "utxo", "journal")]
+        destination = self.root / "keep.sqlite"
+        destination.write_bytes(b"keep")
+        with self.assertRaises(FileExistsError):
+            import_snapshot_set_to_coordinated_database(*snapshots, destination)
+        self.assertEqual(destination.read_bytes(), b"keep")
 
     def test_snapshot_set_rejects_incorrect_genesis_chainwork(self):
         out = self.root / "snapshots"
