@@ -101,3 +101,51 @@ def format_hash(digest: bytes) -> str:
     if not isinstance(digest, bytes) or len(digest) != 32:
         raise ValueError("digest must be exactly 32 bytes")
     return digest[::-1].hex()
+
+
+def encode_compact_target(target: int) -> int:
+    """Encode a positive target using Bitcoin-style compact nBits."""
+    if not isinstance(target, int) or isinstance(target, bool) or target <= 0 or target >= 1 << 256:
+        raise ValueError("target must be a positive uint256")
+    size = (target.bit_length() + 7) // 8
+    if size <= 3:
+        compact = target << (8 * (3 - size))
+    else:
+        compact = target >> (8 * (size - 3))
+    if compact & 0x00800000:
+        compact >>= 8
+        size += 1
+    return (size << 24) | (compact & 0x007FFFFF)
+
+
+def block_work(target: int) -> int:
+    """Return Bitcoin-style work contribution for a valid positive target."""
+    if not isinstance(target, int) or isinstance(target, bool) or not 0 < target < 1 << 256:
+        raise ValueError("target must be a positive uint256")
+    return (1 << 256) // (target + 1)
+
+
+def retarget_compact(
+    previous_bits: int,
+    actual_timespan: int,
+    pow_limit: int,
+    target_timespan: int = TARGET_SPACING * DIFFICULTY_INTERVAL,
+) -> int:
+    """Calculate a Bitcoin-style clamped retarget and return compact nBits.
+
+    This helper does not determine retarget boundary timestamps or validate
+    median-time-past. Those consensus rules must be specified by the caller.
+    """
+    if not isinstance(actual_timespan, int) or isinstance(actual_timespan, bool) or actual_timespan <= 0:
+        raise ValueError("actual_timespan must be a positive integer")
+    if not isinstance(target_timespan, int) or isinstance(target_timespan, bool) or target_timespan <= 0:
+        raise ValueError("target_timespan must be a positive integer")
+    if not isinstance(pow_limit, int) or isinstance(pow_limit, bool) or not 0 < pow_limit < 1 << 256:
+        raise ValueError("pow_limit must be a positive uint256")
+    previous_target = decode_compact_target(previous_bits)
+    if previous_target > pow_limit:
+        raise ValueError("previous target exceeds proof-of-work limit")
+    bounded = max(target_timespan // 4, min(actual_timespan, target_timespan * 4))
+    new_target = previous_target * bounded // target_timespan
+    new_target = min(new_target, pow_limit)
+    return encode_compact_target(new_target)
