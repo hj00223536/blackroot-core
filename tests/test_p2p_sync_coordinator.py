@@ -114,6 +114,12 @@ class PeerSyncCoordinatorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([command for command, _ in self.peer.sent], ["getdata", "getdata"])
         self.assertEqual(tracker.pending_hashes, (self.block.header.hash,))
 
+    async def test_peer_disconnect_releases_outstanding_requests(self):
+        item = InventoryVector(INV_TYPE_BLOCK, self.block.header.hash)
+        await self.coordinator.handle_message(self.peer, "inv", encode_inventory([item]))
+        self.assertEqual(self.coordinator.peer_disconnected(), (self.block.header.hash,))
+        self.assertEqual(self.coordinator.requests.pending_hashes, ())
+
     async def test_notfound_cancels_outstanding_request(self):
         item = InventoryVector(INV_TYPE_BLOCK, self.block.header.hash)
         await self.coordinator.handle_message(self.peer, "inv", encode_inventory([item]))
