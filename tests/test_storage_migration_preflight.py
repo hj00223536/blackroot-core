@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from src.blackroot_chain import BlockHeader
+from src.blackroot_consensus import block_work, decode_compact_target
 
 from src.blackroot_storage_migration import (
     create_consistent_sqlite_snapshot,
@@ -26,7 +27,8 @@ class LegacyStoragePreflightTests(unittest.TestCase):
         with sqlite3.connect(self.header) as db:
             db.execute("CREATE TABLE header_metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
             db.execute("INSERT INTO header_metadata VALUES('schema_version', '1')")
-            db.execute("INSERT INTO header_metadata VALUES('pow_limit', '123')")
+            pow_limit = decode_compact_target(0x207fffff)
+            db.execute("INSERT INTO header_metadata VALUES('pow_limit', ?)", (str(pow_limit),))
             genesis = BlockHeader(1, bytes(32), bytes(32), 1, 0x207fffff, 0)
             db.execute("INSERT INTO header_metadata VALUES('genesis_hash', ?)",
                        (genesis.hash.hex(),))
@@ -35,9 +37,10 @@ class LegacyStoragePreflightTests(unittest.TestCase):
                 prev_hash BLOB, merkle_root BLOB, timestamp INTEGER, bits INTEGER,
                 nonce INTEGER, chainwork TEXT)""")
             db.execute(
-                "INSERT INTO headers VALUES(?, 0, ?, ?, ?, ?, ?, ?, '1')",
+                "INSERT INTO headers VALUES(?, 0, ?, ?, ?, ?, ?, ?, ?)",
                 (genesis.hash, genesis.version, genesis.prev_hash,
-                 genesis.merkle_root, genesis.timestamp, genesis.bits, genesis.nonce),
+                 genesis.merkle_root, genesis.timestamp, genesis.bits, genesis.nonce,
+                 str(block_work(pow_limit))),
             )
 
         with sqlite3.connect(self.utxo) as db:
