@@ -10,6 +10,7 @@ from src.blackroot_consensus import block_work, decode_compact_target
 from src.blackroot_storage_migration import (
     create_consistent_sqlite_snapshot,
     inspect_legacy_node_databases,
+    plan_coordinated_schema_merge,
     snapshot_legacy_node_databases,
 )
 
@@ -92,6 +93,26 @@ class LegacyStoragePreflightTests(unittest.TestCase):
             item["type"] == "table" and item["name"] == "blocks"
             for item in inventory["objects"]
         ))
+
+    def test_schema_merge_plan_orders_fk_parents_before_children_without_writes(self):
+        before = {p: p.read_bytes() for p in (self.header, self.utxo, self.journal)}
+        plan = plan_coordinated_schema_merge(self.header, self.utxo, self.journal)
+        self.assertEqual(plan["status"], "schema_merge_plan_ready")
+        self.assertFalse(plan["migration_performed"])
+        self.assertFalse(plan["source_files_modified"])
+        self.assertLess(
+            plan["table_order"].index("blocks"),
+            plan["table_order"].index("block_transactions"),
+        )
+        self.assertEqual(before, {p: p.read_bytes() for p in before})
+
+    def test_schema_merge_plan_rejects_global_index_name_collisions(self):
+        with sqlite3.connect(self.header) as db:
+            db.execute("CREATE INDEX shared_name ON headers(height)")
+        with sqlite3.connect(self.journal) as db:
+            db.execute("CREATE INDEX shared_name ON recovery_intent(singleton)")
+        with self.assertRaisesRegex(RuntimeError, "schema object name collision"):
+            plan_coordinated_schema_merge(self.header, self.utxo, self.journal)
 
     def test_rejects_aliases_before_opening_databases(self):
         with self.assertRaisesRegex(ValueError, "same file"):
