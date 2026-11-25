@@ -221,12 +221,6 @@ class UTXOStore:
                             (height, tx.txid, index),
                         )
 
-                db.execute(
-                    "INSERT INTO blocks(height, block_hash, prev_hash, header, tx_count, total_fees) "
-                    "VALUES(?, ?, ?, ?, ?, ?)",
-                    (height, block.header.hash, block.header.prev_hash,
-                     block.header.serialize(), len(block.transactions), fees),
-                )
                 for position, tx in enumerate(block.transactions):
                     db.execute(
                         "INSERT INTO block_transactions(height, position, txid, raw_transaction) "
