@@ -40,6 +40,7 @@ The current helper and header-chain behavior, including retarget boundaries, com
 - [ ] Add immutable test vectors to CI.
 - [x] Reproduce the current candidate transaction/header/hash/PoW vector in a separate Node.js implementation using only built-in crypto and byte primitives; CI runs it independently of the Python reference code. This is cross-language repository evidence, not an external client or audit.
 - [x] Add a Node.js 22 cross-language legacy transaction vector check for serialization, txid, CompactSize canonicality, truncation, and trailing-byte rejection. This is in-repository regression evidence only.
+- [x] Add a Node.js P2PKH/SIGHASH_ALL regression vector checking HASH160, low-S DER ECDSA verification, modified-transaction rejection, and high-S rejection. This is in-repository cross-language evidence only; it is not a production cryptographic implementation or external audit.
 - [ ] Reproduce every final, frozen vector in a separately maintained external client.
 - [ ] Decide and test whether the genesis output is unspendable.
 
