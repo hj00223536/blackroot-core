@@ -47,6 +47,8 @@ Do not invent or manually select a genesis hash. Until this gate passes, nodes c
 - [ ] Add peer scoring, connection limits, timeouts, bans/backoff, request limits, message-size limits, and DoS protections.
 - [ ] Define peer discovery and bootstrap policy; do not publish seed addresses until operators have agreed to run nodes.
 - [ ] Add adversarial interoperability, fuzz, property, and long-running multi-process tests.
+- [x] Enforce legacy absolute nLockTime finality and BIP68 height-based relative sequence locks using authenticated UTXO creation heights.
+- [x] Reject unsupported BIP68 timestamp-based relative locks until creation-time MTP metadata is persisted and authenticated.
 - [ ] Document unsupported transaction/script features and reject them deterministically.
 
 ### 5. Release and operate the testnet
