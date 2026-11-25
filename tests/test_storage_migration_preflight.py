@@ -112,7 +112,8 @@ class SQLiteSnapshotTests(unittest.TestCase):
         with sqlite3.connect(self.header) as db:
             db.execute("CREATE TABLE header_metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
             db.execute("INSERT INTO header_metadata VALUES('schema_version', '1')")
-            db.execute("INSERT INTO header_metadata VALUES('pow_limit', '123')")
+            pow_limit = decode_compact_target(0x207fffff)
+            db.execute("INSERT INTO header_metadata VALUES('pow_limit', ?)", (str(pow_limit),))
             genesis = BlockHeader(1, bytes(32), bytes(32), 1, 0x207fffff, 0)
             db.execute("INSERT INTO header_metadata VALUES('genesis_hash', ?)",
                        (genesis.hash.hex(),))
