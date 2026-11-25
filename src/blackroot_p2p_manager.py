@@ -30,6 +30,7 @@ class PeerManager:
         idle_timeout: float = 120.0,
         min_protocol_version: int = 1,
         on_message: MessageHandler | None = None,
+        on_peer_message_factory: Callable[[PeerConnection], MessageHandler] | None = None,
         on_peer_error: Callable[[Exception], object] | None = None,
     ) -> None:
         if not isinstance(magic, bytes) or len(magic) != 4:
@@ -46,7 +47,10 @@ class PeerManager:
         self.handshake_timeout = handshake_timeout
         self.idle_timeout = idle_timeout
         self.min_protocol_version = min_protocol_version
+        if on_peer_message_factory is not None and not callable(on_peer_message_factory):
+            raise TypeError("on_peer_message_factory must be callable")
         self.on_message = on_message
+        self.on_peer_message_factory = on_peer_message_factory
         self.on_peer_error = on_peer_error
         self._server: asyncio.AbstractServer | None = None
         self._peers: set[PeerConnection] = set()
@@ -80,7 +84,7 @@ class PeerManager:
         return replace(self.local_version, nonce=secrets.randbits(64))
 
     def _new_peer(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> PeerConnection:
-        return PeerConnection(
+        peer = PeerConnection(
             reader,
             writer,
             magic=self.magic,
@@ -91,6 +95,9 @@ class PeerManager:
             min_protocol_version=self.min_protocol_version,
             on_message=self.on_message,
         )
+        if self.on_peer_message_factory is not None:
+            peer.on_message = self.on_peer_message_factory(peer)
+        return peer
 
     def _track(self, peer: PeerConnection) -> PeerConnection:
         self._peers.add(peer)
