@@ -1,8 +1,14 @@
 """In-memory BLACKROOT header DAG prototype.
 
-Not production consensus: timestamp rules omit MTP/future-time checks, and no
-block bodies, scripts, UTXOs, retarget schedule or persistent branch index are
-validated here.
+This module validates header linkage, proof of work, canonical compact targets,
+parent median-time-past, fixed 2016-block difficulty retargets, and cumulative-
+work branch selection. A future-time bound is checked only when the caller
+supplies ``adjusted_time``; callers must provide a trusted network-adjusted
+clock value to enforce that policy.
+
+This is not production consensus: it does not validate block bodies, scripts,
+UTXOs, or persistent branch state, and it does not itself obtain or require a
+trusted network-adjusted clock.
 """
 from __future__ import annotations
 
