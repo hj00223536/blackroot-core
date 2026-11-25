@@ -98,6 +98,39 @@ class BlockValidationTests(unittest.TestCase):
         self.assertIn(OutPoint(coinbase.txid, 0), result)
         self.assertIn(self.funding, self.parent)
 
+    def test_absolute_height_locktime_requires_finality_at_candidate_height(self):
+        spend = signed_spend(self.funding, self.previous_output)
+        locked = Transaction(spend.version, spend.inputs, spend.outputs, lock_time=10)
+        with self.assertRaisesRegex(ValueError, "non-final"):
+            validate_block_transactions(make_block([make_coinbase(1), locked]), self.parent, 10)
+        result, _fees = validate_block_transactions(
+            make_block([make_coinbase(1), locked]), self.parent, 11
+        )
+        self.assertNotIn(self.funding, result)
+
+    def test_final_sequence_overrides_unmet_absolute_locktime(self):
+        spend = signed_spend(self.funding, self.previous_output)
+        final_input = TxInput(spend.inputs[0].previous_output, spend.inputs[0].script_sig, 0xFFFFFFFF)
+        locked = Transaction(1, (final_input,), spend.outputs, lock_time=500)
+        result, _fees = validate_block_transactions(make_block([make_coinbase(1), locked]), self.parent, 1)
+        self.assertNotIn(self.funding, result)
+
+    def test_timestamp_locktime_uses_parent_median_time_past(self):
+        spend = signed_spend(self.funding, self.previous_output)
+        locked = Transaction(spend.version, spend.inputs, spend.outputs, lock_time=1_700_000_000)
+        with self.assertRaisesRegex(ValueError, "median-time-past is required"):
+            validate_block_transactions(make_block([make_coinbase(1), locked]), self.parent, 1)
+        with self.assertRaisesRegex(ValueError, "non-final"):
+            validate_block_transactions(
+                make_block([make_coinbase(1), locked]), self.parent, 1,
+                median_time_past=1_699_999_999,
+            )
+        result, _fees = validate_block_transactions(
+            make_block([make_coinbase(1), locked]), self.parent, 1,
+            median_time_past=1_700_000_001,
+        )
+        self.assertNotIn(self.funding, result)
+
     def test_rejects_unsigned_spend_inside_block(self):
         unsigned = Transaction(
             1, (TxInput(self.funding),), (TxOutput(9_000, b"pay"),)
