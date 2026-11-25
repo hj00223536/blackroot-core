@@ -214,3 +214,78 @@ def create_consistent_sqlite_snapshot(
             snapshot_db.close()
         if source_db is not None:
             source_db.close()
+
+
+def snapshot_legacy_node_databases(
+    header_path: str | Path,
+    utxo_path: str | Path,
+    recovery_journal_path: str | Path,
+    snapshot_directory: str | Path,
+) -> dict:
+    """Preflight and snapshot all legacy stores as separate SQLite databases.
+
+    This is still not a migration: the three snapshots remain separate files.
+    The destination directory must already exist and none of the three output
+    names may exist. If any step fails, only snapshots created by this call
+    are removed.
+    """
+    source_report = inspect_legacy_node_databases(
+        header_path, utxo_path, recovery_journal_path
+    )
+    directory = Path(snapshot_directory).expanduser().resolve(strict=True)
+    if not directory.is_dir():
+        raise ValueError(f"snapshot destination is not a directory: {directory}")
+
+    sources = {
+        "header": Path(header_path).expanduser().resolve(strict=True),
+        "utxo": Path(utxo_path).expanduser().resolve(strict=True),
+        "journal": Path(recovery_journal_path).expanduser().resolve(strict=True),
+    }
+    destinations = {
+        kind: directory / f"blackroot-{kind}-snapshot.sqlite"
+        for kind in ("header", "utxo", "journal")
+    }
+
+    for kind, destination in destinations.items():
+        if destination.exists():
+            raise FileExistsError(
+                f"{kind} snapshot already exists: {destination}"
+            )
+        if destination.resolve(strict=False) in sources.values():
+            raise ValueError(f"{kind} snapshot aliases a source database")
+
+    created = []
+    try:
+        reports = {}
+        for kind in ("header", "utxo", "journal"):
+            reports[kind] = create_consistent_sqlite_snapshot(
+                sources[kind], destinations[kind]
+            )
+            created.append(destinations[kind])
+
+        snapshot_report = inspect_legacy_node_databases(
+            destinations["header"],
+            destinations["utxo"],
+            destinations["journal"],
+        )
+        return {
+            "status": "snapshots_validated",
+            "migration_performed": False,
+            "source_files_modified": False,
+            "source_preflight": source_report,
+            "snapshots": reports,
+            "snapshot_preflight": snapshot_report,
+        }
+    except BaseException:
+        for path in created:
+            for candidate in (
+                path,
+                Path(str(path) + "-wal"),
+                Path(str(path) + "-shm"),
+                Path(str(path) + "-journal"),
+            ):
+                try:
+                    candidate.unlink()
+                except FileNotFoundError:
+                    pass
+        raise
