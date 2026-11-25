@@ -226,6 +226,61 @@ class UTXOStore:
             db.commit()
             return fee
 
+    def verify_integrity(self) -> None:
+        """Fail closed on SQLite, relational, transaction-record, or body corruption."""
+        with self._connect() as db:
+            integrity = db.execute("PRAGMA integrity_check").fetchall()
+            if integrity != [("ok",)]:
+                raise RuntimeError(f"UTXO SQLite integrity check failed: {integrity!r}")
+            foreign_key_errors = db.execute("PRAGMA foreign_key_check").fetchall()
+            if foreign_key_errors:
+                raise RuntimeError(
+                    f"UTXO SQLite foreign-key check failed: {foreign_key_errors!r}"
+                )
+
+            blocks = db.execute(
+                "SELECT height, block_hash, prev_hash, tx_count FROM blocks ORDER BY height"
+            ).fetchall()
+            expected_parent = bytes(32)
+            for expected_height, (height, block_hash, prev_hash, tx_count) in enumerate(blocks):
+                block_hash = bytes(block_hash)
+                prev_hash = bytes(prev_hash)
+                if height != expected_height:
+                    raise RuntimeError("UTXO active block heights are not contiguous")
+                if prev_hash != expected_parent:
+                    raise RuntimeError("UTXO active block parent linkage is corrupt")
+                tx_rows = db.execute(
+                    "SELECT position, txid, raw_transaction FROM block_transactions "
+                    "WHERE height=? ORDER BY position",
+                    (height,),
+                ).fetchall()
+                if len(tx_rows) != tx_count:
+                    raise RuntimeError("UTXO active block transaction count is inconsistent")
+                for expected_position, (position, txid, raw_transaction) in enumerate(tx_rows):
+                    if position != expected_position:
+                        raise RuntimeError("UTXO transaction positions are not contiguous")
+                    try:
+                        tx = Transaction.deserialize(bytes(raw_transaction))
+                    except (TypeError, ValueError) as exc:
+                        raise RuntimeError("stored active transaction is malformed") from exc
+                    if tx.txid != bytes(txid):
+                        raise RuntimeError("stored active transaction ID does not match its bytes")
+                expected_parent = block_hash
+
+            body_hashes = [
+                bytes(row[0]) for row in
+                db.execute("SELECT block_hash FROM block_bodies ORDER BY block_hash")
+            ]
+        for block_hash in body_hashes:
+            try:
+                body = self.load_block_body(block_hash)
+            except (TypeError, ValueError, RuntimeError) as exc:
+                raise RuntimeError(
+                    f"archived block body failed integrity verification: {block_hash.hex()}"
+                ) from exc
+            if body is None:
+                raise RuntimeError("archived block body disappeared during integrity check")
+
     def tip(self) -> tuple[int, bytes] | None:
         """Return the stored tip height and hash, or None."""
         with self._connect() as db:
