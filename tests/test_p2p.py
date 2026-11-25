@@ -15,7 +15,7 @@ MAGIC = bytes.fromhex("b2a1c3d4")
 
 class MessageFramingTests(unittest.TestCase):
     def test_round_trip_empty_and_binary_payloads(self):
-        for payload in (b"", b"\\x00\\xffhello"):
+        for payload in (b"", b"\x00\xffhello"):
             frame = encode_message(MAGIC, "version", payload)
             self.assertEqual(decode_message(frame, MAGIC), ("version", payload))
             self.assertEqual(len(frame), HEADER_SIZE + len(payload))
