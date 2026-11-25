@@ -488,6 +488,7 @@ def validate_coordinated_staging_database(
     pow_limit: int,
     genesis,
     require_import_manifest: bool = False,
+    verify_manifest_counts: bool = False,
 ) -> dict:
     """Reopen a staged DB through the real coordinated node stores.
 
@@ -503,6 +504,9 @@ def validate_coordinated_staging_database(
     path = Path(database_path).expanduser().resolve(strict=True)
     if not path.is_file():
         raise ValueError("staging database path is not a regular file")
+
+    if verify_manifest_counts and not require_import_manifest:
+        raise ValueError("verify_manifest_counts requires require_import_manifest=True")
 
     if require_import_manifest:
         manifest_db = _readonly_connection(path)
@@ -549,16 +553,17 @@ def validate_coordinated_staging_database(
                 raise RuntimeError(
                     "staging database import manifest table inventory does not match"
                 )
-            actual_counts = {}
-            for table in sorted(actual_tables):
-                quoted = '"' + table.replace('"', '""') + '"'
-                actual_counts[table] = manifest_db.execute(
-                    f"SELECT COUNT(*) FROM {quoted}"
-                ).fetchone()[0]
-            if counts != actual_counts:
-                raise RuntimeError(
-                    "staging database import manifest row counts do not match"
-                )
+            if verify_manifest_counts:
+                actual_counts = {}
+                for table in sorted(actual_tables):
+                    quoted = '"' + table.replace('"', '""') + '"'
+                    actual_counts[table] = manifest_db.execute(
+                        f"SELECT COUNT(*) FROM {quoted}"
+                    ).fetchone()[0]
+                if counts != actual_counts:
+                    raise RuntimeError(
+                        "staging database import manifest row counts do not match"
+                    )
         finally:
             manifest_db.close()
 
