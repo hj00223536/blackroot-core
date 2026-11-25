@@ -56,10 +56,11 @@ class BlockBodyRequestTrackerTests(unittest.TestCase):
 
     def test_rejects_body_for_different_requested_hash(self):
         self.tracker.request(self.block.header.hash, self.chain)
-        other_hash = bytes.fromhex("55" * 32)
+        other_header = mine(ZERO_HASH, 2, self.block.header.merkle_root)
+        other_block = Block(other_header, self.block.transactions)
         with self.assertRaisesRegex(ValueError, "does not match requested"):
             self.tracker.accept_payload(
-                other_hash, self.block.serialize(), self.chain, self.store
+                self.block.header.hash, other_block.serialize(), self.chain, self.store
             )
         self.assertEqual(self.tracker.pending_hashes, (self.block.header.hash,))
         self.store.connect_validated_block.assert_not_called()
