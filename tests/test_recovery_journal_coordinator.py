@@ -41,6 +41,25 @@ class RecoveryJournalCoordinatorTests(unittest.TestCase):
             ).fetchall()
         self.assertEqual(table, [])
 
+    def test_third_observed_tip_fails_closed_and_preserves_pending_intent(self):
+        journal = NodeRecoveryJournal(self.path)
+        journal.prepare(self.old_tip, self.new_tip)
+        third_tip = (6, bytes.fromhex("43" * 32))
+
+        with self.assertRaisesRegex(RuntimeError, "neither endpoint"):
+            journal.reconcile(third_tip)
+
+        self.assertTrue(journal.pending())
+        self.assertEqual(journal.reconcile(self.old_tip), "not_applied")
+        self.assertFalse(journal.pending())
+
+    def test_reconcile_new_endpoint_marks_transition_committed(self):
+        journal = NodeRecoveryJournal(self.path)
+        journal.prepare(self.old_tip, self.new_tip)
+
+        self.assertEqual(journal.reconcile(self.new_tip), "committed")
+        self.assertFalse(journal.pending())
+
     def test_coordinator_mode_requires_active_outer_transaction(self):
         with SQLiteTransactionCoordinator(self.path) as coordinator:
             with self.assertRaisesRegex(RuntimeError, "active outer transaction"):
