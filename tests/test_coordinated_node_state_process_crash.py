@@ -224,6 +224,7 @@ class CoordinatedNodeStateProcessCrashTests(unittest.TestCase):
                 retry_worker = r"""
 import sys
 import time
+import sqlite3
 from pathlib import Path
 from src.blackroot_chain import BlockHeader
 from src.blackroot_consensus import decode_compact_target
@@ -243,12 +244,20 @@ for nonce in range(10000):
         break
 else:
     raise RuntimeError("genesis nonce search exhausted")
-state = PersistentNodeState.open_coordinated(root / "node.sqlite", limit, genesis_header)
+attempted.write_text("opening coordinated state while writer holds lock")
+deadline = time.monotonic() + 25
+while True:
+    try:
+        state = PersistentNodeState.open_coordinated(root / "node.sqlite", limit, genesis_header)
+        break
+    except sqlite3.OperationalError as exc:
+        if "locked" not in str(exc).lower() or time.monotonic() >= deadline:
+            raise
+        # Opening performs a short schema/integrity transaction. Retry a
+        # transient lock until the crashed writer releases SQLite's lock.
+        time.sleep(0.05)
+ready.write_text("connected after writer rollback")
 try:
-    # Signal immediately before entering the SQLite write path. The first
-    # process still holds BEGIN IMMEDIATE, so this call must wait for rollback.
-    ready.write_text("connected")
-    attempted.write_text("reorganization call started")
     tip = state.reorganize_best()
     result.write_text(f"accepted:{tip[0]}:{tip[1].hex()}")
 finally:
