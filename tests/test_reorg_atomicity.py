@@ -79,14 +79,15 @@ class ReorganizationAtomicityTests(unittest.TestCase):
 
 
     def test_invalid_p2pkh_signature_on_replacement_branch_rolls_back_all_state(self):
-        from src.blackroot_script import (
-            N, _mul, _hash160, _push, legacy_sighash_all, p2pkh_script,
-        )
+        from src.blackroot_script import _hash160, _push, p2pkh_script
         from src.blackroot_transactions import TxInput
 
         with tempfile.TemporaryDirectory() as directory:
             store = UTXOStore(Path(directory) / "chain.sqlite")
             private_key = 7
+            # Compressed public key for private scalar 7 (computed by the
+            # test-only curve helper in the existing script test suite).
+            from src.blackroot_script import _mul
             point = _mul(private_key)
             pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
             funding = OutPoint(bytes.fromhex("71" * 32), 0)
@@ -100,29 +101,12 @@ class ReorganizationAtomicityTests(unittest.TestCase):
             store.connect_validated_block(genesis, 0, chain)
             store.connect_validated_block(old, 1, chain)
 
-            unsigned = Transaction(
-                1, (TxInput(funding),), (TxOutput(9_000, b"recipient"),)
-            )
-            digest = legacy_sighash_all(unsigned, 0, funding_output.script_pubkey)
-            nonce = 11
-            nonce_point = _mul(nonce)
-            r = nonce_point[0] % N
-            s = (pow(nonce, N - 2, N) *
-                 (int.from_bytes(digest, "big") + r * private_key)) % N
-            if s > N // 2:
-                s = N - s
-
-            def der_integer(value):
-                raw = value.to_bytes((value.bit_length() + 7) // 8, "big") or b"\\x00"
-                if raw[0] & 0x80:
-                    raw = b"\\x00" + raw
-                return b"\\x02" + bytes([len(raw)]) + raw
-
-            body = der_integer(r) + der_integer(s)
-            signature = b"\\x30" + bytes([len(body)]) + body + b"\\x01"
-            valid_script_sig = _push(signature) + _push(pubkey)
-            corrupted = bytearray(valid_script_sig)
-            corrupted[1] ^= 1
+            # Structurally valid DER + SIGHASH_ALL, but deliberately not a
+            # valid ECDSA signature for this transaction and public key.
+            signature = bytes.fromhex("300602010102010101")
+            well_formed_script_sig = _push(signature) + _push(pubkey)
+            corrupted = bytearray(well_formed_script_sig)
+            corrupted[5] ^= 1
             invalid_spend = Transaction(
                 1, (TxInput(funding, bytes(corrupted)),), unsigned.outputs
             )
