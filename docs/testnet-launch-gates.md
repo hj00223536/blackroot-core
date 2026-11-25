@@ -9,7 +9,7 @@ This document is an engineering gate list, not a launch announcement. A testnet 
 - Experimental SHA-256d header, compact-target, proof-of-work, subsidy, and chainwork helpers.
 - An in-memory header-chain prototype and persistent header/UTXO/block-body components.
 - TCP/P2P framing, peer management, handshake, header synchronization, and block-body scheduling components.
-- Unit and loopback/multi-node integration tests for selected P2P and storage paths, including TCP block-body transfer, active-chain connection, and a restart/reopen persistence check.
+- Unit and loopback/multi-node integration tests for selected P2P and storage paths, including TCP block-body transfer, active-chain connection, restart/reopen persistence, and rejection of a bad-Merkle fork body without UTXO mutation or a leaked request assignment.
 - A node-runtime wrapper that composes persistent state and a peer manager.
 
 These are reusable prototype components. The CLI now waits for the outbound peer's version/verack handshake before requesting headers, avoiding a startup race. CI exercises both two independent runtime/state instances in one process and a separate-process CLI smoke test: two OS processes start with isolated data directories, connect over loopback TCP, complete the handshake, and report the same genesis and best-chain tip. This is narrowly scoped integration evidence, including a SIGTERM/clean-exit assertion for both CLI processes, not proof of full consensus correctness or public-network readiness. `src/blackroot_node_config.py` now loads strict JSON settings (rejecting missing/unknown fields) and validates explicit testnet identity, message magic, protocol version, genesis header/hash, PoW limit, peer cap, and port. It rejects production-like network names, mismatched genesis hashes, invalid PoW, and non-loopback listener hosts. `python -m src.blackroot_node` opens coordinated SQLite state and starts the P2P listener on a literal loopback address only. This is a local prototype runner: it does not yet provide a complete block-sync/full-consensus node or public networking.
@@ -65,7 +65,7 @@ Do not invent or manually select a genesis hash. Until this gate passes, nodes c
 | Network identity and parameters | Explicit in-code config validator exists; no reviewed constants or file loader | PARTIAL / BLOCKED |
 | Node application/CLI | Loopback-only local CLI and strict JSON loader exist; block-body sync/full consensus and supervised retry lifecycle remain incomplete | PARTIAL / BLOCKED |
 | P2P building blocks | TCP transport, peer manager, handshake and sync components exist | PROTOTYPE |
-| Integration coverage | TCP loopback block-body transfer and restart/reopen persistence test; separate two-process CLI handshake/genesis smoke test | PARTIAL |
+| Integration coverage | TCP loopback block-body transfer, restart/reopen persistence, bad-Merkle rejection, and separate two-process CLI handshake/genesis smoke test | PARTIAL |
 | Full consensus | Several rules and script semantics remain explicitly incomplete | BLOCKED |
 | Wallet/miner | No production wallet or miner application | BLOCKED |
 | Public operations | No verified public nodes, seeds, monitoring or release process | BLOCKED |
