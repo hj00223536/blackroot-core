@@ -68,5 +68,53 @@ class PersistentBlockTests(unittest.TestCase):
         self.assertEqual(self.store.count(), 0)
 
 
+    def test_disconnect_tip_restores_spent_parent_utxo(self):
+        genesis_cb = coinbase(block_subsidy(0), b"\x01\x01")
+        genesis = block_for([genesis_cb])
+        self.store.connect_block(genesis, 0)
+        genesis_output = OutPoint(genesis_cb.txid, 0)
+
+        spend = Transaction(
+            1,
+            (TxInput(genesis_output),),
+            (TxOutput(block_subsidy(0) - 100, b"recipient"),),
+        )
+        next_cb = coinbase(block_subsidy(1) + 100, b"\x01\x02")
+        second = block_for([next_cb, spend], previous=genesis.header.hash, timestamp=2)
+        self.store.connect_block(second, 1)
+        self.assertIsNone(self.store.get(genesis_output))
+
+        self.assertEqual(self.store.disconnect_tip(second.header.hash), (1, second.header.hash))
+        self.assertEqual(self.store.tip(), (0, genesis.header.hash))
+        self.assertEqual(self.store.get(genesis_output), TxOutput(block_subsidy(0), b"miner"))
+        self.assertIsNone(self.store.get(OutPoint(next_cb.txid, 0)))
+        self.assertIsNone(self.store.get(OutPoint(spend.txid, 0)))
+
+    def test_disconnect_rejects_wrong_hash_without_mutation(self):
+        cb = coinbase(block_subsidy(0), b"\x01\x01")
+        block = block_for([cb])
+        self.store.connect_block(block, 0)
+        with self.assertRaisesRegex(ValueError, "does not match"):
+            self.store.disconnect_tip(bytes.fromhex("44" * 32))
+        self.assertEqual(self.store.tip(), (0, block.header.hash))
+        self.assertEqual(self.store.count(), 1)
+
+    def test_disconnect_rejects_empty_chain(self):
+        with self.assertRaisesRegex(ValueError, "empty chain"):
+            self.store.disconnect_tip(bytes.fromhex("44" * 32))
+        self.assertIsNone(self.store.tip())
+
+    def test_disconnect_removes_genesis_and_undo_data(self):
+        cb = coinbase(block_subsidy(0), b"\x01\x01")
+        block = block_for([cb])
+        self.store.connect_block(block, 0)
+        self.store.disconnect_tip(block.header.hash)
+        self.assertIsNone(self.store.tip())
+        self.assertEqual(self.store.count(), 0)
+        with self.store._connect() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM block_undo_spent").fetchone()[0], 0)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM block_undo_created").fetchone()[0], 0)
+
+
 if __name__ == "__main__":
     unittest.main()
