@@ -3,8 +3,8 @@ import unittest
 from pathlib import Path
 
 from src.blackroot_blocks import Block, COINBASE_INDEX, ZERO_TXID
-from src.blackroot_chain import BlockHeader
-from src.blackroot_consensus import block_subsidy
+from src.blackroot_chain import BlockHeader, HeaderChain
+from src.blackroot_consensus import block_subsidy, check_proof_of_work, decode_compact_target
 from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput, merkle_root
 from src.blackroot_utxo_db import UTXOStore
 
@@ -21,6 +21,17 @@ def block_for(txs, previous=bytes(32), timestamp=1):
     header = BlockHeader(1, previous, merkle_root([tx.txid for tx in txs]),
                          timestamp, 0x207fffff, 0)
     return Block(header, tuple(txs))
+
+
+def mined_block_for(txs, previous=bytes(32), timestamp=1):
+    root = merkle_root([tx.txid for tx in txs])
+    bits = 0x207fffff
+    limit = decode_compact_target(bits)
+    for nonce in range(1000):
+        header = BlockHeader(1, previous, root, timestamp, bits, nonce)
+        if check_proof_of_work(header.serialize(), bits, limit):
+            return Block(header, tuple(txs))
+    raise AssertionError("test block nonce search unexpectedly exhausted")
 
 
 class PersistentBlockTests(unittest.TestCase):
@@ -156,6 +167,87 @@ class PersistentBlockTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "tip-first"):
             self.store.reorganize((genesis.header.hash,), tuple())
         self.assertEqual(self.store.tip(), (1, child.header.hash))
+
+    def test_reorganize_to_best_uses_header_chain_work_and_matching_bodies(self):
+        genesis_cb = coinbase(block_subsidy(0), b"\x01\x01")
+        genesis = mined_block_for([genesis_cb], timestamp=1)
+        self.store.connect_block(genesis, 0)
+
+        active_cb = coinbase(block_subsidy(1), b"\x01\x02")
+        active = mined_block_for([active_cb], previous=genesis.header.hash, timestamp=2)
+        self.store.connect_block(active, 1)
+
+        headers = HeaderChain(decode_compact_target(0x207fffff), genesis.header)
+        headers.add(active.header)
+
+        fork_one_cb = coinbase(block_subsidy(1), b"\x02\x02")
+        fork_one = mined_block_for([fork_one_cb], previous=genesis.header.hash, timestamp=3)
+        headers.add_to_branch(fork_one.header)
+        fork_two_cb = coinbase(block_subsidy(2), b"\x02\x03")
+        fork_two = mined_block_for([fork_two_cb], previous=fork_one.header.hash, timestamp=4)
+        headers.add_to_branch(fork_two.header)
+
+        result = self.store.reorganize_to_best(
+            headers,
+            {fork_one.header.hash: fork_one, fork_two.header.hash: fork_two},
+        )
+        self.assertEqual(result, (2, fork_two.header.hash))
+        self.assertEqual(self.store.tip(), result)
+        self.assertIsNone(self.store.get(OutPoint(active_cb.txid, 0)))
+        self.assertEqual(self.store.get(OutPoint(fork_one_cb.txid, 0)),
+                         TxOutput(block_subsidy(1), b"miner"))
+        self.assertEqual(self.store.get(OutPoint(fork_two_cb.txid, 0)),
+                         TxOutput(block_subsidy(2), b"miner"))
+
+    def test_reorganize_to_best_requires_all_connecting_bodies(self):
+        genesis_cb = coinbase(block_subsidy(0), b"\x01\x01")
+        genesis = mined_block_for([genesis_cb], timestamp=1)
+        self.store.connect_block(genesis, 0)
+        active_cb = coinbase(block_subsidy(1), b"\x01\x02")
+        active = mined_block_for([active_cb], previous=genesis.header.hash, timestamp=2)
+        self.store.connect_block(active, 1)
+
+        headers = HeaderChain(decode_compact_target(0x207fffff), genesis.header)
+        headers.add(active.header)
+        fork_one_cb = coinbase(block_subsidy(1), b"\x02\x02")
+        fork_one = mined_block_for([fork_one_cb], previous=genesis.header.hash, timestamp=3)
+        headers.add_to_branch(fork_one.header)
+        fork_two_cb = coinbase(block_subsidy(2), b"\x02\x03")
+        fork_two = mined_block_for([fork_two_cb], previous=fork_one.header.hash, timestamp=4)
+        headers.add_to_branch(fork_two.header)
+
+        with self.assertRaisesRegex(ValueError, "missing replacement block body"):
+            self.store.reorganize_to_best(headers, {fork_one.header.hash: fork_one})
+        self.assertEqual(self.store.tip(), (1, active.header.hash))
+        self.assertEqual(self.store.get(OutPoint(active_cb.txid, 0)),
+                         TxOutput(block_subsidy(1), b"miner"))
+
+    def test_reorganize_to_best_rejects_header_body_mismatch(self):
+        genesis_cb = coinbase(block_subsidy(0), b"\x01\x01")
+        genesis = mined_block_for([genesis_cb], timestamp=1)
+        self.store.connect_block(genesis, 0)
+        active_cb = coinbase(block_subsidy(1), b"\x01\x02")
+        active = mined_block_for([active_cb], previous=genesis.header.hash, timestamp=2)
+        self.store.connect_block(active, 1)
+
+        headers = HeaderChain(decode_compact_target(0x207fffff), genesis.header)
+        headers.add(active.header)
+        fork_cb = coinbase(block_subsidy(1), b"\x02\x02")
+        fork = mined_block_for([fork_cb], previous=genesis.header.hash, timestamp=3)
+        headers.add_to_branch(fork.header)
+        longer_cb = coinbase(block_subsidy(2), b"\x02\x03")
+        longer = mined_block_for([longer_cb], previous=fork.header.hash, timestamp=4)
+        headers.add_to_branch(longer.header)
+        altered = mined_block_for(
+            [coinbase(block_subsidy(1), b"\x03\x02")],
+            previous=genesis.header.hash, timestamp=3,
+        )
+        with self.assertRaisesRegex(ValueError, "header does not match"):
+            self.store.reorganize_to_best(
+                headers,
+                {fork.header.hash: altered, longer.header.hash: longer},
+            )
+        self.assertEqual(self.store.tip(), (1, active.header.hash))
 
     def test_disconnect_rejects_empty_chain(self):
         with self.assertRaisesRegex(ValueError, "empty chain"):
