@@ -9,14 +9,19 @@ on:
 jobs:
   unit-tests:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    name: Unit tests (Python ${{ matrix.python-version }})
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
       - name: Run unit tests with SQLite resource tracing
         env:
           PYTHONTRACEMALLOC: "10"
         run: |
           set -o pipefail
-          python scripts/diagnose_sqlite_resource_warnings.py 2>&1 | tee resource-warning.log
+          python -u scripts/diagnose_sqlite_resource_warnings.py 2>&1 | tee resource-warning.log
