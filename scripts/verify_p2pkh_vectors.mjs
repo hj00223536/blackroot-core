@@ -99,7 +99,7 @@ assert.equal(digest.toString("hex"), "08239b63c1da99d3fa11f864d6429e237e08ecc6ad
 assert.equal(verifyEcdsa(digest, pubkey, der), true, "valid deterministic P2PKH signature must verify");
 assert.equal(verifyEcdsa(sha256d(legacySighashAll(previous, lockingScript, 89999n)), pubkey, der), false,
   "modified output must invalidate signature");
-const highS = Buffer.from("3046022100c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5022100e7140d7c01e40ba0952b9c69b6018d7d4a7ecbf1c5c871b4655ca8bcf26d5cb4", "hex");
+const highS = Buffer.from("3046022100c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5022100e7140d7c01e40ba0952b9c69b6018d7d4a97abfc751110b4655c68bcf26d5cb4", "hex");
 assert.equal(verifyEcdsa(digest, pubkey, highS), false, "high-S signature must be rejected");
 console.log("Independent Node.js P2PKH signature vector verification: PASS");
 console.log("hash160=" + expectedHash160);
