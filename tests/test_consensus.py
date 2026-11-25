@@ -58,6 +58,20 @@ class TargetAndPowTests(unittest.TestCase):
         header = serialize_header(1, bytes(32), bytes(32), 1, 0x207FFFFF, 0)
         self.assertFalse(check_proof_of_work(header, 0x207FFFFF, 1))
 
+    def test_reject_compact_target_overflow_encodings(self):
+        # Bitcoin-style SetCompact overflow boundaries: exponent 35 always
+        # overflows for a non-zero mantissa; exponent 34 overflows above 0xff.
+        for bits in (0x23000001, 0x22000100, 0x21010000):
+            with self.subTest(bits=hex(bits)):
+                with self.assertRaises(ValueError):
+                    decode_compact_target(bits)
+
+    def test_reject_compact_target_outside_uint32(self):
+        for bits in (-1, 0x1_0000_0000, True):
+            with self.subTest(bits=bits):
+                with self.assertRaises(ValueError):
+                    decode_compact_target(bits)
+
 
 class RetargetAndWorkTests(unittest.TestCase):
     def test_compact_target_round_trip_for_regtest_limit(self):
