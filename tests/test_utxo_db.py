@@ -330,5 +330,68 @@ store.apply(tx)
             UTXOStore(legacy_path)
 
 
+    def _database_snapshot(self, path):
+        with sqlite3.connect(path) as db:
+            tables = [
+                row[0] for row in db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' "
+                    "AND name NOT LIKE 'sqlite_%' ORDER BY name"
+                )
+            ]
+            return {
+                table: db.execute(
+                    f'SELECT * FROM "{table}" ORDER BY rowid'
+                ).fetchall()
+                for table in tables
+            }
+
+    def test_schema_v2_rejection_preserves_existing_database_without_migration(self):
+        with sqlite3.connect(self.db_path) as db:
+            db.execute(
+                "UPDATE metadata SET value='2' WHERE key='schema_version'"
+            )
+        before = self._database_snapshot(self.db_path)
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "schema-v2 migration requires a verified reindex from genesis",
+        ):
+            UTXOStore(self.db_path)
+
+        self.assertEqual(self._database_snapshot(self.db_path), before)
+        with sqlite3.connect(self.db_path) as db:
+            self.assertEqual(
+                db.execute(
+                    "SELECT value FROM metadata WHERE key='schema_version'"
+                ).fetchone(),
+                ("2",),
+            )
+            self.assertEqual(
+                db.execute("SELECT COUNT(*) FROM utxos").fetchone(),
+                (1,),
+            )
+
+    def test_unknown_future_schema_rejection_preserves_existing_database(self):
+        with sqlite3.connect(self.db_path) as db:
+            db.execute(
+                "UPDATE metadata SET value='999' WHERE key='schema_version'"
+            )
+        before = self._database_snapshot(self.db_path)
+
+        with self.assertRaisesRegex(
+            RuntimeError, "unsupported UTXO database schema version"
+        ):
+            UTXOStore(self.db_path)
+
+        self.assertEqual(self._database_snapshot(self.db_path), before)
+        with sqlite3.connect(self.db_path) as db:
+            self.assertEqual(
+                db.execute(
+                    "SELECT value FROM metadata WHERE key='schema_version'"
+                ).fetchone(),
+                ("999",),
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
