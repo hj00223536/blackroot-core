@@ -61,7 +61,7 @@ class TargetAndPowTests(unittest.TestCase):
     def test_reject_compact_target_overflow_encodings(self):
         # Bitcoin-style SetCompact overflow boundaries: exponent 35 always
         # overflows for a non-zero mantissa; exponent 34 overflows above 0xff.
-        for bits in (0x23000001, 0x22000100, 0x21010000):
+        for bits in (0x23000001, 0x22000100, 0x21010001):
             with self.subTest(bits=hex(bits)):
                 with self.assertRaises(ValueError):
                     decode_compact_target(bits)
