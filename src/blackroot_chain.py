@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .blackroot_consensus import (DIFFICULTY_INTERVAL, TARGET_SPACING, block_work, check_proof_of_work, decode_compact_target, format_hash, retarget_compact, serialize_header, sha256d)
+from .blackroot_consensus import (DIFFICULTY_INTERVAL, TARGET_SPACING, block_work, check_proof_of_work, decode_compact_target, encode_compact_target, format_hash, retarget_compact, serialize_header, sha256d)
 
 ZERO_HASH = bytes(32)
 
@@ -169,6 +169,8 @@ class HeaderChain:
             if header.timestamp <= self.median_time_past(header.prev_hash):
                 raise ValueError("timestamp must be greater than median-time-past")
         target = decode_compact_target(header.bits)
+        if encode_compact_target(target) != header.bits:
+            raise ValueError("non-canonical compact target encoding")
         if target > self.pow_limit:
             raise ValueError("target exceeds network proof-of-work limit")
         if header.prev_hash != ZERO_HASH:
