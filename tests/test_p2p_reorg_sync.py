@@ -90,6 +90,24 @@ class MultiPeerReorganizationSyncTests(unittest.IsolatedAsyncioTestCase):
             self.sync.accept_block("attacker", block.serialize())
         self.assertEqual(self.sync.pool.assigned_peer(block.header.hash), assigned)
 
+    async def test_expired_request_is_reassigned_to_another_connected_peer(self):
+        import time
+
+        assignments = await self.sync.request_missing_bodies(self.peers)
+        block_hash = self.fork_one.header.hash
+        original_peer = assignments[block_hash]
+        self.peers[original_peer].connected = False
+        retried = await self.sync.retry_expired_requests(
+            self.peers, timeout=5, now=time.monotonic() + 10
+        )
+        self.assertEqual(retried[block_hash], "p2" if original_peer == "p1" else "p1")
+        self.assertEqual(self.sync.pool.assigned_peer(block_hash), retried[block_hash])
+        self.assertEqual(self.peers[retried[block_hash]].sent[-1][0], "getdata")
+
+    async def test_expire_requests_rejects_nonpositive_timeout(self):
+        with self.assertRaisesRegex(ValueError, "positive"):
+            self.sync.expire_requests(0)
+
     async def test_disconnect_releases_fork_requests(self):
         assignments = await self.sync.request_missing_bodies(self.peers)
         peer_id = next(iter(assignments.values()))
