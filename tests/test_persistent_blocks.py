@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import contextmanager
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,6 +10,20 @@ from src.blackroot_consensus import block_subsidy, check_proof_of_work, decode_c
 from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput, merkle_root
 from src.blackroot_script import N, _mul, _hash160, _push, legacy_sighash_all, p2pkh_script
 from src.blackroot_utxo_db import UTXOStore
+
+
+@contextmanager
+def managed_sqlite(path):
+    """Commit test writes and always close the owned SQLite handle."""
+    db = sqlite3.connect(path)
+    try:
+        yield db
+        db.commit()
+    except BaseException:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 def coinbase(value, tag, script_pubkey=b'miner'):
@@ -93,7 +108,7 @@ class PersistentBlockTests(unittest.TestCase):
     def test_block_body_archive_rejects_corrupt_serialized_size(self):
         block = block_for([coinbase(block_subsidy(0), b"\\x01\\x01")])
         block_hash = self.store.store_block_body(block)
-        with sqlite3.connect(self.path) as db:
+        with managed_sqlite(self.path) as db:
             db.execute(
                 "UPDATE block_bodies SET serialized_size=serialized_size+1 WHERE block_hash=?",
                 (block_hash,),
@@ -174,7 +189,7 @@ class PersistentBlockTests(unittest.TestCase):
         genesis = block_for([genesis_cb])
         self.store.connect_block(genesis, 0)
         coinbase_point = OutPoint(genesis_cb.txid, 0)
-        with self.store._connect() as db:
+        with self.store._connection_scope() as db:
             row = db.execute(
                 "SELECT created_height, is_coinbase FROM utxos WHERE txid=? AND output_index=?",
                 (coinbase_point.txid, coinbase_point.index),
