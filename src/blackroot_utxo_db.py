@@ -172,6 +172,20 @@ class UTXOStore:
             ).fetchone()
         return None if row is None else (row[0], bytes(row[1]))
 
+
+    @staticmethod
+    def _advance_provenance(block, parent_provenance, height):
+        updated = dict(parent_provenance)
+        for tx in block.transactions[1:]:
+            for txin in tx.inputs:
+                updated.pop(txin.previous_output, None)
+            for index, _output in enumerate(tx.outputs):
+                updated[OutPoint(tx.txid, index)] = UTXOProvenance(height, False)
+        coinbase = block.transactions[0]
+        for index, _output in enumerate(coinbase.outputs):
+            updated[OutPoint(coinbase.txid, index)] = UTXOProvenance(height, True)
+        return updated
+
     def connect_block(self, block: Block, height: int) -> int:
         """Atomically validate and persist a block and its resulting UTXO set.
 
@@ -209,6 +223,9 @@ class UTXOStore:
                     provenance[outpoint] = UTXOProvenance(created_height, bool(is_coinbase_flag))
 
                 updated, fees = validate_block_transactions(block, parent, height, provenance)
+                updated_provenance = self._advance_provenance(block, provenance, height)
+                if set(updated) != set(updated_provenance):
+                    raise RuntimeError("UTXO/provenance state diverged")
 
                 db.execute(
                     "INSERT INTO blocks(height, block_hash, prev_hash, header, tx_count, total_fees) "
@@ -250,8 +267,8 @@ class UTXOStore:
                 db.executemany(
                     "INSERT INTO utxos(txid, output_index, value, script_pubkey, created_height, is_coinbase) VALUES(?, ?, ?, ?, ?, ?)",
                     [(op.txid, op.index, output.value, output.script_pubkey,
-                      height if op.txid == block.transactions[0].txid else 0,
-                      1 if op.txid == block.transactions[0].txid else 0)
+                      updated_provenance[op].created_height,
+                      int(updated_provenance[op].is_coinbase))
                      for op, output in updated.items()],
                 )
                 db.commit()
@@ -424,8 +441,8 @@ class UTXOStore:
                     db.executemany(
                         "INSERT INTO utxos(txid, output_index, value, script_pubkey, created_height, is_coinbase) VALUES(?, ?, ?, ?, ?, ?)",
                         [(op.txid, op.index, output.value, output.script_pubkey,
-                          height if op.txid == block.transactions[0].txid else 0,
-                          1 if op.txid == block.transactions[0].txid else 0)
+                          updated_provenance[op].created_height,
+                          int(updated_provenance[op].is_coinbase))
                          for op, output in updated.items()],
                     )
 
