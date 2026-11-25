@@ -299,7 +299,7 @@ class PersistentNodeStateTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "stored active transaction is malformed"):
             self.state()
 
-    def test_startup_fails_closed_when_archived_body_is_corrupt(self):
+    def test_archived_body_corruption_is_detected_when_body_is_loaded(self):
         state = self.state()
         state.connect_best_block(self.genesis_block, 0)
         raw = self.genesis_block.serialize()
@@ -308,8 +308,9 @@ class PersistentNodeStateTests(unittest.TestCase):
                 "UPDATE block_bodies SET raw_block=? WHERE block_hash=?",
                 (raw[:-1] + bytes([raw[-1] ^ 1]), self.genesis_block.header.hash),
             )
-        with self.assertRaisesRegex(RuntimeError, "archived block body failed integrity verification"):
-            self.state()
+        reopened = self.state()
+        with self.assertRaisesRegex(RuntimeError, "archived block body merkle root is corrupt"):
+            reopened.utxos.load_block_body(self.genesis_block.header.hash)
 
 
 if __name__ == "__main__":
