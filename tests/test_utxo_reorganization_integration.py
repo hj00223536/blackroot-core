@@ -8,6 +8,8 @@ from src.blackroot_consensus import block_subsidy, check_proof_of_work, decode_c
 from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput, merkle_root
 from src.blackroot_utxo_db import UTXOStore
 from src.blackroot_sqlite import SQLiteTransactionCoordinator
+from src.blackroot_script import _mul, _hash160, p2pkh_script
+from test_blocks import signed_spend
 
 BITS = 0x207FFFFF
 POW_LIMIT = decode_compact_target(BITS)
@@ -60,6 +62,50 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(tip, (2, self.side_two.header.hash))
         self.assertEqual(self.store.tip(), tip)
+
+    def test_reorganization_restores_spent_ordinary_output(self):
+        path = Path(self.temp.name) / "ordinary-spend-reorg.sqlite"
+        store = UTXOStore(path)
+        genesis = mined_block(0, ZERO_HASH, 1)
+        headers = HeaderChain(POW_LIMIT, genesis.header)
+
+        point = _mul(1)
+        pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
+        funding = OutPoint(bytes.fromhex("a1" * 32), 0)
+        previous_output = TxOutput(10_000, p2pkh_script(_hash160(pubkey)))
+        store.add_genesis_output(funding, previous_output)
+        store.connect_validated_block(genesis, 0, headers)
+
+        spend = signed_spend(funding, previous_output, output_script=b"recipient")
+        coinbase_tx = coinbase(1, 2)
+        txs = (coinbase_tx, spend)
+        root = merkle_root(tx.txid for tx in txs)
+        old_one = None
+        for nonce in range(10_000):
+            header = BlockHeader(1, genesis.header.hash, root, 2, BITS, nonce)
+            if check_proof_of_work(header.serialize(), BITS, POW_LIMIT):
+                old_one = Block(header, txs)
+                break
+        self.assertIsNotNone(old_one)
+        headers.add(old_one.header)
+        store.connect_validated_block(old_one, 1, headers)
+
+        self.assertIsNone(store.get(funding))
+        recipient = OutPoint(spend.txid, 0)
+        self.assertEqual(store.get(recipient), TxOutput(9_000, b"recipient"))
+
+        side_one = mined_block(1, genesis.header.hash, 3)
+        side_two = mined_block(2, side_one.header.hash, 4)
+        headers.add_to_branch(side_one.header)
+        headers.add_to_branch(side_two.header)
+        switched = store.reorganize_to_best(
+            headers,
+            {side_one.header.hash: side_one, side_two.header.hash: side_two},
+        )
+        self.assertEqual(switched, (2, side_two.header.hash))
+        self.assertEqual(store.get(funding), previous_output)
+        self.assertIsNone(store.get(recipient))
+        store.verify_integrity()
 
     def test_reorganization_back_to_old_branch_restores_exact_coinbase_utxo_state(self):
         side_tip_utxo = OutPoint(self.side_two.transactions[0].txid, 0)
