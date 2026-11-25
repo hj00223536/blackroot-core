@@ -1,4 +1,5 @@
 import hashlib
+import src.blackroot_storage_migration as migration_module
 import sqlite3
 import tempfile
 import unittest
@@ -391,6 +392,40 @@ class SQLiteSnapshotTests(unittest.TestCase):
         self.assertIsNone(report["utxo_tip"])
         self.assertEqual(report["recovery_intents_pending"], 0)
         self.assertFalse(report["production_cutover_performed"])
+
+    def test_staged_import_rejects_source_snapshot_changed_during_copy(self):
+        snapshot_dir = self.root / "snapshots-source-change"
+        snapshot_dir.mkdir()
+        snapshot_legacy_node_databases(
+            self.header, self.utxo, self.journal, snapshot_dir
+        )
+        snapshots = (
+            snapshot_dir / "blackroot-header-snapshot.sqlite",
+            snapshot_dir / "blackroot-utxo-snapshot.sqlite",
+            snapshot_dir / "blackroot-journal-snapshot.sqlite",
+        )
+        before = tuple(path.read_bytes() for path in snapshots)
+        destination = self.root / "must-not-survive-source-change.sqlite"
+        real_hash = migration_module._sha256_file
+        calls = {"count": 0}
+
+        def changed_hash(path):
+            calls["count"] += 1
+            digest = real_hash(path)
+            # First three calls capture the pre-copy fingerprints; the fourth
+            # is the post-copy header fingerprint and simulates source drift.
+            if calls["count"] == 4:
+                return "0" * 64
+            return digest
+
+        with patch.object(migration_module, "_sha256_file", side_effect=changed_hash):
+            with self.assertRaisesRegex(RuntimeError, "source snapshot changed"):
+                import_snapshot_set_to_coordinated_database(
+                    *snapshots, destination, batch_size=2
+                )
+
+        self.assertFalse(destination.exists())
+        self.assertEqual(before, tuple(path.read_bytes() for path in snapshots))
 
     def test_staged_import_cleans_up_when_later_source_open_fails(self):
         snapshot_dir = self.root / "snapshots-open-failure"
