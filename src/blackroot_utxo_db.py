@@ -44,8 +44,8 @@ class UTXOStore:
                     output_index INTEGER NOT NULL CHECK(output_index >= 0 AND output_index <= 4294967295),
                     value INTEGER NOT NULL CHECK(value >= 0),
                     script_pubkey BLOB NOT NULL,
-                    created_height INTEGER NOT NULL CHECK(created_height >= 0),
-                    is_coinbase INTEGER NOT NULL CHECK(is_coinbase IN (0, 1)),
+                    created_height INTEGER NOT NULL DEFAULT 0 CHECK(created_height >= 0),
+                    is_coinbase INTEGER NOT NULL DEFAULT 0 CHECK(is_coinbase IN (0, 1)),
                     PRIMARY KEY (txid, output_index)
                 ) WITHOUT ROWID
             """)
