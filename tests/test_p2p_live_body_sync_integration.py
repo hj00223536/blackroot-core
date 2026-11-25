@@ -118,6 +118,7 @@ class LiveBlockBodySyncTests(unittest.IsolatedAsyncioTestCase):
             destination_runtime = BlackrootNodeRuntime(
                 destination_state, destination_manager,
                 protocol_version=1, request_timeout=2,
+                adjusted_time=lambda: int(time.time()),
             )
             try:
                 host, port = await source_runtime.listen("127.0.0.1", 0)
