@@ -62,8 +62,12 @@ class P2PSyncService:
         async def dispatch(command: str, payload: bytes) -> None:
             if command in ("headers", "getheaders"):
                 await self._header_sync[peer].handle_message(peer, command, payload)
-                peers = self._peers()
-                await self.reorg.request_missing_bodies(peers)
+                # A fresh node has no active UTXO tip until its genesis body is
+                # explicitly bootstrapped. Header sync must remain usable without
+                # turning that expected bootstrap state into a peer-disconnect error.
+                if self.store.tip() is not None:
+                    peers = self._peers()
+                    await self.reorg.request_missing_bodies(peers)
             elif command == "inv":
                 unknown_headers = False
                 for item in decode_inventory(payload):
