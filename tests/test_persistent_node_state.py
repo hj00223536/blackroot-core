@@ -1,3 +1,4 @@
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -75,6 +76,14 @@ class PersistentNodeStateTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not selected"):
             state.connect_best_block(other, 0)
         self.assertIsNone(state.utxos.tip())
+
+    def test_startup_fails_closed_when_persisted_body_header_is_corrupt(self):
+        state = self.state()
+        state.connect_best_block(self.genesis_block, 0)
+        with sqlite3.connect(self.root / "utxos.sqlite") as db:
+            db.execute("UPDATE blocks SET header=? WHERE height=0", (b"corrupt",))
+        with self.assertRaisesRegex(RuntimeError, "block header does not match"):
+            self.state()
 
     def test_startup_fails_closed_when_utxo_tip_is_not_in_header_dag(self):
         other = make_block(ZERO_HASH, 0, 2)
