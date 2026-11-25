@@ -147,6 +147,19 @@ class PersistentHeaderStore:
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             try:
+                # Another process may have committed headers after this
+                # instance loaded its in-memory DAG. Never append from stale
+                # state: require an explicit reopen/replay before retrying.
+                persisted_hashes = {
+                    bytes(row[0]) for row in db.execute(
+                        "SELECT block_hash FROM headers"
+                    ).fetchall()
+                }
+                live_hashes = {node.header.hash for node in live_chain.nodes}
+                if persisted_hashes != live_hashes:
+                    raise RuntimeError(
+                        "persistent header store changed concurrently; reopen before retrying"
+                    )
                 self._insert_node(db, candidate, block_hash)
                 db.commit()
             except Exception:
