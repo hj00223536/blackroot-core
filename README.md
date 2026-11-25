@@ -45,6 +45,10 @@ Do not use this prototype to store value, accept deposits, advertise an investme
 
 No genesis hash, network identifier, address prefix, ports, DNS seeds, exchange listing, market price, or launch date is established by this repository.
 
+## Testnet launch status
+
+BLACKROOT has **not launched a public testnet**. Experimental P2P and storage components and integration tests exist, but a frozen testnet protocol, deterministic independently verified genesis, runnable node application, and public operating infrastructure are still missing. See [Testnet launch gates](docs/testnet-launch-gates.md) for the verified blockers and required sequence. Testnet coins, if a future testnet is operated, will have no monetary value.
+
 ## Mainnet launch status
 
 BLACKROOT is **not ready for mainnet or public sale**. The mandatory engineering, security, operational, and legal launch gates are tracked in [Mainnet launch gates](docs/mainnet-launch-gates.md). Passing unit tests does not satisfy these gates.
