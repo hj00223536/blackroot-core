@@ -185,6 +185,18 @@ class SQLiteSnapshotTests(unittest.TestCase):
 
 
 
+
+    def test_snapshot_set_rejects_incorrect_genesis_chainwork(self):
+        out = self.root / "snapshots"
+        out.mkdir()
+        with sqlite3.connect(self.header) as db:
+            db.execute("UPDATE headers SET chainwork='1' WHERE height=0")
+        with self.assertRaisesRegex(RuntimeError, "genesis metadata mismatch during replay"):
+            snapshot_legacy_node_databases(
+                self.header, self.utxo, self.journal, out
+            )
+        self.assertEqual(list(out.iterdir()), [])
+
     def test_snapshot_set_rejects_malformed_genesis_metadata(self):
         out = self.root / "snapshots"
         out.mkdir()
