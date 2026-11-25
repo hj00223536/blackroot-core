@@ -210,19 +210,25 @@ def validate_block_transactions(
                 raise TypeError("invalid UTXO provenance entry")
 
     working = dict(parent_utxos)
+    working_provenance = None if parent_provenance is None else dict(parent_provenance)
     fees = 0
     for tx in block.transactions[1:]:
         if not is_final_transaction(tx, height, median_time_past):
             raise ValueError("transaction is non-final for candidate block height/time")
-        validate_relative_sequence_locks(tx, parent_provenance, height)
+        validate_relative_sequence_locks(tx, working_provenance, height)
         if parent_provenance is not None:
             for txin in tx.inputs:
-                provenance = parent_provenance.get(txin.previous_output)
+                provenance = working_provenance.get(txin.previous_output)
                 if provenance is not None:
                     validate_coinbase_maturity(provenance, height)
         # Authorization is consensus-critical: reject unsupported or invalid scripts.
         validate_transaction_scripts(tx, working)
         fee = apply_transaction(tx, working)
+        if working_provenance is not None:
+            for txin in tx.inputs:
+                working_provenance.pop(txin.previous_output, None)
+            for index, _output in enumerate(tx.outputs):
+                working_provenance[OutPoint(tx.txid, index)] = UTXOProvenance(height, False)
         fees += fee
         if fees > MAX_MONEY:
             raise ValueError("total block fees exceed money range")
