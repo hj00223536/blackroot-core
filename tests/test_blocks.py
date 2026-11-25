@@ -5,7 +5,41 @@ from src.blackroot_blocks import (
 )
 from src.blackroot_chain import BlockHeader
 from src.blackroot_consensus import block_subsidy
+from src.blackroot_script import (
+    N, _mul, _hash160, _push, legacy_sighash_all, p2pkh_script,
+)
 from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput, merkle_root
+
+
+def der_integer(value):
+    raw = value.to_bytes((value.bit_length() + 7) // 8, "big") or b"\x00"
+    if raw[0] & 0x80:
+        raw = b"\x00" + raw
+    return b"\x02" + bytes([len(raw)]) + raw
+
+
+def der_signature(r, s):
+    body = der_integer(r) + der_integer(s)
+    return b"\x30" + bytes([len(body)]) + body
+
+
+def signed_spend(previous, previous_output, private_key=1):
+    point = _mul(private_key)
+    pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
+    unsigned = Transaction(
+        1, (TxInput(previous),), (TxOutput(9_000, b"pay"),)
+    )
+    digest = legacy_sighash_all(unsigned, 0, previous_output.script_pubkey)
+    nonce = 2
+    nonce_point = _mul(nonce)
+    r = nonce_point[0] % N
+    s = (pow(nonce, N - 2, N) *
+         (int.from_bytes(digest, "big") + r * private_key)) % N
+    if s > N // 2:
+        s = N - s
+    signature = der_signature(r, s) + b"\x01"
+    script_sig = _push(signature) + _push(pubkey)
+    return Transaction(1, (TxInput(previous, script_sig),), unsigned.outputs)
 
 
 def make_coinbase(value, script=b"\x01\x01"):
@@ -26,17 +60,28 @@ def make_block(txs):
 class BlockValidationTests(unittest.TestCase):
     def setUp(self):
         self.funding = OutPoint(bytes.fromhex("11" * 32), 0)
-        self.parent = {self.funding: TxOutput(10_000, b"previous-script")}
+        point = _mul(1)
+        pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
+        self.previous_output = TxOutput(10_000, p2pkh_script(_hash160(pubkey)))
+        self.parent = {self.funding: self.previous_output}
 
-    def test_valid_block_accounts_fees_and_subsidy(self):
-        spend = Transaction(1, (TxInput(self.funding),), (TxOutput(9_000, b"pay"),))
+    def test_valid_signed_block_accounts_fees_and_subsidy(self):
+        spend = signed_spend(self.funding, self.previous_output)
         coinbase = make_coinbase(block_subsidy(1) + 1_000)
         result, fees = validate_block_transactions(make_block([coinbase, spend]), self.parent, 1)
         self.assertEqual(fees, 1_000)
         self.assertNotIn(self.funding, result)
         self.assertIn(OutPoint(spend.txid, 0), result)
         self.assertIn(OutPoint(coinbase.txid, 0), result)
-        self.assertIn(self.funding, self.parent)  # parent snapshot remains untouched
+        self.assertIn(self.funding, self.parent)
+
+    def test_rejects_unsigned_spend_inside_block(self):
+        unsigned = Transaction(
+            1, (TxInput(self.funding),), (TxOutput(9_000, b"pay"),)
+        )
+        coinbase = make_coinbase(1)
+        with self.assertRaisesRegex(ValueError, "script verification failed"):
+            validate_block_transactions(make_block([coinbase, unsigned]), self.parent, 1)
 
     def test_rejects_missing_coinbase_first(self):
         spend = Transaction(1, (TxInput(self.funding),), (TxOutput(9_000, b"pay"),))
