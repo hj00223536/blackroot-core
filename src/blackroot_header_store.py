@@ -32,6 +32,18 @@ class PersistentHeaderStore:
         db.execute("PRAGMA busy_timeout = 10000")
         return db
 
+    @staticmethod
+    def _verify_sqlite_integrity(db: sqlite3.Connection) -> None:
+        """Reject SQLite page/index corruption before replaying persisted headers."""
+        integrity = db.execute("PRAGMA integrity_check").fetchall()
+        if integrity != [("ok",)]:
+            raise RuntimeError(f"persistent header SQLite integrity check failed: {integrity!r}")
+        foreign_key_errors = db.execute("PRAGMA foreign_key_check").fetchall()
+        if foreign_key_errors:
+            raise RuntimeError(
+                f"persistent header foreign-key check failed: {foreign_key_errors!r}"
+            )
+
     @property
     def chain(self) -> HeaderChain:
         """Return the current in-memory validated DAG."""
@@ -61,6 +73,7 @@ class PersistentHeaderStore:
                     chainwork TEXT NOT NULL
                 ) WITHOUT ROWID
             """)
+            self._verify_sqlite_integrity(db)
             metadata = dict(db.execute("SELECT key, value FROM header_metadata"))
             expected = {
                 "schema_version": str(self.SCHEMA_VERSION),
