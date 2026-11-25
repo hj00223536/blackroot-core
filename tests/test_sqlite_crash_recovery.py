@@ -21,7 +21,7 @@ class SQLiteCrashRecoveryTests(unittest.TestCase):
             store.connect_validated_block(genesis, 0, chain)
             expected_tip = store.tip()
             expected_headers = store.active_block_headers()
-            with store._connect() as db:
+            with store._connection_scope() as db:
                 expected_utxos = db.execute(
                     "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp FROM utxos ORDER BY txid, output_index"
                 ).fetchall()
@@ -44,7 +44,7 @@ class SQLiteCrashRecoveryTests(unittest.TestCase):
             reopened = UTXOStore(database)
             self.assertEqual(reopened.tip(), expected_tip)
             self.assertEqual(reopened.active_block_headers(), expected_headers)
-            with reopened._connect() as db:
+            with reopened._connection_scope() as db:
                 recovered_utxos = db.execute(
                     "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp FROM utxos ORDER BY txid, output_index"
                 ).fetchall()
