@@ -218,6 +218,37 @@ class PersistentBlockTests(unittest.TestCase):
         )
         self.assertIsNone(self.store.get(OutPoint(invalid_cb.txid, 0)))
 
+
+    def test_reorganization_rejects_immature_coinbase_spend_and_rolls_back(self):
+        point = _mul(1)
+        pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
+        locking_script = p2pkh_script(_hash160(pubkey))
+        genesis_cb = coinbase(block_subsidy(0), b"\x01\x01", locking_script)
+        genesis = block_for([genesis_cb])
+        self.store.connect_block(genesis, 0)
+
+        active_cb = coinbase(block_subsidy(1), b"\x01\x02")
+        active = block_for([active_cb], previous=genesis.header.hash, timestamp=2)
+        self.store.connect_block(active, 1)
+
+        genesis_point = OutPoint(genesis_cb.txid, 0)
+        genesis_output = TxOutput(block_subsidy(0), locking_script)
+        spend = signed_spend(genesis_point, genesis_output, block_subsidy(0) - 100)
+        replacement_cb = coinbase(block_subsidy(1) + 100, b"\x02\x02")
+        replacement = block_for(
+            [replacement_cb, spend], previous=genesis.header.hash, timestamp=3
+        )
+        with self.assertRaisesRegex(ValueError, "premature coinbase"):
+            self.store.reorganize((active.header.hash,), (replacement,))
+
+        self.assertEqual(self.store.tip(), (1, active.header.hash))
+        self.assertEqual(self.store.get(genesis_point), genesis_output)
+        self.assertEqual(
+            self.store.get(OutPoint(active_cb.txid, 0)),
+            TxOutput(block_subsidy(1), b"miner"),
+        )
+        self.assertIsNone(self.store.get(OutPoint(replacement_cb.txid, 0)))
+
     def test_reorganization_requires_tip_first_disconnect_order(self):
         genesis_cb = coinbase(block_subsidy(0), b"\x01\x01")
         genesis = block_for([genesis_cb])
