@@ -83,6 +83,8 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
 
     def test_coordinated_reorganization_commits_with_outer_transaction(self):
         path = Path(self.temp.name) / "coordinated-reorg.sqlite"
+        active_headers = HeaderChain(POW_LIMIT, self.genesis.header)
+        active_headers.add(self.old_one.header)
         headers = HeaderChain(POW_LIMIT, self.genesis.header)
         headers.add(self.old_one.header)
         headers.add_to_branch(self.side_one.header)
@@ -90,8 +92,8 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
         with SQLiteTransactionCoordinator(path) as coordinator:
             with coordinator.transaction() as connection:
                 store = UTXOStore(path, connection=connection)
-                store.connect_validated_block(self.genesis, 0, headers)
-                store.connect_validated_block(self.old_one, 1, headers)
+                store.connect_validated_block(self.genesis, 0, active_headers)
+                store.connect_validated_block(self.old_one, 1, active_headers)
             with coordinator.transaction() as connection:
                 store = UTXOStore(path, connection=connection)
                 tip = store.reorganize_to_best(
@@ -105,6 +107,8 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
 
     def test_outer_rollback_reverts_entire_coordinated_reorganization(self):
         path = Path(self.temp.name) / "rollback-reorg.sqlite"
+        active_headers = HeaderChain(POW_LIMIT, self.genesis.header)
+        active_headers.add(self.old_one.header)
         headers = HeaderChain(POW_LIMIT, self.genesis.header)
         headers.add(self.old_one.header)
         headers.add_to_branch(self.side_one.header)
@@ -112,8 +116,8 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
         with SQLiteTransactionCoordinator(path) as coordinator:
             with coordinator.transaction() as connection:
                 store = UTXOStore(path, connection=connection)
-                store.connect_validated_block(self.genesis, 0, headers)
-                store.connect_validated_block(self.old_one, 1, headers)
+                store.connect_validated_block(self.genesis, 0, active_headers)
+                store.connect_validated_block(self.old_one, 1, active_headers)
             with self.assertRaisesRegex(RuntimeError, "abort coordinated reorg"):
                 with coordinator.transaction() as connection:
                     store = UTXOStore(path, connection=connection)
@@ -129,11 +133,13 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
 
     def test_disconnect_tip_uses_coordinator_outer_transaction(self):
         path = Path(self.temp.name) / "coordinated-disconnect.sqlite"
+        active_headers = HeaderChain(POW_LIMIT, self.genesis.header)
+        active_headers.add(self.old_one.header)
         with SQLiteTransactionCoordinator(path) as coordinator:
             with coordinator.transaction() as connection:
                 store = UTXOStore(path, connection=connection)
-                store.connect_validated_block(self.genesis, 0, headers)
-                store.connect_validated_block(self.old_one, 1, headers)
+                store.connect_validated_block(self.genesis, 0, active_headers)
+                store.connect_validated_block(self.old_one, 1, active_headers)
             with coordinator.transaction() as connection:
                 store = UTXOStore(path, connection=connection)
                 self.assertEqual(
