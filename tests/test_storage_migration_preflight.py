@@ -548,6 +548,49 @@ class SQLiteSnapshotTests(unittest.TestCase):
                 require_import_manifest=True,
             )
 
+    def test_schema_v2_coordinated_reopen_refuses_without_mutating_staging_database(self):
+        genesis = BlockHeader(1, bytes(32), bytes(32), 1, 0x207fffff, 0)
+        pow_limit = decode_compact_target(0x207fffff)
+        database = self.root / "schema-v2-staging.sqlite"
+        state = PersistentNodeState.open_coordinated(database, pow_limit, genesis)
+        state.close()
+
+        with sqlite3.connect(database) as db:
+            db.execute("UPDATE metadata SET value='2' WHERE key='schema_version'")
+
+        def snapshot():
+            with sqlite3.connect(database) as db:
+                tables = [
+                    row[0] for row in db.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table' "
+                        "AND name NOT LIKE 'sqlite_%' ORDER BY name"
+                    )
+                ]
+                return {
+                    table: db.execute(
+                        'SELECT * FROM "' + table.replace('"', '""') + '"'
+                    ).fetchall()
+                    for table in tables
+                }
+
+        before = snapshot()
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "schema-v2 migration requires a verified reindex from genesis",
+        ):
+            validate_coordinated_staging_database(
+                database, pow_limit=pow_limit, genesis=genesis
+            )
+
+        self.assertEqual(snapshot(), before)
+        with sqlite3.connect(database) as db:
+            self.assertEqual(
+                db.execute(
+                    "SELECT value FROM metadata WHERE key='schema_version'"
+                ).fetchone(),
+                ("2",),
+            )
+
     def test_coordinated_staging_validator_reopens_real_node_stores(self):
         genesis = BlockHeader(1, bytes(32), bytes(32), 1, 0x207fffff, 0)
         pow_limit = decode_compact_target(0x207fffff)
