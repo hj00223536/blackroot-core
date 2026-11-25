@@ -26,7 +26,7 @@ The process termination tests do not simulate physical power loss, filesystem co
 
 ## Safe migration tooling — staging only
 
-The repository now contains read-only legacy-store preflight, WAL-consistent SQLite snapshots, cross-store header/UTXO consistency checks, a fail-closed schema merge planner, a staging importer, and a validator that reopens the staged database through the coordinated node stores. An end-to-end fixture verifies a synthetic one-block legacy store can be snapshotted, imported, and reopened. No production cutover has been performed. Do not point coordinated mode at existing live database files or manually merge them.
+The repository now contains read-only legacy-store preflight, WAL-consistent SQLite snapshots, cross-store header/UTXO consistency checks, a fail-closed schema merge planner, a staging importer, and a validator that reopens the staged database through the coordinated node stores. An end-to-end fixture verifies a synthetic three-block legacy store can be snapshotted, imported, and reopened with its height-two active tip preserved. No production cutover has been performed. Do not point coordinated mode at existing live database files or manually merge them.
 
 The migration tooling still needs long-chain and large-dataset coverage, backup restoration drills, broader fault injection, disk-full and interrupted-copy tests, operational cutover/rollback procedures, and independent review. Source databases are preserved by the current snapshot/import path; the legacy constructor remains the default.
 
