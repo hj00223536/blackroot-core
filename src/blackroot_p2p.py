@@ -13,7 +13,7 @@ from .blackroot_consensus import sha256d
 
 HEADER_SIZE = 24
 DEFAULT_MAX_PAYLOAD = 2_000_000
-_COMMAND = re.compile(r"[a-z0-9_]{1,12}\\Z")
+_COMMAND = re.compile(r"[a-z0-9_]{1,12}\Z")
 
 
 def _validate_magic(magic: bytes) -> None:
@@ -24,7 +24,7 @@ def _validate_magic(magic: bytes) -> None:
 def _validate_command(command: str) -> bytes:
     if not isinstance(command, str) or _COMMAND.fullmatch(command) is None:
         raise ValueError("command must be 1-12 lowercase ASCII letters, digits, or underscores")
-    return command.encode("ascii").ljust(12, b"\\x00")
+    return command.encode("ascii").ljust(12, b"\x00")
 
 
 def _validate_limit(max_payload: int) -> None:
@@ -55,7 +55,7 @@ def decode_message(frame: bytes, magic: bytes, *, max_payload: int = DEFAULT_MAX
     if frame[:4] != magic:
         raise ValueError("message network magic mismatch")
     raw_command = frame[4:16]
-    command_part, separator, padding = raw_command.partition(b"\\x00")
+    command_part, separator, padding = raw_command.partition(b"\x00")
     if separator and any(padding):
         raise ValueError("message command has non-zero bytes after padding")
     try:
