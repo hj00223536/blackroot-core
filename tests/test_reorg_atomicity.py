@@ -23,7 +23,16 @@ def coinbase(height, value=None):
 
 
 def mined_block(height, previous, timestamp, tx=None):
-    transactions = (coinbase(height) if tx is None else tx,)
+    if tx is None:
+        transactions = (coinbase(height),)
+    elif isinstance(tx, tuple):
+        transactions = tx
+    else:
+        transactions = (tx,)
+    if not transactions or not all(
+        isinstance(item, Transaction) for item in transactions
+    ):
+        raise TypeError("tx must be a Transaction or a non-empty tuple of Transactions")
     root = merkle_root(item.txid for item in transactions)
     for nonce in range(10000):
         header = BlockHeader(1, previous, root, timestamp, BITS, nonce)
