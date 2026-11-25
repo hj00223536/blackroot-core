@@ -113,16 +113,16 @@ readiness. No cutover is performed.
 ### End-to-end prototype fixture coverage
 
 The test suite now builds the three legacy stores using the actual node
-constructors, connects a valid mined genesis block, snapshots those stores,
-imports the snapshots into a new coordinated staging database, and reopens
-that imported database through `validate_coordinated_staging_database`.
-The test asserts that the active UTXO tip and best header hash survive the
-round trip and that no production cutover occurs.
+constructors, connects a valid mined three-block active chain, snapshots those
+stores, imports the snapshots into a new coordinated staging database, and
+reopens that imported database through `validate_coordinated_staging_database`.
+The test asserts that the height-two active UTXO tip and best header hash
+survive the round trip and that no production cutover occurs.
 
-This is a synthetic one-block fixture. It does not establish safety for
-arbitrary historical databases, long chains, competing branches, large
-datasets, interrupted filesystem operations, or live network cutover. Those
-remain separate migration and operational test gates.
+This is a synthetic three-block fixture. It does not establish safety for
+arbitrary historical databases, long chains, competing branches within a
+legacy migration, large datasets, interrupted filesystem operations, or live
+network cutover. Those remain separate migration and operational test gates.
 
 ### Competing-branch reorganization and restart test
 
