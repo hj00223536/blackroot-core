@@ -28,6 +28,7 @@ With integer atomic-unit halving, the emitted total is slightly below 21 million
 - tests/test_utxo_db.py: persistence, atomicity, rollback, and duplicate-outpoint tests.
 - docs/transactions.md: transaction format and explicit security omissions.
 - docs/difficulty-and-chainwork.md: proposed retarget arithmetic, chainwork, and unresolved boundary rules.
+- docs/utxo-storage.md: SQLite persistence behavior and production limitations.
 - tests/: unit tests for reference helpers, header linkage, transaction encoding, merkle roots, and UTXO accounting.
 - docs/: protocol, genesis, monetary policy, security, and launch-readiness notes.
 
