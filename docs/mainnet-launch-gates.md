@@ -76,3 +76,8 @@ handling.
 **Decision rule:** keep all development isolated from real funds until every
 blocking item is implemented, independently tested, reviewed, and approved.
 A testnet is not a mainnet launch and has no promised monetary value.
+
+
+### Block UTXO validation regression coverage
+
+Block transaction validation is tested to reject two separately valid transactions that attempt to spend the same parent outpoint. A later invalid transaction must also leave the caller's parent UTXO snapshot unchanged, because validation operates on a private working copy. These checks cover in-memory block validation only; they do not establish complete consensus compatibility or production readiness.
