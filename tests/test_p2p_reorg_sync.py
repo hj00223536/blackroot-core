@@ -106,6 +106,52 @@ class MultiPeerReorganizationSyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn(block_hash, self.sync.pool.pending_hashes)
         self.assertNotIn(block_hash, self.sync._requested_at)
 
+    async def test_transaction_invalid_fork_bodies_are_removed_from_archive(self):
+        def mine_transactions(height, previous, timestamp, transactions):
+            root = merkle_root(tx.txid for tx in transactions)
+            for nonce in range(10000):
+                header = BlockHeader(1, previous, root, timestamp, BITS, nonce)
+                if check_proof_of_work(header.serialize(), BITS, POW_LIMIT):
+                    return Block(header, transactions)
+            raise AssertionError("nonce search exhausted")
+
+        invalid_coinbase = Transaction(
+            1,
+            (TxInput(OutPoint(ZERO_TXID, COINBASE_INDEX), (1).to_bytes(2, "little")),),
+            (TxOutput(block_subsidy(1) + 1, b"miner"),),
+        )
+        invalid_one = mine_transactions(
+            1, self.genesis.header.hash, 10, (invalid_coinbase,)
+        )
+        branch_two = mined_block(2, invalid_one.header.hash, 11)
+        branch_three = mined_block(3, branch_two.header.hash, 12)
+        self.chain.add_to_branch(invalid_one.header)
+        self.chain.add_to_branch(branch_two.header)
+        self.chain.add_to_branch(branch_three.header)
+        sync = MultiPeerReorganizationSync(self.chain, self.store)
+        original_tip = self.store.tip()
+        assignments = await sync.request_missing_bodies(self.peers)
+        expected_hashes = (
+            invalid_one.header.hash,
+            branch_two.header.hash,
+            branch_three.header.hash,
+        )
+        self.assertEqual(set(assignments), set(expected_hashes))
+
+        for block_hash, block in zip(expected_hashes, (invalid_one, branch_two, branch_three)):
+            if block_hash == expected_hashes[-1]:
+                with self.assertRaisesRegex(ValueError, "coinbase reward exceeds"):
+                    sync.accept_block(assignments[block_hash], block.serialize())
+            else:
+                self.assertIsNone(sync.accept_block(assignments[block_hash], block.serialize()))
+
+        self.assertEqual(self.store.tip(), original_tip)
+        for block_hash in expected_hashes:
+            self.assertIsNone(self.store.load_block_body(block_hash))
+        self.assertEqual(sync.pool.pending_hashes, ())
+        self.assertEqual(sync._requested_at, {})
+        self.store.verify_integrity()
+
     async def test_expired_request_is_reassigned_to_another_connected_peer(self):
         import time
 
