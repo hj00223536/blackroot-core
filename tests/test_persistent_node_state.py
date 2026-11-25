@@ -200,8 +200,8 @@ class PersistentNodeStateTests(unittest.TestCase):
 
             original_reorganize = state.utxos.reorganize
 
-            def fail_after_full_utxo_switch(disconnect_hashes, connect_blocks):
-                result = original_reorganize(disconnect_hashes, connect_blocks)
+            def fail_after_full_utxo_switch(disconnect_hashes, connect_blocks, **kwargs):
+                result = original_reorganize(disconnect_hashes, connect_blocks, **kwargs)
                 raise RuntimeError("injected failure after replacement branch writes")
 
             state.utxos.reorganize = fail_after_full_utxo_switch
