@@ -168,5 +168,44 @@ class HeaderChainTests(unittest.TestCase):
             chain.add_to_branch(candidate, adjusted_time=1, max_future_seconds=-1)
 
 
+    def test_add_batch_rolls_back_entire_dag_when_later_header_is_invalid(self):
+        genesis = mine_header(ZERO_HASH, 1)
+        chain = HeaderChain(POW_LIMIT, genesis)
+        before_nodes = chain.nodes
+        before_tip = chain.best_hash
+        before_work = chain.chainwork
+
+        first = mine_header(genesis.hash, 2)
+        invalid_second = mine_header(first.hash, 2)
+        with self.assertRaisesRegex(ValueError, "median-time-past"):
+            chain.add_batch([first, invalid_second])
+
+        self.assertEqual(chain.nodes, before_nodes)
+        self.assertEqual(chain.best_hash, before_tip)
+        self.assertEqual(chain.chainwork, before_work)
+        self.assertIsNone(chain.node(first.hash))
+
+    def test_equal_work_fork_selection_is_deterministic(self):
+        genesis = mine_header(ZERO_HASH, 1)
+        chain = HeaderChain(POW_LIMIT, genesis)
+        candidates = [
+            mine_header(genesis.hash, timestamp)
+            for timestamp in (2, 3)
+        ]
+        lower_hash = min(candidates, key=lambda header: header.hash)
+        higher_hash = max(candidates, key=lambda header: header.hash)
+
+        chain.add_to_branch(higher_hash)
+        self.assertEqual(chain.tip.hash, higher_hash.hash)
+        chain.add_to_branch(lower_hash)
+
+        self.assertEqual(chain.chainwork, 2 * block_work(POW_LIMIT))
+        self.assertEqual(chain.tip.hash, lower_hash.hash)
+        self.assertEqual(
+            chain.nodes,
+            tuple(sorted(chain.nodes, key=lambda node: (node.height, node.header.hash))),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
