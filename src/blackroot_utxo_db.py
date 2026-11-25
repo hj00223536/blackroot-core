@@ -416,9 +416,12 @@ class UTXOStore:
                 raise ValueError("first validated block must be genesis at height zero")
         elif height != active[0] + 1 or block.header.prev_hash != active[1]:
             raise ValueError("validated block must directly extend persistent active tip")
-        return self.connect_block(block, height)
+        parent_mtp = None if height == 0 else header_chain.median_time_past(block.header.prev_hash)
+        return self.connect_block(block, height, median_time_past=parent_mtp)
 
-    def connect_block(self, block: Block, height: int) -> int:
+    def connect_block(
+        self, block: Block, height: int, *, median_time_past: int | None = None
+    ) -> int:
         """Atomically validate and persist a block and its resulting UTXO set.
 
         This path checks supported block-body rules, legacy P2PKH
@@ -454,7 +457,9 @@ class UTXOStore:
                 parent[outpoint] = TxOutput(value, bytes(script))
                 provenance[outpoint] = UTXOProvenance(created_height, bool(is_coinbase_flag))
 
-            updated, fees = validate_block_transactions(block, parent, height, provenance)
+            updated, fees = validate_block_transactions(
+                block, parent, height, provenance, median_time_past
+            )
             updated_provenance = self._advance_provenance(block, provenance, height)
             if set(updated) != set(updated_provenance):
                 raise RuntimeError("UTXO/provenance state diverged")
@@ -554,15 +559,23 @@ class UTXOStore:
                 raise ValueError("replacement block header does not match header-chain entry")
             connect_blocks.append(block)
 
+        median_times = tuple(
+            None if header.prev_hash == bytes(32)
+            else header_chain.median_time_past(header.prev_hash)
+            for header in connect_headers
+        )
         return self.reorganize(
             tuple(header.hash for header in disconnect_headers),
             tuple(connect_blocks),
+            median_time_past_values=median_times,
         )
 
     def reorganize(
         self,
         disconnect_hashes: tuple[bytes, ...],
         connect_blocks: tuple[Block, ...],
+        *,
+        median_time_past_values: tuple[int | None, ...] | None = None,
     ) -> tuple[int, bytes] | None:
         """Atomically disconnect an active suffix and connect a replacement.
 
@@ -579,6 +592,11 @@ class UTXOStore:
             raise ValueError("every disconnect hash must be exactly 32 bytes")
         if any(not isinstance(block, Block) for block in connect_blocks):
             raise TypeError("every replacement entry must be a Block")
+        if median_time_past_values is not None and (
+            not isinstance(median_time_past_values, tuple)
+            or len(median_time_past_values) != len(connect_blocks)
+        ):
+            raise ValueError("median-time-past values must match replacement block count")
 
         with self._write_scope() as db:
             for expected_hash in disconnect_hashes:
@@ -613,7 +631,11 @@ class UTXOStore:
                     )
                 db.execute("DELETE FROM blocks WHERE height=?", (height,))
 
-            for block in connect_blocks:
+            for block_index, block in enumerate(connect_blocks):
+                median_time_past = (
+                    None if median_time_past_values is None
+                    else median_time_past_values[block_index]
+                )
                 tip = db.execute(
                     "SELECT height, block_hash FROM blocks ORDER BY height DESC LIMIT 1"
                 ).fetchone()
@@ -634,7 +656,9 @@ class UTXOStore:
                     outpoint = OutPoint(bytes(txid), index)
                     parent[outpoint] = TxOutput(value, bytes(script))
                     provenance[outpoint] = UTXOProvenance(created_height, bool(is_coinbase_flag))
-                updated, fees = validate_block_transactions(block, parent, height, provenance)
+                updated, fees = validate_block_transactions(
+                    block, parent, height, provenance, median_time_past
+                )
                 updated_provenance = self._advance_provenance(block, provenance, height)
                 if set(updated) != set(updated_provenance):
                     raise RuntimeError("UTXO/provenance state diverged")
