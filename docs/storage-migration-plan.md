@@ -167,3 +167,8 @@ This marker is an acceptance gate, not a cryptographic signature or proof of con
 
 
 The strict import acceptance path is explicitly invoked with `validate_coordinated_staging_database(..., require_import_manifest=True)`. Callers validating databases created through other supported node initialization paths may leave the option disabled; that generic mode does not certify that a file came from the snapshot importer.
+
+
+## Abrupt process interruption test
+
+A subprocess test deliberately exits with os._exit after the staged table-copy transaction has committed but during the post-copy source fingerprint pass, before the completion-manifest transaction. The resulting SQLite file can pass integrity_check but has no import manifest, and strict staging validation rejects it. This exercises process termination at one defined boundary; it is not a power-loss test, does not cover every instruction boundary, and does not clean up artifacts left by a hard process exit. Such interrupted files must be quarantined or deleted after inspection, never accepted as completed imports.
