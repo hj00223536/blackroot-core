@@ -98,6 +98,17 @@ consensus interpretation ambiguity in the prototype; full header consensus
 still requires an independently frozen specification and cross-client tests.
 
 
+### Reorganization round-trip UTXO coverage
+
+An integration regression now switches from the original active branch to a
+longer side branch and then back to a still-longer extension of the original
+branch. It checks that disconnected coinbase outputs disappear, replacement
+outputs appear, and outputs from the reselected branch are recreated, followed
+by the store integrity check. This exercises created-output undo and branch
+reconnection across two successful switches. It does not yet cover spending
+and restoring an ordinary pre-existing output or process interruption at every
+individual reorganization write boundary.
+
 ### UTXO creation-height invariant
 
 Authenticated UTXO provenance is now checked against the spending block height for every output type: no output may be spent at a height earlier than the height at which it was created. Coinbase outputs additionally require the configured maturity interval. Regression tests cover both coinbase and ordinary outputs with future creation heights. This closes a temporal-state validation gap in the maturity helper; it does not establish complete consensus readiness.
