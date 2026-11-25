@@ -1,11 +1,25 @@
 import os
 import sqlite3
+from contextlib import contextmanager
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
+
+@contextmanager
+def _managed_sqlite(path):
+    connection = sqlite3.connect(path)
+    try:
+        yield connection
+        connection.commit()
+    except BaseException:
+        if connection.in_transaction:
+            connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 from src.blackroot_blocks import Block, COINBASE_INDEX, ZERO_TXID
 from src.blackroot_chain import BlockHeader, HeaderChain, ZERO_HASH
@@ -107,7 +121,7 @@ Path(result).write_text(stored.hex())
         reopened = UTXOStore(path)
         archived = reopened.load_block_body(block.header.hash)
         self.assertEqual(archived.serialize(), block.serialize())
-        with reopened._connect() as db:
+        with reopened._connection_scope() as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM block_bodies").fetchone()[0], 1)
         reopened.verify_integrity()
 
@@ -117,14 +131,14 @@ Path(result).write_text(stored.hex())
         block = self.side_one
         original = block.serialize()
         conflicting = original + b"\x00"
-        with store._connect() as db:
+        with store._connection_scope() as db:
             db.execute(
                 "INSERT INTO block_bodies(block_hash, raw_block, serialized_size) VALUES(?, ?, ?)",
                 (block.header.hash, conflicting, len(conflicting)),
             )
         with self.assertRaisesRegex(RuntimeError, "conflicting archived body"):
             store.store_block_body(block)
-        with store._connect() as db:
+        with store._connection_scope() as db:
             row = db.execute(
                 "SELECT raw_block, serialized_size FROM block_bodies WHERE block_hash=?",
                 (block.header.hash,),
@@ -138,7 +152,7 @@ Path(result).write_text(stored.hex())
 
     def test_verify_integrity_detects_corrupt_archived_body_metadata(self):
         self.store.store_block_body(self.side_one)
-        with self.store._connect() as db:
+        with self.store._connection_scope() as db:
             db.execute(
                 "UPDATE block_bodies SET serialized_size=serialized_size + 1 WHERE block_hash=?",
                 (self.side_one.header.hash,),
@@ -151,14 +165,14 @@ Path(result).write_text(stored.hex())
         store = UTXOStore(path)
         block = self.side_one
         store.store_block_body(block)
-        with store._connect() as db:
+        with store._connection_scope() as db:
             db.execute(
                 "UPDATE block_bodies SET serialized_size=serialized_size + 1 WHERE block_hash=?",
                 (block.header.hash,),
             )
         with self.assertRaisesRegex(RuntimeError, "size metadata is corrupt"):
             store.store_block_body(block)
-        with store._connect() as db:
+        with store._connection_scope() as db:
             raw, size = db.execute(
                 "SELECT raw_block, serialized_size FROM block_bodies WHERE block_hash=?",
                 (block.header.hash,),
@@ -281,7 +295,7 @@ Path(result).write_text(outcome)
         self.assertEqual(tip, (2, self.side_two.header.hash))
         self.assertEqual(self.store.tip(), tip)
         side_output = OutPoint(self.side_two.transactions[0].txid, 0)
-        with sqlite3.connect(self.store.path) as db:
+        with _managed_sqlite(self.store.path) as db:
             created_mtp = db.execute(
                 "SELECT created_mtp FROM utxos WHERE txid=? AND output_index=?",
                 (side_output.txid, side_output.index),
