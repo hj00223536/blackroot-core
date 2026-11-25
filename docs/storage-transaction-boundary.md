@@ -22,7 +22,7 @@ The stores currently:
 - issue commits inside their own methods;
 - and, in some operations, explicitly begin and commit transactions.
 
-Those boundaries cannot be composed into one caller-owned transaction merely by reusing a filename. Independent connections to one SQLite file still have independent transaction scopes. A broad path-only change could also create confusing schema ownership and locking behavior without solving partial commits.
+Those boundaries cannot be composed into one caller-owned transaction merely by reusing a filename. Independent connections to one SQLite file still have independent transaction scopes. A broad path-only change could also create confusing schema ownership and locking behavior without solving partial commits. The node-state constructor now rejects path aliases among the header, UTXO, and recovery-journal stores (including normalized relative-path aliases), before creating any database files. This is a guard against accidental configuration, not an atomicity implementation.
 
 ## Recommended target design
 
