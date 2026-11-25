@@ -216,6 +216,12 @@ def plan_coordinated_schema_merge(
                 raise RuntimeError(
                     f"schema object {name!r} has no reproducible CREATE statement"
                 )
+            if item["type"] == "table" and item["sql"].lstrip().upper().startswith(
+                "CREATE VIRTUAL TABLE"
+            ):
+                raise RuntimeError(
+                    f"virtual table {name!r} is not supported by coordinated schema import"
+                )
             if item["type"] == "view":
                 raise RuntimeError("views are not yet supported by coordinated schema import")
             if item["type"] == "trigger":
