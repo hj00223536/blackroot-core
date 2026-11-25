@@ -55,6 +55,62 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
         self.side_two = mined_block(2, self.side_one.header.hash, 4)
         self.headers.add_to_branch(self.side_two.header)
 
+    def test_concurrent_processes_archive_identical_block_body_once(self):
+        path = Path(self.temp.name) / "concurrent-body-archive.sqlite"
+        setup = UTXOStore(path)
+        setup.close()
+        block = self.side_one
+        barrier = Path(self.temp.name) / "release-archive-writers"
+        results = [Path(self.temp.name) / ("archive-" + str(i) + ".result") for i in range(4)]
+        worker = r'''\
+import sys
+import time
+from pathlib import Path
+from src.blackroot_blocks import Block
+from src.blackroot_utxo_db import UTXOStore
+db, raw, barrier, result = sys.argv[1:]
+store = UTXOStore(db)
+Path(result + ".ready").write_text("ready")
+deadline = time.monotonic() + 15
+while not Path(barrier).exists():
+    if time.monotonic() >= deadline:
+        raise SystemExit("archive barrier timeout")
+    time.sleep(0.005)
+stored = store.store_block_body(Block.deserialize(bytes.fromhex(raw)))
+Path(result).write_text(stored.hex())
+'''
+        workers = []
+        try:
+            for result in results:
+                workers.append(subprocess.Popen(
+                    [sys.executable, "-c", worker, str(path), block.serialize().hex(), str(barrier), str(result)],
+                    cwd=Path.cwd(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                ))
+            ready = [Path(str(result) + ".ready") for result in results]
+            deadline = time.monotonic() + 15
+            while not all(item.exists() for item in ready):
+                if time.monotonic() >= deadline:
+                    self.fail("archive workers did not become ready")
+                if any(process.poll() not in (None, 0) for process in workers):
+                    self.fail("archive worker exited before barrier release")
+                time.sleep(0.005)
+            barrier.write_text("go")
+            for process in workers:
+                stdout, stderr = process.communicate(timeout=20)
+                self.assertEqual(process.returncode, 0, msg=f"{stdout!r} {stderr!r}")
+        finally:
+            for process in workers:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait()
+        self.assertEqual([bytes.fromhex(result.read_text()) for result in results], [block.header.hash] * 4)
+        reopened = UTXOStore(path)
+        archived = reopened.load_block_body(block.header.hash)
+        self.assertEqual(archived.serialize(), block.serialize())
+        with reopened._connect() as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM block_bodies").fetchone()[0], 1)
+        reopened.verify_integrity()
+
     def test_archiving_same_block_body_is_idempotent(self):
         first = self.store.store_block_body(self.side_one)
         second = self.store.store_block_body(self.side_one)
