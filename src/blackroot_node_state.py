@@ -14,6 +14,7 @@ from .blackroot_blocks import Block
 from .blackroot_chain import BlockHeader
 from .blackroot_header_store import PersistentHeaderStore
 from .blackroot_utxo_db import UTXOStore
+from .blackroot_recovery_journal import NodeRecoveryJournal
 
 
 class PersistentNodeState:
@@ -25,10 +26,15 @@ class PersistentNodeState:
         utxo_path: str | Path,
         pow_limit: int,
         genesis: BlockHeader,
+        recovery_journal_path: str | Path | None = None,
     ) -> None:
         self.headers = PersistentHeaderStore(header_path, pow_limit, genesis)
         self.utxos = UTXOStore(utxo_path)
+        journal_path = (Path(str(utxo_path) + ".recovery.sqlite")
+                        if recovery_journal_path is None else recovery_journal_path)
+        self.recovery_journal = NodeRecoveryJournal(journal_path)
         self._verify_persistent_tip()
+        self.recovery_journal.reconcile(self.utxos.tip())
 
     def _verify_persistent_tip(self) -> None:
         records = self.utxos.active_block_headers()
@@ -85,7 +91,18 @@ class PersistentNodeState:
         if selected.hash != block.header.hash:
             raise ValueError("block body is not selected by persistent best header chain")
         self.utxos.store_block_body(block)
-        return self.utxos.connect_validated_block(block, height, self.headers.chain)
+        old_tip = self.utxos.tip()
+        new_tip = (height, block.header.hash)
+        if old_tip == new_tip:
+            raise ValueError("block is already the active UTXO tip")
+        self.recovery_journal.prepare(old_tip, new_tip)
+        try:
+            result = self.utxos.connect_validated_block(block, height, self.headers.chain)
+        except Exception:
+            self.recovery_journal.reconcile(self.utxos.tip())
+            raise
+        self.recovery_journal.reconcile(self.utxos.tip())
+        return result
 
     def archive_block_body(self, block: Block) -> bytes:
         """Archive a candidate body only when its header is known in the header DAG."""
@@ -97,6 +114,19 @@ class PersistentNodeState:
 
     def reorganize_best(self, replacement_blocks: dict[bytes, Block] | None = None) -> tuple[int, bytes]:
         """Switch to the greater-work branch using supplied or archived block bodies."""
-        result = self.utxos.reorganize_to_best(self.headers.chain, replacement_blocks)
+        old_tip = self.utxos.tip()
+        best_node = self.headers.chain.node(self.headers.chain.best_hash)
+        if best_node is None:
+            raise RuntimeError("header chain has no best node")
+        new_tip = (best_node.height, best_node.header.hash)
+        if old_tip == new_tip:
+            return self.utxos.reorganize_to_best(self.headers.chain, replacement_blocks)
+        self.recovery_journal.prepare(old_tip, new_tip)
+        try:
+            result = self.utxos.reorganize_to_best(self.headers.chain, replacement_blocks)
+        except Exception:
+            self.recovery_journal.reconcile(self.utxos.tip())
+            raise
+        self.recovery_journal.reconcile(self.utxos.tip())
         self._verify_persistent_tip()
         return result
