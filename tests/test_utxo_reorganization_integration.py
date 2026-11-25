@@ -59,6 +59,16 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
         loaded = self.store.load_block_body(first)
         self.assertEqual(loaded.serialize(), self.side_one.serialize())
 
+    def test_duplicate_active_block_is_rejected_without_state_change(self):
+        before_tip = self.store.tip()
+        before_count = self.store.count()
+        before_headers = self.store.active_block_headers()
+        with self.assertRaisesRegex(ValueError, "directly extend stored tip"):
+            self.store.connect_block(self.old_one, 1)
+        self.assertEqual(self.store.tip(), before_tip)
+        self.assertEqual(self.store.count(), before_count)
+        self.assertEqual(self.store.active_block_headers(), before_headers)
+
     def test_reorganizes_utxo_store_to_greater_work_branch(self):
         self.assertEqual(self.headers.tip.hash, self.side_two.header.hash)
         tip = self.store.reorganize_to_best(
