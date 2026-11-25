@@ -47,7 +47,7 @@ class HeaderChainTests(unittest.TestCase):
             chain.add(same_time)
 
     def test_rejects_noncanonical_compact_target_alias(self):
-        canonical_bits = 0x1F007F00
+        canonical_bits = 0x20007F00
         noncanonical_bits = 0x2100007F
         target = decode_compact_target(canonical_bits)
         self.assertEqual(decode_compact_target(noncanonical_bits), target)
