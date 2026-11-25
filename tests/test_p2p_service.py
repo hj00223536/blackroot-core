@@ -64,7 +64,7 @@ class P2PSyncServiceTests(unittest.IsolatedAsyncioTestCase):
 
         await handler("notfound", payload)
 
-        self.assertIsNone(self.service.reorg.pool.assigned_peer(block_hash))
+        self.assertIs(self.service.reorg.pool.assigned_peer(block_hash), self.peer_b)
         self.assertEqual(len(self.peer_b.sent), 1)
         self.assertEqual(self.peer_b.sent[0][0], "getdata")
 
