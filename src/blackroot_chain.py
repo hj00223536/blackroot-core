@@ -72,7 +72,7 @@ class HeaderChain:
 
     @property
     def chainwork(self) -> int:
-        \"\"\"Cumulative work for headers accepted by this prototype.\"\"\"
+        """Cumulative work for headers accepted by this prototype."""
         return self._chainwork
 
     def get(self, height: int) -> BlockHeader:
