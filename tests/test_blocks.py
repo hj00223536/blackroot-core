@@ -9,6 +9,7 @@ from src.blackroot_script import (
     N, _mul, _hash160, _push, legacy_sighash_all, p2pkh_script,
 )
 from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput, merkle_root
+from src.blackroot_maturity import UTXOProvenance
 
 
 def der_integer(value):
@@ -114,6 +115,32 @@ class BlockValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "height"):
             validate_block_transactions(make_block([coinbase]), self.parent, -1)
 
+
+    def test_rejects_immature_coinbase_spend_when_provenance_is_supplied(self):
+        spend = signed_spend(self.funding, self.previous_output)
+        coinbase = make_coinbase(1)
+        provenance = {self.funding: UTXOProvenance(0, True)}
+        with self.assertRaisesRegex(ValueError, "premature coinbase"):
+            validate_block_transactions(
+                make_block([coinbase, spend]), self.parent, 99, provenance
+            )
+
+    def test_accepts_mature_coinbase_spend_at_exact_boundary(self):
+        spend = signed_spend(self.funding, self.previous_output)
+        coinbase = make_coinbase(block_subsidy(100) + 1_000)
+        provenance = {self.funding: UTXOProvenance(0, True)}
+        result, fees = validate_block_transactions(
+            make_block([coinbase, spend]), self.parent, 100, provenance
+        )
+        self.assertEqual(fees, 1_000)
+        self.assertNotIn(self.funding, result)
+
+    def test_provenance_must_cover_entire_parent_utxo_set(self):
+        coinbase = make_coinbase(1)
+        with self.assertRaisesRegex(ValueError, "complete authenticated"):
+            validate_block_transactions(
+                make_block([coinbase]), self.parent, 1, {}
+            )
 
 if __name__ == "__main__":
     unittest.main()
