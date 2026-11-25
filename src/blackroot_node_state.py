@@ -33,6 +33,7 @@ class PersistentNodeState:
         journal_path = (Path(str(utxo_path) + ".recovery.sqlite")
                         if recovery_journal_path is None else recovery_journal_path)
         self.recovery_journal = NodeRecoveryJournal(journal_path)
+        self.utxos.verify_integrity()
         self._verify_persistent_tip()
         self.recovery_journal.reconcile(self.utxos.tip())
 
