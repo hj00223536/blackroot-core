@@ -12,7 +12,7 @@ This document is an engineering gate list, not a launch announcement. A testnet 
 - Unit and loopback/multi-node integration tests for selected P2P and storage paths.
 - A node-runtime wrapper that composes persistent state and a peer manager.
 
-These are reusable prototype components. They do not, by themselves, constitute a runnable, interoperable public full node.
+These are reusable prototype components. A new `src/blackroot_node_config.py` boundary now requires explicit testnet identity, message magic, protocol version, genesis header/hash, PoW limit, peer cap, and port; it rejects production-like network names, mismatched genesis hashes, invalid PoW, and non-loopback listener hosts. It can construct a peer manager with the matching magic/version. This is in-code configuration plumbing only: no selected network constants, file loader, runnable CLI, or public full node exists.
 
 ## Mandatory gates before a public testnet
 
@@ -35,7 +35,7 @@ Do not invent or manually select a genesis hash. Until this gate passes, nodes c
 
 ### 3. Build a runnable node application
 - [ ] Add a documented CLI/entry point that constructs the testnet chain, persistent state, peer manager, runtime, and sync services.
-- [ ] Add explicit testnet configuration loading and reject unknown or mainnet-like network settings.
+- [ ] Add a versioned configuration-file loader with strict unknown-field rejection and schema migration policy. (An explicit in-code configuration boundary now validates chain identity/genesis/PoW and binds the peer manager to matching magic/version; it is not yet a file loader.)
 - [ ] Implement supervised task lifecycle, retry scheduling, graceful shutdown, restart behavior, and useful structured logs.
 - [ ] Provide a local-only status interface; bind administrative/RPC interfaces to loopback by default.
 - [ ] Add data-directory locking, schema/version handling, backup/restore instructions, and safe reset commands.
@@ -62,7 +62,7 @@ Do not invent or manually select a genesis hash. Until this gate passes, nodes c
 | Area | Repository evidence | Status |
 |---|---|---|
 | Genesis | `docs/genesis.md` says it has not been generated | BLOCKED |
-| Network identity and parameters | No frozen testnet constants/configuration | BLOCKED |
+| Network identity and parameters | Explicit in-code config validator exists; no reviewed constants or file loader | PARTIAL / BLOCKED |
 | Node application/CLI | Runtime building block exists; no runnable application entry point is present in the repository tree | BLOCKED |
 | P2P building blocks | TCP transport, peer manager, handshake and sync components exist | PROTOTYPE |
 | Integration coverage | Loopback and multi-node tests exist | PARTIAL |
