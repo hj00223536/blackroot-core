@@ -271,3 +271,19 @@ This is a write-ahead reconciliation protocol across separate SQLite files,
 not a truly atomic multi-database transaction. Its durability still depends
 on SQLite, filesystem, and storage-device guarantees; it is not production
 crash-safety certification.
+
+
+### Subprocess crash-checkpoint tests
+
+`tests/test_recovery_journal_process_crash.py` starts a separate Python
+process against temporary header, UTXO, and recovery-journal databases. The
+child exits immediately after (1) persisting the recovery intent but before
+the UTXO transition, and (2) committing the UTXO transition but before
+reconciling the journal. The parent process reopens the node state and checks
+that the old or new endpoint is recognized and the pending intent is cleared.
+
+These deterministic subprocess termination checkpoints exercise recovery
+across process death. They are not a physical power-loss test, do not kill a
+process during arbitrary SQLite or filesystem instructions, and do not certify
+fsync behavior or storage-device durability. The three databases remain
+separate; true cross-database atomicity is not implemented.
