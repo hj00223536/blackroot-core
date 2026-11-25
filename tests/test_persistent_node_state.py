@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import contextmanager
 import tempfile
 import unittest
 from pathlib import Path
@@ -37,6 +38,19 @@ def make_block(previous, height, timestamp):
     return Block(header, (tx,))
 
 
+
+@contextmanager
+def managed_sqlite(connection):
+    try:
+        yield connection
+        connection.commit()
+    except BaseException:
+        if connection.in_transaction:
+            connection.rollback()
+        raise
+    finally:
+        connection.close()
+
 class PersistentNodeStateTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -68,7 +82,7 @@ class PersistentNodeStateTests(unittest.TestCase):
         finally:
             state.close()
 
-        with sqlite3.connect(self.root / "coordinated.sqlite") as db:
+        with managed_sqlite(sqlite3.connect(self.root / "coordinated.sqlite")) as db:
             tables = {
                 row[0] for row in db.execute(
                     "SELECT name FROM sqlite_master WHERE type='table'"
@@ -343,7 +357,7 @@ class PersistentNodeStateTests(unittest.TestCase):
     def test_archive_detects_merkle_corruption_after_storage(self):
         state = self.state()
         state.connect_best_block(self.genesis_block, 0)
-        with sqlite3.connect(self.root / "utxos.sqlite") as db:
+        with managed_sqlite(sqlite3.connect(self.root / "utxos.sqlite")) as db:
             db.execute(
                 "UPDATE block_bodies SET raw_block=? WHERE block_hash=?",
                 (self.genesis_block.serialize()[:-1] + bytes([self.genesis_block.serialize()[-1] ^ 1]),
@@ -485,7 +499,7 @@ class PersistentNodeStateTests(unittest.TestCase):
 
         raw = candidate.serialize()
         corrupted = raw[:-1] + bytes([raw[-1] ^ 1])
-        with sqlite3.connect(self.root / "utxos.sqlite") as db:
+        with managed_sqlite(sqlite3.connect(self.root / "utxos.sqlite")) as db:
             db.execute(
                 "UPDATE block_bodies SET raw_block=? WHERE block_hash=?",
                 (corrupted, candidate.header.hash),
@@ -522,7 +536,7 @@ class PersistentNodeStateTests(unittest.TestCase):
     def test_startup_fails_closed_when_persisted_body_header_is_corrupt(self):
         state = self.state()
         state.connect_best_block(self.genesis_block, 0)
-        with sqlite3.connect(self.root / "utxos.sqlite") as db:
+        with managed_sqlite(sqlite3.connect(self.root / "utxos.sqlite")) as db:
             db.execute("UPDATE blocks SET header=? WHERE height=0", (b"corrupt",))
         with self.assertRaisesRegex(RuntimeError, "block header does not match"):
             self.state()
@@ -533,7 +547,7 @@ class PersistentNodeStateTests(unittest.TestCase):
         second = make_block(self.genesis_block.header.hash, 1, 2)
         state.add_header(second.header, adjusted_time=2)
         state.connect_best_block(second, 1)
-        with sqlite3.connect(self.root / "utxos.sqlite") as db:
+        with managed_sqlite(sqlite3.connect(self.root / "utxos.sqlite")) as db:
             db.execute("DELETE FROM blocks WHERE height=0")
         with self.assertRaisesRegex(RuntimeError, "heights are not contiguous"):
             self.state()
@@ -544,7 +558,7 @@ class PersistentNodeStateTests(unittest.TestCase):
         second = make_block(self.genesis_block.header.hash, 1, 2)
         state.add_header(second.header, adjusted_time=2)
         state.connect_best_block(second, 1)
-        with sqlite3.connect(self.root / "utxos.sqlite") as db:
+        with managed_sqlite(sqlite3.connect(self.root / "utxos.sqlite")) as db:
             db.execute("UPDATE blocks SET prev_hash=? WHERE height=1", (bytes([0x11]) * 32,))
         with self.assertRaisesRegex(RuntimeError, "parent linkage is corrupt"):
             self.state()
@@ -559,7 +573,7 @@ class PersistentNodeStateTests(unittest.TestCase):
     def test_startup_fails_closed_when_active_transaction_record_is_corrupt(self):
         state = self.state()
         state.connect_best_block(self.genesis_block, 0)
-        with sqlite3.connect(self.root / "utxos.sqlite") as db:
+        with managed_sqlite(sqlite3.connect(self.root / "utxos.sqlite")) as db:
             db.execute(
                 "UPDATE block_transactions SET raw_transaction=? WHERE height=0 AND position=0",
                 (b"corrupt",),
@@ -571,7 +585,7 @@ class PersistentNodeStateTests(unittest.TestCase):
         state = self.state()
         state.connect_best_block(self.genesis_block, 0)
         raw = self.genesis_block.serialize()
-        with sqlite3.connect(self.root / "utxos.sqlite") as db:
+        with managed_sqlite(sqlite3.connect(self.root / "utxos.sqlite")) as db:
             db.execute(
                 "UPDATE block_bodies SET raw_block=? WHERE block_hash=?",
                 (raw[:-1] + bytes([raw[-1] ^ 1]), self.genesis_block.header.hash),
