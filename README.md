@@ -22,7 +22,10 @@ With integer atomic-unit halving, the emitted total is slightly below 21 million
 ## Repository map
 
 - src/blackroot_consensus.py: reference helpers for subsidy, block-header hashing, compact target decoding, and proof-of-work checks.
-- tests/: unit tests.
+- src/blackroot_chain.py: in-memory header-linkage and proof-of-work prototype (not full chain selection).
+- src/blackroot_transactions.py: transaction serialization, merkle-root helper, and basic in-memory UTXO value accounting; no script/signature validation.
+- docs/transactions.md: transaction format and explicit security omissions.
+- tests/: unit tests for reference helpers, header linkage, transaction encoding, merkle roots, and UTXO accounting.
 - docs/: protocol, genesis, monetary policy, security, and launch-readiness notes.
 
 ## Run reference tests
@@ -33,6 +36,6 @@ Requires Python 3.10+.
 
 ## Important
 
-Do not use this prototype to store value, mine a public network, or accept deposits. A secure cryptocurrency requires a complete independently reviewed implementation: transaction validation, script/signature rules, mempool policy, peer-to-peer protocol, chain selection, difficulty retargeting, persistent storage, wallet key management, denial-of-service defenses, reproducible releases, and sustained adversarial testing.
+Do not use this prototype to store value, mine a public network, or accept deposits. A secure cryptocurrency requires a complete independently reviewed implementation: script execution and signature verification, coinbase and subsidy validation, mempool policy, peer-to-peer protocol, cumulative-chainwork selection, difficulty retargeting, persistent storage and reorg recovery, wallet key management, denial-of-service defenses, reproducible releases, and sustained adversarial testing. The new transaction module checks serialization and value accounting only; it does not authenticate spenders.
 
 No genesis hash, network identifier, address prefix, ports, DNS seeds, exchange listing, market price, or launch date is claimed by this repository.
