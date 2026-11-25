@@ -57,13 +57,18 @@ store, legacy transaction serialization, limited P2PKH script validation,
 block-body checks, coinbase maturity, and a SQLite UTXO persistence/reorg
 prototype. An opt-in coordinated persistent node-state lifecycle now places the
 header store, UTXO store, block-body archive, and recovery journal on one
-node-owned SQLite connection. Selected transaction rollback, process-exit, and
-independent-process writer-serialization cases pass automated tests. This is
+node-owned SQLite connection. Selected transaction rollback, process-exit, competing-branch reorganization,
+restart persistence, and independent-process writer-serialization cases pass
+automated tests. This is
 still a partial prototype, not a complete production node lifecycle.
 
 The legacy compatibility mode still uses separate header, UTXO, and recovery
-journal files. The coordinated mode is opt-in and no migration utility for
-legacy databases has been implemented. Header replay verification does not by
+journal files. The coordinated mode is opt-in. The repository now includes
+read-only preflight, WAL-consistent snapshot creation, cross-store consistency
+checks, a schema merge planner, and a staging importer with a coordinated-node
+reopen validator. These tools do not perform production cutover; backup
+restoration drills, large-dataset testing, migration fault injection, and
+independent review remain required. Header replay verification does not by
 itself validate historical external adjusted-time inputs or establish peer
 agreement. The pure-Python signature code is not suitable for production key
 handling.
