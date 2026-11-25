@@ -31,3 +31,7 @@ The implementation remains deliberately fail-closed for unsupported script types
 ## Remaining consensus and operational gaps
 
 This is not a complete node or production consensus implementation. Missing or incomplete areas include a complete Script interpreter and supported script set, independently reviewed cryptographic primitives, full block size/weight and transaction-finality rules, complete consensus test vectors, persistent header/side-branch storage and crash-recovery verification, authenticated genesis parameters, P2P protocol and DoS protections, wallet software, RPC hardening, reproducible releases, and independent security review. A successful test suite does not close these gates or authorize a public mainnet launch.
+
+## Provisional serialized block-size bound
+
+The `Block` model now rejects legacy serialized block bodies larger than 1,000,000 bytes, counting the 80-byte header, CompactSize transaction count, and serialized transactions. This is a provisional prototype bound, not a finalized network rule: it must be reconciled with the normative protocol specification and independent consensus test vectors before any public network launch. It does not implement SegWit weight/vsize semantics.
