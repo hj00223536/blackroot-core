@@ -1,8 +1,9 @@
-"""SQLite-backed UTXO persistence prototype.
+"""SQLite-backed experimental UTXO and block persistence.
 
-This stores outpoints and outputs and applies value-accounting updates in an
-SQLite transaction. It does NOT verify scripts/signatures, blocks, coinbase
-maturity, or consensus validity. Never expose this as a production node DB.
+Block connection/reorganization calls the block validator, including its
+fail-closed legacy P2PKH authorization check. The standalone ``apply`` helper
+is accounting-only. This store does not enforce coinbase maturity or complete
+header/network consensus and is not suitable as a production node database.
 """
 from __future__ import annotations
 
