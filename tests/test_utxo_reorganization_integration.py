@@ -134,6 +134,28 @@ Path(result).write_text(stored.hex())
             store.load_block_body(block.header.hash)
         store.verify_integrity()
 
+    def test_idempotent_archive_rejects_corrupt_size_metadata(self):
+        path = Path(self.temp.name) / "corrupt-size-archive.sqlite"
+        store = UTXOStore(path)
+        block = self.side_one
+        store.store_block_body(block)
+        with store._connect() as db:
+            db.execute(
+                "UPDATE block_bodies SET serialized_size=serialized_size + 1 WHERE block_hash=?",
+                (block.header.hash,),
+            )
+        with self.assertRaisesRegex(RuntimeError, "size metadata is corrupt"):
+            store.store_block_body(block)
+        with store._connect() as db:
+            raw, size = db.execute(
+                "SELECT raw_block, serialized_size FROM block_bodies WHERE block_hash=?",
+                (block.header.hash,),
+            ).fetchone()
+        self.assertEqual(bytes(raw), block.serialize())
+        self.assertEqual(size, len(block.serialize()) + 1)
+        with self.assertRaisesRegex(RuntimeError, "size metadata is corrupt"):
+            store.load_block_body(block.header.hash)
+
     def test_archiving_same_block_body_is_idempotent(self):
         first = self.store.store_block_body(self.side_one)
         second = self.store.store_block_body(self.side_one)
