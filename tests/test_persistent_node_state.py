@@ -85,6 +85,28 @@ class PersistentNodeStateTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "block header does not match"):
             self.state()
 
+    def test_startup_fails_closed_when_active_block_sequence_has_a_gap(self):
+        state = self.state()
+        state.connect_best_block(self.genesis_block, 0)
+        second = make_block(self.genesis_block.header.hash, 1, 2)
+        state.add_header(second.header, adjusted_time=2)
+        state.connect_best_block(second, 1)
+        with sqlite3.connect(self.root / "utxos.sqlite") as db:
+            db.execute("DELETE FROM blocks WHERE height=0")
+        with self.assertRaisesRegex(RuntimeError, "heights are not contiguous"):
+            self.state()
+
+    def test_startup_fails_closed_when_active_parent_link_is_corrupt(self):
+        state = self.state()
+        state.connect_best_block(self.genesis_block, 0)
+        second = make_block(self.genesis_block.header.hash, 1, 2)
+        state.add_header(second.header, adjusted_time=2)
+        state.connect_best_block(second, 1)
+        with sqlite3.connect(self.root / "utxos.sqlite") as db:
+            db.execute("UPDATE blocks SET prev_hash=? WHERE height=1", (b"\\x11" * 32,))
+        with self.assertRaisesRegex(RuntimeError, "parent linkage is corrupt"):
+            self.state()
+
     def test_startup_fails_closed_when_utxo_tip_is_not_in_header_dag(self):
         other = make_block(ZERO_HASH, 0, 2)
         UTXOStore(self.root / "utxos.sqlite").connect_block(other, 0)
