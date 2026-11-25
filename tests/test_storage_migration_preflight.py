@@ -80,5 +80,99 @@ class LegacyStoragePreflightTests(unittest.TestCase):
             inspect_legacy_node_databases(self.header, self.utxo, self.journal)
 
 
+
+class SQLiteSnapshotTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.header = self.root / "headers.sqlite"
+        self.utxo = self.root / "utxo.sqlite"
+        self.journal = self.root / "journal.sqlite"
+        self._make_sources()
+
+    def _make_sources(self):
+        with sqlite3.connect(self.header) as db:
+            db.execute("CREATE TABLE header_metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            db.execute("INSERT INTO header_metadata VALUES('schema_version', '1')")
+            db.execute("INSERT INTO header_metadata VALUES('pow_limit', '123')")
+            db.execute("INSERT INTO header_metadata VALUES('genesis_hash', '00')")
+            db.execute("CREATE TABLE headers(block_hash BLOB PRIMARY KEY, height INTEGER)")
+            db.execute("INSERT INTO headers VALUES(?, 0)", (bytes(32),))
+        with sqlite3.connect(self.utxo) as db:
+            db.execute("CREATE TABLE metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            db.execute("INSERT INTO metadata VALUES('schema_version', '2')")
+            for table in ("utxos", "blocks", "block_transactions", "block_bodies",
+                          "block_undo_spent", "block_undo_created"):
+                db.execute(f'CREATE TABLE "{table}" (id INTEGER PRIMARY KEY)')
+        with sqlite3.connect(self.journal) as db:
+            db.execute("""CREATE TABLE recovery_intent (
+                singleton INTEGER PRIMARY KEY, old_height INTEGER, old_hash BLOB,
+                new_height INTEGER, new_hash BLOB)""")
+
+    def test_individual_snapshot_captures_wal_without_mutating_source(self):
+        source = self.root / "wal.sqlite"
+        destination = self.root / "wal-snapshot.sqlite"
+        writer = sqlite3.connect(source)
+        writer.execute("PRAGMA journal_mode=WAL")
+        writer.execute("CREATE TABLE records(value TEXT)")
+        writer.commit()
+        writer.execute("INSERT INTO records VALUES('wal-committed')")
+        writer.commit()
+        before = source.read_bytes()
+        report = create_consistent_sqlite_snapshot(source, destination)
+        self.assertEqual(report["status"], "snapshot_created")
+        self.assertEqual(source.read_bytes(), before)
+        with sqlite3.connect(destination) as db:
+            self.assertEqual(db.execute("SELECT value FROM records").fetchone()[0],
+                             "wal-committed")
+        writer.close()
+
+    def test_snapshot_refuses_overwrite_and_preserves_existing_file(self):
+        source = self.root / "source.sqlite"
+        destination = self.root / "existing.sqlite"
+        with sqlite3.connect(source) as db:
+            db.execute("CREATE TABLE t(value)")
+        destination.write_bytes(b"keep")
+        with self.assertRaises(FileExistsError):
+            create_consistent_sqlite_snapshot(source, destination)
+        self.assertEqual(destination.read_bytes(), b"keep")
+
+    def test_all_store_snapshots_are_revalidated_and_sources_unchanged(self):
+        before = {p: p.read_bytes() for p in (self.header, self.utxo, self.journal)}
+        out = self.root / "snapshots"
+        out.mkdir()
+        report = snapshot_legacy_node_databases(
+            self.header, self.utxo, self.journal, out
+        )
+        self.assertEqual(report["status"], "snapshots_validated")
+        self.assertFalse(report["migration_performed"])
+        self.assertFalse(report["source_files_modified"])
+        self.assertEqual(before, {p: p.read_bytes() for p in before})
+        self.assertEqual(report["snapshot_preflight"]["status"], "preflight_passed")
+        self.assertEqual(len(list(out.glob("*.sqlite"))), 3)
+
+    def test_all_store_snapshot_refuses_existing_destination_before_any_copy(self):
+        out = self.root / "snapshots"
+        out.mkdir()
+        existing = out / "blackroot-utxo-snapshot.sqlite"
+        existing.write_bytes(b"preserve")
+        with self.assertRaises(FileExistsError):
+            snapshot_legacy_node_databases(
+                self.header, self.utxo, self.journal, out
+            )
+        self.assertEqual(existing.read_bytes(), b"preserve")
+        self.assertEqual(list(out.iterdir()), [existing])
+
+    def test_failed_snapshot_removes_only_its_owned_partial_file(self):
+        bad = self.root / "bad.sqlite"
+        bad.write_bytes(b"not sqlite")
+        destination = self.root / "partial.sqlite"
+        with self.assertRaises(sqlite3.DatabaseError):
+            create_consistent_sqlite_snapshot(bad, destination)
+        self.assertFalse(destination.exists())
+        self.assertEqual(bad.read_bytes(), b"not sqlite")
+
+
 if __name__ == "__main__":
     unittest.main()
