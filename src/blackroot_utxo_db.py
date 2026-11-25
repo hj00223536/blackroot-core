@@ -430,9 +430,11 @@ class UTXOStore:
 
         This path checks supported block-body rules, legacy P2PKH
         authorization, and coinbase maturity from the stored provenance.
-        It does not validate header PoW, difficulty, timestamps, or peer
-        consensus; use connect_validated_block only with a correctly
-        initialized HeaderChain for the prototype header checks.
+        A supplied median_time_past must be the authenticated MTP of the
+        parent header; this low-level method does not authenticate it. It does
+        not validate header PoW, difficulty, timestamps, or peer consensus;
+        use connect_validated_block with a correctly initialized HeaderChain
+        for the prototype header checks.
         """
         if not isinstance(block, Block):
             raise TypeError("block must be a Block")
