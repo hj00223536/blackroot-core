@@ -34,6 +34,19 @@ class MessageFramingTests(unittest.TestCase):
         frames = encode_message(MAGIC, "ping", b"a") + encode_message(MAGIC, "pong", b"b")
         self.assertEqual(parser.feed(frames), [("ping", b"a"), ("pong", b"b")])
 
+    def test_parser_accepts_many_frames_larger_than_single_frame_bound(self):
+        parser = MessageStreamParser(MAGIC, max_payload=8)
+        frames = (
+            encode_message(MAGIC, "ping", b"12345678", max_payload=8)
+            + encode_message(MAGIC, "pong", b"abcdefgh", max_payload=8)
+            + encode_message(MAGIC, "ack", b"ok", max_payload=8)
+        )
+        self.assertEqual(
+            parser.feed(frames),
+            [("ping", b"12345678"), ("pong", b"abcdefgh"), ("ack", b"ok")],
+        )
+        self.assertEqual(parser.buffered_bytes, 0)
+
     def test_rejects_wrong_magic(self):
         frame = encode_message(MAGIC, "ping", b"x")
         with self.assertRaisesRegex(ValueError, "magic mismatch"):
