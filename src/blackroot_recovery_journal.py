@@ -112,8 +112,6 @@ class NodeRecoveryJournal:
         """Resolve pending intent against actual UTXO tip; reject third states."""
         _validate_tip(observed_tip, "observed_tip")
         with self._write_scope() as db:
-            if self._external_connection is None:
-                db.execute("PRAGMA synchronous=FULL")
             row = db.execute(
                 "SELECT old_height, old_hash, new_height, new_hash "
                 "FROM recovery_intent WHERE singleton=1"
