@@ -14,6 +14,12 @@ This document is an engineering gate list, not a launch announcement. A testnet 
 
 These are reusable prototype components. The CLI now waits for the outbound peer's version/verack handshake before requesting headers, avoiding a startup race. CI exercises both two independent runtime/state instances in one process and a separate-process CLI smoke test: two OS processes start with isolated data directories, connect over loopback TCP, complete the handshake, and report the same genesis and best-chain tip. This is narrowly scoped integration evidence, including a SIGTERM/clean-exit assertion for both CLI processes, not proof of full consensus correctness or public-network readiness. `src/blackroot_node_config.py` now loads strict JSON settings (rejecting missing/unknown fields) and validates explicit testnet identity, message magic, protocol version, genesis header/hash, PoW limit, peer cap, and port. It rejects production-like network names, mismatched genesis hashes, invalid PoW, and non-loopback listener hosts. `python -m src.blackroot_node` opens coordinated SQLite state and starts the P2P listener on a literal loopback address only. This is a local prototype runner: it does not yet provide a complete block-sync/full-consensus node or public networking.
 
+## Verified SQLite recovery evidence
+
+Distinct tests now cover transaction-level rollback on an invalid replacement branch (`tests/test_reorg_atomicity.py`); abrupt child-process exit with an uncommitted SQLite transaction and recovery of the last committed state (`tests/test_sqlite_crash_recovery.py`); abrupt exit during the real `UTXOStore.reorganize_to_best()` path, followed by exact row comparisons across `blocks`, `block_transactions`, `block_undo_spent`, `block_undo_created`, `utxos`, `block_bodies`, and `metadata`, plus `verify_integrity()` (`tests/test_reorg_process_crash_recovery.py`); and SQLite online backup/restore validation (`tests/test_sqlite_online_backup.py`).
+
+The process-crash reorganization test passed in [GitHub Actions run 45650626286](https://github.com/hj00223536/blackroot-core/actions/runs/45650626286), with 373 unit tests reported. This is evidence for these local SQLite failure cases only; it does not prove power-loss durability across filesystems, backup scheduling/retention, disaster-recovery operations, or production database safety.
+
 ## Mandatory gates before a public testnet
 
 ### 1. Freeze a separate testnet protocol
