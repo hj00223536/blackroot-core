@@ -35,18 +35,19 @@ The in-memory reference checks:
 
 ## Critical omissions — do not use for funds
 
-This code does **not** execute scriptPubKey/scriptSig, verify ECDSA/Schnorr
-signatures, enforce signature-hash rules, implement SegWit/witness, coinbase
-transactions, coinbase maturity, subsidy-plus-fees checks, locktime or sequence
-semantics, transaction finality, block weight/size rules, mempool policy,
-persistent UTXO storage, undo/reorg handling, or transaction malleability
-protections. The strings called scripts are opaque bytes only.
+The accounting-only `validate_transaction` and `apply_transaction` helpers do not
+execute scripts or authorize spends. Separately, block validation now invokes
+the fail-closed legacy P2PKH verifier for every regular transaction input before
+accounting. This is a narrow template check, not a general Script engine.
+Coinbase maturity, SegWit/witness, locktime/sequence semantics, transaction
+finality, block weight/size rules, mempool policy, and transaction malleability
+protections remain unimplemented. The standalone accounting helpers must never
+be treated as proof that an input is authorized.
 
 Consequently, the UTXO accounting helper proves only value conservation against
 a caller-supplied map. It does not prove that a spender is authorized to spend
-the referenced outputs. All values and scripts are untrusted input until a
-complete consensus script engine and signature verification are implemented
-and independently reviewed.
+the referenced outputs. All values and scripts remain untrusted until the complete consensus rules and
+a general, independently reviewed script engine are implemented.
 
 
 ## Experimental P2PKH authorization module
