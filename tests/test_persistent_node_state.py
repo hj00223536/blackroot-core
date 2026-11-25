@@ -100,6 +100,55 @@ class PersistentNodeStateTests(unittest.TestCase):
         self.assertEqual(reopened.utxos.load_block_body(first.header.hash), first)
         self.assertEqual(reopened.utxos.load_block_body(second.header.hash), second)
 
+    def test_reorganization_revalidates_archived_candidate_body(self):
+        state = self.state()
+        state.connect_best_block(self.genesis_block, 0)
+
+        bad_coinbase = Transaction(
+            1,
+            (TxInput(OutPoint(ZERO_HASH, 0xFFFFFFFF), script_sig=b"\\x02\\x01"),),
+            (TxOutput(block_subsidy(1) + 1, b"miner"),),
+        )
+        bad_header = mine_header(
+            self.genesis_block.header.hash,
+            merkle_root([bad_coinbase.txid]),
+            2,
+        )
+        bad_block = Block(bad_header, (bad_coinbase,))
+        state.add_header(bad_header, adjusted_time=2)
+        state.archive_block_body(bad_block)
+
+        reopened = self.state()
+        with self.assertRaisesRegex(ValueError, "coinbase reward exceeds"):
+            reopened.reorganize_best()
+        self.assertEqual(
+            reopened.utxos.tip(),
+            (0, self.genesis_block.header.hash),
+        )
+
+    def test_reorganization_fails_closed_on_corrupt_archived_body(self):
+        state = self.state()
+        state.connect_best_block(self.genesis_block, 0)
+        candidate = make_block(self.genesis_block.header.hash, 1, 2)
+        state.add_header(candidate.header, adjusted_time=2)
+        state.archive_block_body(candidate)
+
+        raw = candidate.serialize()
+        corrupted = raw[:-1] + bytes([raw[-1] ^ 1])
+        with sqlite3.connect(self.root / "utxos.sqlite") as db:
+            db.execute(
+                "UPDATE block_bodies SET raw_block=? WHERE block_hash=?",
+                (corrupted, candidate.header.hash),
+            )
+
+        reopened = self.state()
+        with self.assertRaisesRegex(RuntimeError, "merkle root is corrupt"):
+            reopened.reorganize_best()
+        self.assertEqual(
+            reopened.utxos.tip(),
+            (0, self.genesis_block.header.hash),
+        )
+
     def test_refuses_to_archive_body_for_unknown_header(self):
         state = self.state()
         unknown = make_block(ZERO_HASH, 0, 2)
