@@ -181,6 +181,113 @@ def inspect_legacy_node_databases(
     }
 
 
+
+def plan_coordinated_schema_merge(
+    header_path: str | Path,
+    utxo_path: str | Path,
+    recovery_journal_path: str | Path,
+) -> dict:
+    """Build a deterministic, read-only DDL copy plan for a future importer.
+
+    The plan preserves source CREATE statements and orders tables before their
+    same-database FK dependants. It deliberately does not execute DDL or copy
+    rows. Name collisions and unsupported schema objects fail closed.
+    """
+    report = inspect_legacy_node_databases(
+        header_path, utxo_path, recovery_journal_path
+    )
+    inventories = report["databases"]
+    object_owners: dict[str, str] = {}
+    for kind in ("header", "utxo", "journal"):
+        for item in inventories[kind]["schema_inventory"]["objects"]:
+            name = item["name"]
+            previous = object_owners.get(name)
+            if previous is not None:
+                raise RuntimeError(
+                    f"schema object name collision: {name!r} exists in "
+                    f"{previous} and {kind}"
+                )
+            object_owners[name] = kind
+            if item["type"] not in {"table", "index", "trigger", "view"}:
+                raise RuntimeError(
+                    f"unsupported SQLite schema object type: {item['type']!r}"
+                )
+            if not item["sql"]:
+                raise RuntimeError(
+                    f"schema object {name!r} has no reproducible CREATE statement"
+                )
+            if item["type"] == "view":
+                raise RuntimeError("views are not yet supported by coordinated schema import")
+            if item["type"] == "trigger":
+                raise RuntimeError("triggers are not yet supported by coordinated schema import")
+
+    table_owner: dict[str, str] = {}
+    table_items: dict[str, dict] = {}
+    for kind in ("header", "utxo", "journal"):
+        inventory = inventories[kind]["schema_inventory"]
+        for name, table in inventory["tables"].items():
+            table_owner[name] = kind
+            table_items[name] = table
+
+    dependencies: dict[str, set[str]] = {name: set() for name in table_items}
+    for name, table in table_items.items():
+        for foreign_key in table["foreign_keys"]:
+            parent = foreign_key["referenced_table"]
+            if parent not in table_items:
+                raise RuntimeError(
+                    f"table {name!r} references missing table {parent!r}"
+                )
+            if table_owner[parent] != table_owner[name]:
+                raise RuntimeError(
+                    f"cross-store foreign key is not supported: {name!r} -> {parent!r}"
+                )
+            dependencies[name].add(parent)
+
+    ordered_tables: list[str] = []
+    remaining = {name: set(parents) for name, parents in dependencies.items()}
+    while remaining:
+        ready = sorted(name for name, parents in remaining.items() if not parents)
+        if not ready:
+            raise RuntimeError("cyclic foreign-key dependencies require a reviewed import strategy")
+        for name in ready:
+            ordered_tables.append(name)
+            remaining.pop(name)
+        for parents in remaining.values():
+            parents.difference_update(ready)
+
+    objects = []
+    for name in ordered_tables:
+        kind = table_owner[name]
+        objects.append({
+            "source": kind, "type": "table", "name": name,
+            "create_sql": next(
+                item["sql"] for item in inventories[kind]["schema_inventory"]["objects"]
+                if item["type"] == "table" and item["name"] == name
+            ),
+        })
+    for kind in ("header", "utxo", "journal"):
+        for item in inventories[kind]["schema_inventory"]["objects"]:
+            if item["type"] == "index":
+                objects.append({
+                    "source": kind, "type": "index", "name": item["name"],
+                    "table": item["table"], "create_sql": item["sql"],
+                })
+
+    return {
+        "status": "schema_merge_plan_ready",
+        "migration_performed": False,
+        "source_files_modified": False,
+        "table_order": ordered_tables,
+        "objects": objects,
+        "row_copy_order": ordered_tables,
+        "limitations": [
+            "no DDL or rows were copied",
+            "views and triggers are unsupported",
+            "row-copy execution and destination validation remain unimplemented",
+            "full transaction, script, and network-consensus validation remain separate gates",
+        ],
+    }
+
 def create_consistent_sqlite_snapshot(
     source_path: str | Path,
     snapshot_path: str | Path,
