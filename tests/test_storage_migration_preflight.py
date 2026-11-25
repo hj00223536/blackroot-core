@@ -3,7 +3,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.blackroot_storage_migration import (\n    create_consistent_sqlite_snapshot,\n    inspect_legacy_node_databases,\n)
+from src.blackroot_storage_migration import (
+    create_consistent_sqlite_snapshot,
+    inspect_legacy_node_databases,
+)
 
 
 class LegacyStoragePreflightTests(unittest.TestCase):
