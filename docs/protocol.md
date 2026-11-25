@@ -19,6 +19,9 @@
 | Premine | None proposed |
 | Supply ceiling | 2,100,000,000,000,000 atomic units (21 million BROOT) |
 
+These are design targets, not a frozen network specification or a promise
+that any token has been issued or has monetary value.
+
 ## Block header
 
 The reference module uses the conventional 80-byte header layout:
@@ -30,23 +33,49 @@ The reference module uses the conventional 80-byte header layout:
 5. compact target (nBits): unsigned 32-bit little-endian integer
 6. nonce: unsigned 32-bit little-endian integer
 
-The block identifier is SHA256(SHA256(header)); display formatting reverses the digest bytes, as in Bitcoin-style conventions.
+The block identifier is SHA256(SHA256(header)); display formatting reverses
+the digest bytes, as in Bitcoin-style conventions.
 
-## Proof of Work
+## Proof of Work and header-chain prototype
 
-A candidate block is valid only if its decoded target is positive, within the selected network maximum target, and the numeric hash interpreted as a little-endian integer is less than or equal to that target. The reference helper validates compact-target encoding and PoW comparison only. It does not implement chain consensus.
+A candidate header is checked for a positive, canonically encoded target no
+greater than the configured proof-of-work limit, then its SHA-256d hash is
+compared to that target using the prototype's little-endian numeric convention.
+
+The in-memory HeaderChain prototype tracks known header branches, accumulated
+work, median-time-past, and the proposed fixed retarget schedule. It can select
+a greatest-chainwork header branch. It does not validate block bodies, scripts,
+UTXO transitions, or persistent reorganization atomically; the future-time
+bound is opt-in. These helpers are not a complete production consensus engine.
+
+## Existing P2P building blocks
+
+The repository contains bounded message framing, version/verack sequencing,
+asyncio TCP peer sessions, a bounded peer manager, and selected header/block
+synchronization components with loopback integration tests. The handshake is
+not cryptographic peer authentication. Peer discovery, Sybil/eclipse
+resistance, production peer reputation/ban policy, and a supervised runnable
+node application are not complete.
 
 ## Rules still requiring a normative specification
 
-- Exact genesis header, coinbase transaction, timestamp message, merkle root, nonce, and initial difficulty
-- Mainnet/testnet/regtest network magic, address encodings, ports, and chain identifiers
-- Exact retarget boundary timestamp selection, median-time-past/future-time rules, and minimum-difficulty behavior (arithmetic helper and proposed clamp are documented in docs/difficulty-and-chainwork.md; not yet activated as normative consensus)
-- Normative transaction format, signature hashing, script language, sighash flags, witness rules, and consensus limits (a non-normative legacy-style serialization/accounting prototype now exists in src/blackroot_transactions.py; see docs/transactions.md)
-- Coinbase maturity and subsidy-plus-fees validation
-- UTXO database format, undo data, reorg handling, and cumulative-chainwork selection (current header-chain prototype is in-memory and does not implement reorgs or chainwork)
-- P2P message framing, peer discovery, bans, rate limits, and DoS controls
+- Exact genesis parameters and the approval process for the current candidate
+  vector (see docs/testnet-genesis-candidate.md)
+- Testnet network identifier, four-byte message-start value, address encodings,
+  ports, protocol version, payload limits, and peer policy
+- Exact retarget boundary behavior, future-time policy, clock adjustment, and
+  any minimum-difficulty exceptions
+- Normative transaction format, signature hashing, script language, sighash
+  flags, witness rules, and consensus limits
+- Coinbase maturity and subsidy-plus-fees validation policy
+- UTXO database format, undo data, reorg recovery, and atomic block-level
+  best-chain state transitions
+- Peer discovery, bans, rate limits, DoS controls, and adversarial testing
 - Mempool policy and fee calculation
-- Wallet derivation, address checksums, backup/restore, and hardware-wallet compatibility
+- Wallet derivation, address checksums, backup/restore, and hardware-wallet
+  compatibility
 - Upgrade/versioning and activation process
 
-No implementation may silently change a consensus rule after launch. Every consensus change needs a versioned specification, test vectors, compatibility analysis, and public review.
+No implementation may silently change a consensus rule after launch. Every
+consensus change needs a versioned specification, test vectors, compatibility
+analysis, and public review.
