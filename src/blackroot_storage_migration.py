@@ -5,8 +5,10 @@ It is a guardrail for a future separately reviewed migration utility.
 """
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
+from urllib.parse import quote
 from urllib.parse import quote
 
 
@@ -126,3 +128,90 @@ def inspect_legacy_node_databases(
         "source_files_modified": False,
         "databases": reports,
     }
+
+
+def create_consistent_sqlite_snapshot(
+    source_path: str | Path,
+    snapshot_path: str | Path,
+) -> dict:
+    """Create a consistent SQLite backup without writing to the source.
+
+    The destination is created exclusively and is never overwritten. SQLite's
+    backup API captures a consistent database image, including committed WAL
+    content visible to the read-only source connection.
+    """
+    source = Path(source_path).expanduser().resolve(strict=True)
+    if not source.is_file():
+        raise ValueError(f"source database is not a regular file: {source}")
+
+    requested = Path(snapshot_path).expanduser()
+    parent = requested.parent.resolve(strict=True)
+    destination = parent / requested.name
+    if destination.exists():
+        raise FileExistsError(f"snapshot destination already exists: {destination}")
+    if destination == source or destination.resolve(strict=False) == source:
+        raise ValueError("snapshot destination must differ from source database")
+
+    source_db = None
+    snapshot_db = None
+    created = False
+    try:
+        # O_EXCL closes the check-then-create race and reserves only a new path.
+        descriptor = os.open(
+            destination,
+            os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+            0o600,
+        )
+        os.close(descriptor)
+        created = True
+
+        source_uri = f"file:{quote(str(source), safe='/')}?mode=ro"
+        source_db = sqlite3.connect(source_uri, uri=True, timeout=10.0)
+        source_db.execute("PRAGMA query_only=ON")
+        snapshot_db = sqlite3.connect(str(destination), timeout=10.0)
+        source_db.backup(snapshot_db, pages=256, sleep=0.05)
+
+        integrity = snapshot_db.execute("PRAGMA integrity_check").fetchall()
+        if integrity != [("ok",)]:
+            raise RuntimeError(f"snapshot integrity_check failed: {integrity!r}")
+        foreign_key_errors = snapshot_db.execute("PRAGMA foreign_key_check").fetchall()
+        if foreign_key_errors:
+            raise RuntimeError(
+                f"snapshot foreign_key_check failed: {foreign_key_errors!r}"
+            )
+        table_count = snapshot_db.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
+            "AND name NOT LIKE 'sqlite_%'"
+        ).fetchone()[0]
+        page_count = snapshot_db.execute("PRAGMA page_count").fetchone()[0]
+        return {
+            "status": "snapshot_created",
+            "source": str(source),
+            "snapshot": str(destination),
+            "source_modified": False,
+            "integrity_check": "ok",
+            "foreign_key_check": "ok",
+            "table_count": table_count,
+            "page_count": page_count,
+        }
+    except BaseException:
+        if snapshot_db is not None:
+            snapshot_db.close()
+            snapshot_db = None
+        if created:
+            for candidate in (
+                destination,
+                Path(str(destination) + "-wal"),
+                Path(str(destination) + "-shm"),
+                Path(str(destination) + "-journal"),
+            ):
+                try:
+                    candidate.unlink()
+                except FileNotFoundError:
+                    pass
+        raise
+    finally:
+        if snapshot_db is not None:
+            snapshot_db.close()
+        if source_db is not None:
+            source_db.close()
