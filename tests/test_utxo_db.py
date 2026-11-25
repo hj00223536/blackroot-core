@@ -340,7 +340,7 @@ store.apply(tx)
             ]
             return {
                 table: db.execute(
-                    f'SELECT * FROM "{table}" ORDER BY rowid'
+                    f'SELECT * FROM "{table}"'
                 ).fetchall()
                 for table in tables
             }
