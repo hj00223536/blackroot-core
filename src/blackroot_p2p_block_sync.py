@@ -69,6 +69,12 @@ class BlockBodyRequestTracker:
             del self._pending[block_hash]
         return expired
 
+    def cancel_all(self) -> tuple[bytes, ...]:
+        """Clear all outstanding requests, e.g. when their peer disconnects."""
+        cancelled = tuple(self._pending)
+        self._pending.clear()
+        return cancelled
+
     def cancel(self, block_hash: bytes) -> bool:
         """Cancel a pending request; return whether one existed."""
         if not isinstance(block_hash, bytes) or len(block_hash) != 32:
