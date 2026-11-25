@@ -52,7 +52,8 @@ def make_block(previous, height, timestamp):
 genesis = make_block(bytes(32), 0, 1)
 state = PersistentNodeState.open_coordinated(root / "node.sqlite", limit, genesis.header)
 candidate = make_block(genesis.header.hash, 1, 2)
-state.add_header(candidate.header, adjusted_time=2)
+if mode in ("during_transaction", "after_commit"):
+    state.add_header(candidate.header, adjusted_time=2)
 
 if mode in ("reorg_during_transaction", "reorg_after_commit"):
     old = make_block(genesis.header.hash, 1, 2)
