@@ -46,6 +46,22 @@ class ValidatedConnectionTests(unittest.TestCase):
         self.assertEqual(self.store.connect_validated_block(child, 1, self.headers), 0)
         self.assertEqual(self.store.tip(), (1, child.header.hash))
 
+    def test_rejects_coinbase_overpayment_without_mutating_persistent_state(self):
+        overpay = Transaction(
+            1,
+            (TxInput(OutPoint(ZERO_TXID, COINBASE_INDEX), b"\x01\x01"),),
+            (TxOutput(block_subsidy(0) + 1, b"miner"),),
+        )
+        invalid_genesis = mined_block([overpay], bytes(32), 1)
+        invalid_headers = HeaderChain(POW_LIMIT, invalid_genesis.header)
+
+        with self.assertRaisesRegex(ValueError, "coinbase reward exceeds subsidy"):
+            self.store.connect_validated_block(invalid_genesis, 0, invalid_headers)
+
+        self.assertIsNone(self.store.tip())
+        self.assertEqual(self.store.count(), 0)
+        self.store.verify_integrity()
+
     def test_rejects_body_that_does_not_match_selected_header_merkle_root(self):
         malformed = Block(self.genesis.header, (coinbase(0), coinbase(0)))
         with self.assertRaisesRegex(ValueError, "more than one coinbase|duplicate transaction ids|merkle root"):
