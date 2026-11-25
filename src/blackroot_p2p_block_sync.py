@@ -6,6 +6,9 @@ a block payload: only requested, best-chain headers may be connected.
 """
 from __future__ import annotations
 
+import time
+from collections.abc import Callable
+
 from .blackroot_blocks import Block, MAX_BLOCK_SIZE
 from .blackroot_chain import HeaderChain
 
@@ -15,15 +18,18 @@ DEFAULT_MAX_OUTSTANDING_BLOCKS = 128
 class BlockBodyRequestTracker:
     """Track bounded block-body requests against the current validated best chain."""
 
-    def __init__(self, max_outstanding: int = DEFAULT_MAX_OUTSTANDING_BLOCKS):
+    def __init__(self, max_outstanding: int = DEFAULT_MAX_OUTSTANDING_BLOCKS, *, clock: Callable[[], float] = time.monotonic):
         if (
             not isinstance(max_outstanding, int)
             or isinstance(max_outstanding, bool)
             or max_outstanding < 1
         ):
             raise ValueError("max_outstanding must be a positive integer")
+        if not callable(clock):
+            raise TypeError("clock must be callable")
         self.max_outstanding = max_outstanding
-        self._pending: dict[bytes, int] = {}
+        self._clock = clock
+        self._pending: dict[bytes, tuple[int, float]] = {}
 
     @property
     def pending_hashes(self) -> tuple[bytes, ...]:
@@ -45,8 +51,23 @@ class BlockBodyRequestTracker:
             raise ValueError("block body is already outstanding")
         if len(self._pending) >= self.max_outstanding:
             raise ValueError("maximum outstanding block-body requests reached")
-        self._pending[block_hash] = node.height
+        self._pending[block_hash] = (node.height, self._clock())
         return node.height
+
+    def expire(self, timeout: float, *, now: float | None = None) -> tuple[bytes, ...]:
+        """Remove and return requests whose age reached timeout seconds."""
+        if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0:
+            raise ValueError("timeout must be a positive number")
+        current = self._clock() if now is None else now
+        if isinstance(current, bool) or not isinstance(current, (int, float)):
+            raise ValueError("now must be a number")
+        expired = tuple(
+            block_hash for block_hash, (_, requested_at) in self._pending.items()
+            if current - requested_at >= timeout
+        )
+        for block_hash in expired:
+            del self._pending[block_hash]
+        return expired
 
     def cancel(self, block_hash: bytes) -> bool:
         """Cancel a pending request; return whether one existed."""
@@ -79,7 +100,7 @@ class BlockBodyRequestTracker:
         if len(payload) > MAX_BLOCK_SIZE:
             raise ValueError("block payload exceeds provisional size limit")
 
-        expected_height = self._pending[block_hash]
+        expected_height, _requested_at = self._pending[block_hash]
         node = chain.node(block_hash)
         if node is None or node.height != expected_height:
             raise ValueError("requested header is no longer available")
