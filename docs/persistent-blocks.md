@@ -20,7 +20,7 @@ This is the safer connection entry point for callers that maintain a `HeaderChai
 
 New headers are first validated against a candidate in-memory DAG, then inserted in a SQLite write transaction; the live in-memory DAG is replaced only after the database commit succeeds. The store pins its schema version, proof-of-work limit, and genesis hash in metadata and rejects a mismatched network configuration. It does not migrate or modify the UTXO database.
 
-This is replay verification, not a production-grade crash-recovery or consensus solution. Future-time checks are only applied at insertion when the caller supplies adjusted time; replay validates the deterministic header rules but cannot recreate an external historical adjusted-time value. The implementation is not yet integrated with UTXO-store startup or a peer-to-peer node.
+This is replay verification, not a production-grade crash-recovery or consensus solution. Future-time checks are only applied at insertion when the caller supplies adjusted time; replay validates the deterministic header rules but cannot recreate an external historical adjusted-time value. `PersistentNodeState` now composes the persistent header and UTXO stores, checks on startup that any active UTXO tip exists at the same height in the replayed header DAG, and exposes guarded best-chain body connection and reorganization methods. The two stores are separate SQLite databases: there is no cross-database atomic commit. A crash may leave headers ahead of UTXO state, so the caller must retain and supply missing block bodies to resume or reorganize. The facade is not a peer-to-peer node and does not provide a durable block-body archive.
 
 ## Body validation and persistent provenance
 
