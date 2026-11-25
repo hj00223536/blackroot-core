@@ -120,6 +120,9 @@ class UTXOStore:
         """
         if not isinstance(block, Block):
             raise TypeError("block must be a Block")
+        from .blackroot_transactions import merkle_root
+        if merkle_root(tx.txid for tx in block.transactions) != block.header.merkle_root:
+            raise ValueError("block body merkle root does not match header")
         raw = block.serialize()
         block_hash = block.header.hash
         with self._connect() as db:
