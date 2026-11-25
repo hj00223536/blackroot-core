@@ -51,7 +51,7 @@ Do not invent or manually select a genesis hash. Until this gate passes, nodes c
 - [ ] Add schema versioning and migration policy to the strict JSON configuration loader; currently it rejects unknown/missing fields but has no migration framework.
 - [ ] Implement supervised task lifecycle, retry scheduling, graceful shutdown, restart behavior, and useful structured logs.
 - [ ] Provide a local-only status interface; bind administrative/RPC interfaces to loopback by default.
-- [ ] Add data-directory locking, schema/version handling, backup/restore instructions, and safe reset commands.
+- [x] Add exclusive POSIX data-directory process locking to the loopback CLI; automated tests cover contention, release, abrupt owner termination, and CLI-level rejection of a second process. Schema/version handling, backup/restore operations, and safe reset commands remain separate work.
 - [x] Add a smoke test that starts two independent OS processes, connects them over loopback TCP, and checks matching genesis and best-chain tip. This covers CLI startup and handshake only; full block synchronization and consensus remain incomplete.
 
 ### 4. Complete and harden protocol behavior
@@ -104,4 +104,5 @@ avoid unlink/recreate races. Automated tests cover competing owners, clean
 release, and kernel release after killing the owner process. This protects the
 CLI entry point only: callers that construct persistent stores directly must
 provide their own single-writer discipline, and this mechanism has not been
-validated on non-POSIX platforms.
+validated on non-POSIX platforms. The end-to-end CLI contention regression
+passed in [GitHub Actions run 45724969798](https://github.com/hj00223536/blackroot-core/actions/runs/45724969798): Python 3.12 and 3.13 each ran 388 tests successfully, and the Node.js 22 genesis, transaction, and P2PKH vectors passed.
