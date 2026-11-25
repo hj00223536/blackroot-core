@@ -92,24 +92,35 @@ class MessageStreamParser:
     def feed(self, data: bytes) -> list[tuple[str, bytes]]:
         if not isinstance(data, bytes):
             raise TypeError("stream data must be bytes")
-        if len(self._buffer) + len(data) > HEADER_SIZE + self.max_payload:
-            raise ValueError("receive buffer exceeds configured message bound")
-        self._buffer.extend(data)
         messages = []
-        while len(self._buffer) >= HEADER_SIZE:
-            if self._buffer[:4] != self.magic:
-                self._buffer.clear()
-                raise ValueError("message network magic mismatch")
-            length = struct.unpack_from("<I", self._buffer, 16)[0]
-            if length > self.max_payload:
-                self._buffer.clear()
-                raise ValueError("message payload exceeds configured limit")
-            frame_length = HEADER_SIZE + length
-            if len(self._buffer) < frame_length:
-                break
-            frame = bytes(self._buffer[:frame_length])
-            del self._buffer[:frame_length]
-            messages.append(decode_message(frame, self.magic, max_payload=self.max_payload))
+        offset = 0
+        maximum_buffer = HEADER_SIZE + self.max_payload
+
+        def drain_complete_frames() -> None:
+            while len(self._buffer) >= HEADER_SIZE:
+                if self._buffer[:4] != self.magic:
+                    self._buffer.clear()
+                    raise ValueError("message network magic mismatch")
+                length = struct.unpack_from("<I", self._buffer, 16)[0]
+                if length > self.max_payload:
+                    self._buffer.clear()
+                    raise ValueError("message payload exceeds configured limit")
+                frame_length = HEADER_SIZE + length
+                if len(self._buffer) < frame_length:
+                    break
+                frame = bytes(self._buffer[:frame_length])
+                del self._buffer[:frame_length]
+                messages.append(decode_message(frame, self.magic, max_payload=self.max_payload))
+
+        while offset < len(data):
+            room = maximum_buffer - len(self._buffer)
+            if room <= 0:
+                raise ValueError("receive buffer exceeds configured message bound")
+            take = min(room, len(data) - offset)
+            self._buffer.extend(data[offset:offset + take])
+            offset += take
+            drain_complete_frames()
+        drain_complete_frames()
         return messages
 
     def reset(self) -> None:
