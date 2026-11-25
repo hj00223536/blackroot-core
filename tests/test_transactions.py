@@ -102,6 +102,21 @@ class TransactionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "exceed inputs"):
             validate_transaction(tx, self.utxos)
 
+    def test_rejects_existing_created_outpoint_without_mutating_utxos(self):
+        tx = Transaction(
+            1,
+            (TxInput(self.funding),),
+            (TxOutput(400_000_000, b"new-script"),),
+        )
+        collision = OutPoint(tx.txid, 0)
+        self.utxos[collision] = TxOutput(7, b"pre-existing")
+        before = dict(self.utxos)
+
+        with self.assertRaisesRegex(ValueError, "overwrite an existing UTXO"):
+            apply_transaction(tx, self.utxos)
+
+        self.assertEqual(self.utxos, before)
+
     def test_does_not_mutate_utxos_on_validation_failure(self):
         before = dict(self.utxos)
         tx = Transaction(
