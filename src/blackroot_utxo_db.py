@@ -33,6 +33,8 @@ class UTXOStore:
         self._external_connection = connection
         if connection is not None and not isinstance(connection, SQLiteTransactionConnection):
             raise TypeError("connection must be a SQLiteTransactionConnection")
+        if connection is not None and not connection.in_transaction:
+            raise RuntimeError("coordinator-owned UTXO initialization requires an active outer transaction")
         self._initialize()
 
     def _connect(self):
