@@ -51,6 +51,14 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
         self.side_two = mined_block(2, self.side_one.header.hash, 4)
         self.headers.add_to_branch(self.side_two.header)
 
+    def test_archiving_same_block_body_is_idempotent(self):
+        first = self.store.store_block_body(self.side_one)
+        second = self.store.store_block_body(self.side_one)
+        self.assertEqual(first, self.side_one.header.hash)
+        self.assertEqual(second, first)
+        loaded = self.store.load_block_body(first)
+        self.assertEqual(loaded.serialize(), self.side_one.serialize())
+
     def test_reorganizes_utxo_store_to_greater_work_branch(self):
         self.assertEqual(self.headers.tip.hash, self.side_two.header.hash)
         tip = self.store.reorganize_to_best(
