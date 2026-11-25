@@ -126,6 +126,8 @@ reopens that imported database through `validate_coordinated_staging_database`.
 The test asserts that the height-two active UTXO tip and best header hash
 survive the round trip and that no production cutover occurs.
 
+The end-to-end fixture now also reopens the imported coordinated database, connects a fourth block using the normal node API, closes it, and validates it again. This verifies basic post-import write/reopen operation for the small synthetic chain; it is not a substitute for long-chain, large-dataset, crash-during-write, or production cutover testing.
+
 This is a synthetic three-block fixture. It does not establish safety for
 arbitrary historical databases, long chains, competing branches within a
 legacy migration, large datasets, interrupted filesystem operations, or live
