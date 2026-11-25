@@ -132,7 +132,8 @@ Path(result).write_text(stored.hex())
         self.assertEqual(row[1], len(conflicting))
         with self.assertRaises((ValueError, RuntimeError)):
             store.load_block_body(block.header.hash)
-        store.verify_integrity()
+        with self.assertRaisesRegex(RuntimeError, "archived block body is malformed"):
+            store.verify_integrity()
 
     def test_verify_integrity_detects_corrupt_archived_body_metadata(self):
         self.store.store_block_body(self.side_one)
