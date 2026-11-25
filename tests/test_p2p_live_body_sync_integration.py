@@ -157,6 +157,30 @@ class LiveBlockBodySyncTests(unittest.IsolatedAsyncioTestCase):
                 self.assertIsNotNone(stored)
                 self.assertEqual(stored.header.hash, next_block.header.hash)
                 self.assertEqual(len(stored.transactions), 1)
+
+                # Simulate a node restart by reopening both persistent stores
+                # from the same data directory after closing the first state.
+                destination_state.close()
+                destination_state = PersistentNodeState(
+                    root / "destination-headers.sqlite",
+                    root / "destination-utxos.sqlite",
+                    POW_LIMIT,
+                    genesis.header,
+                )
+                self.assertEqual(
+                    destination_state.headers.chain.tip.hash,
+                    next_block.header.hash,
+                )
+                self.assertEqual(
+                    destination_state.utxos.tip(),
+                    (1, next_block.header.hash),
+                )
+                restored = destination_state.utxos.load_block_body(
+                    next_block.header.hash
+                )
+                self.assertIsNotNone(restored)
+                self.assertEqual(restored.serialize(), next_block.serialize())
+                destination_state.utxos.verify_integrity()
             finally:
                 await destination_runtime.close()
                 await source_runtime.close()
