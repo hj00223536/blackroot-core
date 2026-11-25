@@ -49,16 +49,37 @@ class UTXOStoreTests(unittest.TestCase):
             ).fetchall()
         self.assertEqual(tables, [])
 
-    def test_internal_transaction_methods_reject_coordinator_connection(self):
-        shared_path = Path(self.tempdir.name) / "guard.sqlite"
+    def test_apply_commits_inside_coordinator_transaction(self):
+        shared_path = Path(self.tempdir.name) / "coordinated-apply.sqlite"
         funding = OutPoint(bytes.fromhex("53" * 32), 0)
+        tx = Transaction(1, (TxInput(funding),), (TxOutput(650, b"recipient"),))
         with SQLiteTransactionCoordinator(shared_path) as coordinator:
             with coordinator.transaction() as connection:
                 store = UTXOStore(shared_path, connection=connection)
-                with self.assertRaisesRegex(RuntimeError, "internal transaction"):
-                    store.apply(
-                        Transaction(1, (TxInput(funding),), (TxOutput(1, b"x"),))
-                    )
+                store.add_genesis_output(funding, TxOutput(700, b"funding"))
+            with coordinator.transaction() as connection:
+                store = UTXOStore(shared_path, connection=connection)
+                self.assertEqual(store.apply(tx), 50)
+        reopened = UTXOStore(shared_path)
+        self.assertIsNone(reopened.get(funding))
+        self.assertEqual(reopened.get(OutPoint(tx.txid, 0)), TxOutput(650, b"recipient"))
+
+    def test_outer_rollback_reverts_coordinated_apply(self):
+        shared_path = Path(self.tempdir.name) / "rollback-apply.sqlite"
+        funding = OutPoint(bytes.fromhex("54" * 32), 0)
+        tx = Transaction(1, (TxInput(funding),), (TxOutput(650, b"recipient"),))
+        with SQLiteTransactionCoordinator(shared_path) as coordinator:
+            with coordinator.transaction() as connection:
+                store = UTXOStore(shared_path, connection=connection)
+                store.add_genesis_output(funding, TxOutput(700, b"funding"))
+            with self.assertRaisesRegex(RuntimeError, "abort coordinated apply"):
+                with coordinator.transaction() as connection:
+                    store = UTXOStore(shared_path, connection=connection)
+                    store.apply(tx)
+                    raise RuntimeError("abort coordinated apply")
+        reopened = UTXOStore(shared_path)
+        self.assertEqual(reopened.get(funding), TxOutput(700, b"funding"))
+        self.assertIsNone(reopened.get(OutPoint(tx.txid, 0)))
 
     def test_applies_spend_atomically_and_returns_fee(self):
         tx = Transaction(
