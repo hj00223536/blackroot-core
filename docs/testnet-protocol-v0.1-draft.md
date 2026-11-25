@@ -45,7 +45,7 @@ Not frozen: canonical PoW limit, retarget interval and exact boundary formula, c
 
 See docs/testnet-genesis-candidate.md. The recorded candidate uses timestamp 1795564800, header version 1, null previous hash, compact target 0x207fffff, nonce 0, a 63-byte legacy transaction with a zero-value OP_RETURN output, and the recorded txid/header/hash vectors.
 
-This candidate is only a regression vector. Its easy target is unsuitable for public mining. It has not been approved as a network constant or reproduced by an independently maintained external client. Genesis identity, chain ID, message magic, address encoding, and reset policy remain TBD.
+This candidate is only a regression vector. Its easy target is unsuitable for public mining. A separate Node.js implementation now reproduces the transaction/header/hash/PoW vector in CI; this is cross-language verification within the same repository, not an independently maintained external client or audit. The candidate has not been approved as a network constant. Genesis identity, chain ID, message magic, address encoding, and reset policy remain TBD.
 
 ## 5. Transactions, scripts, and monetary rules
 
