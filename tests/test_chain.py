@@ -1,7 +1,7 @@
 import unittest
 
 from src.blackroot_chain import BlockHeader, HeaderChain, ZERO_HASH
-from src.blackroot_consensus import block_work, check_proof_of_work, decode_compact_target
+from src.blackroot_consensus import block_work, check_proof_of_work, decode_compact_target, encode_compact_target
 
 BITS = 0x207FFFFF
 POW_LIMIT = decode_compact_target(BITS)
@@ -45,6 +45,16 @@ class HeaderChainTests(unittest.TestCase):
         same_time = mine_header(genesis.hash, 5)
         with self.assertRaisesRegex(ValueError, "timestamp"):
             chain.add(same_time)
+
+    def test_rejects_noncanonical_compact_target_alias(self):
+        canonical_bits = 0x1F007F00
+        noncanonical_bits = 0x2100007F
+        target = decode_compact_target(canonical_bits)
+        self.assertEqual(decode_compact_target(noncanonical_bits), target)
+        self.assertEqual(encode_compact_target(target), canonical_bits)
+        genesis = mine_header(ZERO_HASH, 1, noncanonical_bits, POW_LIMIT)
+        with self.assertRaisesRegex(ValueError, "non-canonical compact target"):
+            HeaderChain(POW_LIMIT, genesis)
 
     def test_rejects_target_above_pow_limit(self):
         strict_bits = 0x201FFFFF
