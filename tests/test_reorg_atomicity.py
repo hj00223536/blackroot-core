@@ -58,7 +58,7 @@ class ReorganizationAtomicityTests(unittest.TestCase):
 
             original_tip = store.tip()
             original_headers = store.active_block_headers()
-            with store._connect() as db:
+            with store._connection_scope() as db:
                 original_utxos = db.execute(
                     "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
                     "FROM utxos ORDER BY txid, output_index"
@@ -69,7 +69,7 @@ class ReorganizationAtomicityTests(unittest.TestCase):
 
             self.assertEqual(store.tip(), original_tip)
             self.assertEqual(store.active_block_headers(), original_headers)
-            with store._connect() as db:
+            with store._connection_scope() as db:
                 restored_utxos = db.execute(
                     "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
                     "FROM utxos ORDER BY txid, output_index"
