@@ -137,3 +137,10 @@ This is a synthetic equal-difficulty fork-choice fixture. It does not test
 mainnet difficulty parameters, adversarial network timing, script/signature
 authorization, transaction relay, or crash injection at every filesystem
 boundary.
+
+A companion fault-injection test forces an exception after the UTXO layer has
+written a complete multi-block replacement branch but before the outer
+coordinated transaction can commit. It checks that the previous active tip,
+UTXO count, integrity, and empty recovery-journal state are restored, then
+retries the same reorganization successfully. This tests application-level
+transaction rollback, not sudden power loss or storage-device failure.
