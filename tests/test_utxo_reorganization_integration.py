@@ -153,7 +153,7 @@ Path(result).write_text(outcome)
         self.assertEqual(final_store.tip(), expected_tip)
         active = final_store.active_block_headers()
         self.assertEqual(len(active), 3)
-        self.assertEqual(active[-1], contender.header.hash)
+        self.assertEqual(active[-1], (2, contender.header.hash))
         final_store.verify_integrity()
 
     def test_reorganizes_utxo_store_to_greater_work_branch(self):
