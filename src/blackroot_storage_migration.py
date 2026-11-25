@@ -436,6 +436,56 @@ def import_snapshot_set_to_coordinated_database(
                 pass
         raise
 
+
+def validate_coordinated_staging_database(
+    database_path: str | Path,
+    *,
+    pow_limit: int,
+    genesis,
+) -> dict:
+    """Reopen a staged DB through the real coordinated node stores.
+
+    The caller must supply the expected network parameters from a trusted
+    configuration. This function never creates or changes network parameters
+    to make a database pass.
+    """
+    from .blackroot_node_state import PersistentNodeState
+    from .blackroot_chain import BlockHeader
+
+    if not isinstance(genesis, BlockHeader):
+        raise TypeError("genesis must be a BlockHeader")
+    path = Path(database_path).expanduser().resolve(strict=True)
+    if not path.is_file():
+        raise ValueError("staging database path is not a regular file")
+
+    state = PersistentNodeState.open_coordinated(path, pow_limit, genesis)
+    try:
+        if not state.coordinated:
+            raise RuntimeError("staging database did not open in coordinated mode")
+        state.utxos.verify_integrity()
+        state._verify_persistent_tip()
+        pending = state.recovery_journal.pending()
+        if pending:
+            raise RuntimeError("staging database has an unresolved recovery intent")
+        tip = state.utxos.tip()
+        best = state.headers.chain.node(state.headers.chain.best_hash)
+        if best is None:
+            raise RuntimeError("staging header DAG has no best-chain node")
+        return {
+            "status": "coordinated_node_reopen_passed",
+            "database": str(path),
+            "coordinated": True,
+            "header_height": best.height,
+            "header_best_hash": best.header.hash.hex(),
+            "utxo_tip": None if tip is None else (tip[0], tip[1].hex()),
+            "recovery_intents_pending": 0,
+            "migration_performed": False,
+            "production_cutover_performed": False,
+        }
+    finally:
+        state.close()
+
+
 def create_consistent_sqlite_snapshot(
     source_path: str | Path,
     snapshot_path: str | Path,
