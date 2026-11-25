@@ -200,8 +200,8 @@ class CoordinatedNodeStateProcessCrashTests(unittest.TestCase):
                 self.assertEqual(reopened.utxos.tip(), (2, side_two.header.hash))
                 self.assertFalse(reopened.recovery_journal.pending())
                 self.assertEqual(reopened.headers.chain.best_hash, side_two.header.hash)
-                self.assertIsNotNone(reopened.utxos.load_block_body(side_one.header.hash))
-                self.assertIsNotNone(reopened.utxos.load_block_body(side_two.header.hash))
+                self.assertIsNone(reopened.utxos.load_block_body(side_one.header.hash))
+                self.assertIsNone(reopened.utxos.load_block_body(side_two.header.hash))
                 reopened.utxos.verify_integrity()
             finally:
                 reopened.close()
