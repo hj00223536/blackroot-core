@@ -482,6 +482,94 @@ def import_snapshot_set_to_coordinated_database(
         raise
 
 
+def inspect_staged_import_artifact(database_path: str | Path) -> dict:
+    """Classify a staging artifact without changing or deleting it.
+
+    A complete manifest means only that the importer reached its completion
+    marker. It does not establish consensus validity or production readiness.
+    """
+    path = Path(database_path).expanduser()
+    if not path.exists():
+        return {"status": "missing", "database": str(path)}
+    if not path.is_file():
+        return {"status": "not_regular_file", "database": str(path)}
+
+    try:
+        db = _readonly_connection(path.resolve(strict=True))
+    except (sqlite3.DatabaseError, OSError, ValueError):
+        return {"status": "not_readable_sqlite", "database": str(path)}
+
+    try:
+        try:
+            integrity = db.execute("PRAGMA quick_check").fetchone()
+            if integrity is None or integrity[0] != "ok":
+                return {
+                    "status": "sqlite_integrity_failed",
+                    "database": str(path),
+                    "integrity_result": None if integrity is None else integrity[0],
+                }
+            exists = db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='blackroot_import_manifest'"
+            ).fetchone()
+            if not exists:
+                return {
+                    "status": "incomplete_import_no_manifest",
+                    "database": str(path),
+                    "integrity_result": "ok",
+                }
+            rows = db.execute(
+                "SELECT format_version, status, header_sha256, utxo_sha256, "
+                "journal_sha256, row_counts_json "
+                "FROM blackroot_import_manifest WHERE singleton=1"
+            ).fetchall()
+            if len(rows) != 1 or rows[0][0] != 1 or rows[0][1] != "complete":
+                return {
+                    "status": "invalid_or_incomplete_manifest",
+                    "database": str(path),
+                    "integrity_result": "ok",
+                }
+            for digest in rows[0][2:5]:
+                if (
+                    not isinstance(digest, str) or len(digest) != 64
+                    or any(char not in "0123456789abcdef" for char in digest)
+                ):
+                    return {
+                        "status": "invalid_or_incomplete_manifest",
+                        "database": str(path),
+                        "integrity_result": "ok",
+                    }
+            try:
+                counts = json.loads(rows[0][5])
+            except (TypeError, json.JSONDecodeError):
+                return {
+                    "status": "invalid_or_incomplete_manifest",
+                    "database": str(path),
+                    "integrity_result": "ok",
+                }
+            if not isinstance(counts, dict) or any(
+                not isinstance(name, str) or not isinstance(count, int)
+                or isinstance(count, bool) or count < 0
+                for name, count in counts.items()
+            ):
+                return {
+                    "status": "invalid_or_incomplete_manifest",
+                    "database": str(path),
+                    "integrity_result": "ok",
+                }
+            return {
+                "status": "complete_import_manifest_present",
+                "database": str(path),
+                "integrity_result": "ok",
+                "recorded_tables": len(counts),
+                "production_validated": False,
+            }
+        except sqlite3.DatabaseError:
+            return {"status": "sqlite_inspection_failed", "database": str(path)}
+    finally:
+        db.close()
+
+
 def validate_coordinated_staging_database(
     database_path: str | Path,
     *,
