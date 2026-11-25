@@ -29,7 +29,7 @@ class InventoryCodecTests(unittest.TestCase):
     def test_rejects_noncanonical_and_excessive_counts(self):
         with self.assertRaisesRegex(ValueError, "non-canonical"):
             decode_inventory(b"\xfd\x01\x00")
-        excessive = b"\xfd" + MAX_INVENTORY_ITEMS.to_bytes(2, "little") + b"\x00"
+        excessive = b"\xfd" + (MAX_INVENTORY_ITEMS + 1).to_bytes(2, "little")
         with self.assertRaisesRegex(ValueError, "count exceeds"):
             decode_inventory(excessive)
 
