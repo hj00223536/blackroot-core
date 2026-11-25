@@ -67,6 +67,10 @@ async def run_node(config: TestnetConfig, data_dir: Path, bind_host: str, connec
             state,
             manager,
             protocol_version=config.protocol_version,
+            # Provisional local UTC clock for the future-time bound. A
+            # production network must replace this with a network-adjusted
+            # clock derived from its peer-time policy.
+            adjusted_time=lambda: int(time.time()),
         )
         host, port = await runtime.listen(bind_host, config.p2p_port)
         if connect_to is not None:
