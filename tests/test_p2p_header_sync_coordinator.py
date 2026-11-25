@@ -73,6 +73,18 @@ class PeerHeaderSyncTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ConnectionError, "handshake"):
             await self.sync.handle_message(peer, "headers", encode_headers([]))
 
+    async def test_header_sync_fails_closed_without_clock_provider(self):
+        sync = PeerHeaderSync(self.chain, protocol_version=70001)
+        with self.assertRaisesRegex(RuntimeError, "requires an adjusted-time provider"):
+            await sync.handle_message(FakePeer(), "headers", encode_headers([]))
+
+    async def test_header_sync_rejects_invalid_clock_value(self):
+        sync = PeerHeaderSync(
+            self.chain, protocol_version=70001, adjusted_time=lambda: -1
+        )
+        with self.assertRaisesRegex(ValueError, "non-negative integer"):
+            await sync.handle_message(FakePeer(), "headers", encode_headers([]))
+
     async def test_rejects_unknown_sync_command(self):
         with self.assertRaisesRegex(ValueError, "unsupported"):
             await self.sync.handle_message(FakePeer(), "inv", b"")
