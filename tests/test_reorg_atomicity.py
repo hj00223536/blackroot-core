@@ -127,11 +127,13 @@ class ReorganizationAtomicityTests(unittest.TestCase):
                 1, (TxInput(funding, bytes(corrupted)),), unsigned.outputs
             )
 
-            fork_one = mined_block(
-                1, genesis.header.hash, 3,
-                (coinbase(1), invalid_spend),
+            # First replacement block is valid and must be rolled back when
+            # the later replacement block fails script authorization.
+            fork_one = mined_block(1, genesis.header.hash, 3)
+            fork_two = mined_block(
+                2, fork_one.header.hash, 4,
+                (coinbase(2), invalid_spend),
             )
-            fork_two = mined_block(2, fork_one.header.hash, 4)
             chain.add_to_branch(fork_one.header)
             chain.add_to_branch(fork_two.header)
             for block in (fork_one, fork_two):
