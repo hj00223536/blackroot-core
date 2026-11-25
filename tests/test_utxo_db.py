@@ -5,6 +5,7 @@ from pathlib import Path
 
 from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput
 from src.blackroot_utxo_db import UTXOStore
+from src.blackroot_sqlite import SQLiteTransactionCoordinator
 
 
 class UTXOStoreTests(unittest.TestCase):
@@ -20,6 +21,44 @@ class UTXOStoreTests(unittest.TestCase):
         reopened = UTXOStore(self.db_path)
         self.assertEqual(reopened.get(self.funding), TxOutput(900, b"funding-script"))
         self.assertEqual(reopened.count(), 1)
+
+    def test_coordinator_owned_connection_initializes_and_commits_bootstrap_state(self):
+        shared_path = Path(self.tempdir.name) / "shared.sqlite"
+        funding = OutPoint(bytes.fromhex("51" * 32), 0)
+        with SQLiteTransactionCoordinator(shared_path) as coordinator:
+            with coordinator.transaction() as connection:
+                store = UTXOStore(shared_path, connection=connection)
+                self.assertIs(store._external_connection, connection)
+                store.add_genesis_output(funding, TxOutput(700, b"shared"))
+                self.assertEqual(store.get(funding), TxOutput(700, b"shared"))
+        reopened = UTXOStore(shared_path)
+        self.assertEqual(reopened.get(funding), TxOutput(700, b"shared"))
+
+    def test_coordinator_rolls_back_utxo_schema_and_bootstrap_state_together(self):
+        shared_path = Path(self.tempdir.name) / "rollback.sqlite"
+        funding = OutPoint(bytes.fromhex("52" * 32), 0)
+        with SQLiteTransactionCoordinator(shared_path) as coordinator:
+            with self.assertRaisesRegex(ValueError, "abort coordinated setup"):
+                with coordinator.transaction() as connection:
+                    store = UTXOStore(shared_path, connection=connection)
+                    store.add_genesis_output(funding, TxOutput(701, b"rollback"))
+                    raise ValueError("abort coordinated setup")
+        with sqlite3.connect(shared_path) as db:
+            tables = db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='utxos'"
+            ).fetchall()
+        self.assertEqual(tables, [])
+
+    def test_internal_transaction_methods_reject_coordinator_connection(self):
+        shared_path = Path(self.tempdir.name) / "guard.sqlite"
+        funding = OutPoint(bytes.fromhex("53" * 32), 0)
+        with SQLiteTransactionCoordinator(shared_path) as coordinator:
+            with coordinator.transaction() as connection:
+                store = UTXOStore(shared_path, connection=connection)
+                with self.assertRaisesRegex(RuntimeError, "internal transaction"):
+                    store.apply(
+                        Transaction(1, (TxInput(funding),), (TxOutput(1, b"x"),))
+                    )
 
     def test_applies_spend_atomically_and_returns_fee(self):
         tx = Transaction(
