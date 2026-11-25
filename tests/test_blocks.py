@@ -106,6 +106,35 @@ class BlockValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "script verification failed"):
             validate_block_transactions(make_block([coinbase, unsigned]), self.parent, 1)
 
+    def test_rejects_cross_transaction_double_spend_without_mutating_parent(self):
+        first_spend = signed_spend(self.funding, self.previous_output)
+        second_spend = signed_spend(self.funding, self.previous_output, private_key=1)
+        # Different transaction serialization/txid, same consumed parent outpoint.
+        second_spend = Transaction(
+            2, second_spend.inputs, second_spend.outputs
+        )
+        block = make_block([make_coinbase(1), first_spend, second_spend])
+        original_parent = dict(self.parent)
+
+        with self.assertRaisesRegex(ValueError, "referenced UTXO does not exist"):
+            validate_block_transactions(block, self.parent, 1)
+
+        self.assertEqual(self.parent, original_parent)
+
+    def test_rejects_invalid_later_transaction_without_mutating_parent(self):
+        valid_spend = signed_spend(self.funding, self.previous_output)
+        missing = OutPoint(bytes.fromhex("22" * 32), 0)
+        invalid_spend = Transaction(
+            1, (TxInput(missing),), (TxOutput(1, b"pay"),)
+        )
+        block = make_block([make_coinbase(1), valid_spend, invalid_spend])
+        original_parent = dict(self.parent)
+
+        with self.assertRaisesRegex(ValueError, "referenced UTXO does not exist"):
+            validate_block_transactions(block, self.parent, 1)
+
+        self.assertEqual(self.parent, original_parent)
+
     def test_rejects_missing_coinbase_first(self):
         spend = Transaction(1, (TxInput(self.funding),), (TxOutput(9_000, b"pay"),))
         with self.assertRaisesRegex(ValueError, "first transaction"):
