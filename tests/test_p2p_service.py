@@ -54,7 +54,8 @@ class P2PSyncServiceTests(unittest.IsolatedAsyncioTestCase):
         self.peer_b = FakePeer()
         self.manager = FakeManager([self.peer_a, self.peer_b])
         self.service = P2PSyncService(
-            self.manager, self.chain, self.store, protocol_version=1
+            self.manager, self.chain, self.store, protocol_version=1,
+            adjusted_time=lambda: 100_000,
         )
 
     async def test_notfound_is_routed_and_reassigned_through_service(self):
