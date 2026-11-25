@@ -121,9 +121,10 @@ class SQLiteSnapshotTests(unittest.TestCase):
                 prev_hash BLOB, merkle_root BLOB, timestamp INTEGER, bits INTEGER,
                 nonce INTEGER, chainwork TEXT)""")
             db.execute(
-                "INSERT INTO headers VALUES(?, 0, ?, ?, ?, ?, ?, ?, '1')",
+                "INSERT INTO headers VALUES(?, 0, ?, ?, ?, ?, ?, ?, ?)",
                 (genesis.hash, genesis.version, genesis.prev_hash,
-                 genesis.merkle_root, genesis.timestamp, genesis.bits, genesis.nonce),
+                 genesis.merkle_root, genesis.timestamp, genesis.bits, genesis.nonce,
+                 str(block_work(pow_limit))),
             )
         with sqlite3.connect(self.utxo) as db:
             db.execute("CREATE TABLE metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
