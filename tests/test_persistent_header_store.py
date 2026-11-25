@@ -39,10 +39,13 @@ class PersistentHeaderStoreTests(unittest.TestCase):
         store.add_to_branch(side_two)
         expected_best = store.chain.best_hash
         self.assertEqual(expected_best, side_two.hash)
-        self.assertEqual([node.height for node in store.chain.nodes], [0, 1, 1, 2])
+        expected_nodes = sorted(
+            [(0, self.genesis.hash), (1, main_one.hash), (1, side_one.hash), (2, side_two.hash)],
+            key=lambda item: (item[0], item[1]),
+        )
         self.assertEqual(
-            [node.header.hash for node in store.chain.nodes],
-            [self.genesis.hash, main_one.hash, side_one.hash, side_two.hash],
+            [(node.height, node.header.hash) for node in store.chain.nodes],
+            expected_nodes,
         )
 
         reopened = PersistentHeaderStore(self.path, POW_LIMIT, self.genesis)
