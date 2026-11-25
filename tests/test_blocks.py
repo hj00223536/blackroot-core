@@ -66,6 +66,28 @@ class BlockValidationTests(unittest.TestCase):
         self.previous_output = TxOutput(10_000, p2pkh_script(_hash160(pubkey)))
         self.parent = {self.funding: self.previous_output}
 
+    def test_block_serialization_round_trip(self):
+        coinbase = make_coinbase(12345)
+        block = make_block([coinbase])
+        decoded = Block.deserialize(block.serialize())
+        self.assertEqual(decoded, block)
+        self.assertEqual(decoded.header.hash, block.header.hash)
+
+    def test_block_deserializer_rejects_truncation_and_trailing_bytes(self):
+        block = make_block([make_coinbase(1)])
+        raw = block.serialize()
+        with self.assertRaisesRegex(ValueError, "truncated"):
+            Block.deserialize(raw[:-1])
+        with self.assertRaisesRegex(ValueError, "trailing bytes"):
+            Block.deserialize(raw + b"\\x00")
+
+    def test_block_deserializer_rejects_noncanonical_transaction_count(self):
+        block = make_block([make_coinbase(1)])
+        raw = block.serialize()
+        malformed = raw[:80] + b"\\xfd\\x01\\x00" + raw[81:]
+        with self.assertRaisesRegex(ValueError, "non-canonical"):
+            Block.deserialize(malformed)
+
     def test_valid_signed_block_accounts_fees_and_subsidy(self):
         spend = signed_spend(self.funding, self.previous_output)
         coinbase = make_coinbase(block_subsidy(1) + 1_000)
