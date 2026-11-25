@@ -24,11 +24,11 @@ def der_signature(r, s):
     return b"\x30" + bytes([len(body)]) + body
 
 
-def signed_spend(previous, previous_output, private_key=1, output_script=b'pay'):
+def signed_spend(previous, previous_output, private_key=1, output_script=b'pay', lock_time=0, sequence=0xFFFFFFFF):
     point = _mul(private_key)
     pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
     unsigned = Transaction(
-        1, (TxInput(previous),), (TxOutput(9_000, output_script),)
+        1, (TxInput(previous, sequence=sequence),), (TxOutput(9_000, output_script),), lock_time
     )
     digest = legacy_sighash_all(unsigned, 0, previous_output.script_pubkey)
     nonce = 2
@@ -40,7 +40,7 @@ def signed_spend(previous, previous_output, private_key=1, output_script=b'pay')
         s = N - s
     signature = der_signature(r, s) + b"\x01"
     script_sig = _push(signature) + _push(pubkey)
-    return Transaction(1, (TxInput(previous, script_sig),), unsigned.outputs)
+    return Transaction(1, (TxInput(previous, script_sig, sequence),), unsigned.outputs, lock_time)
 
 
 def make_coinbase(value, script=b"\x01\x01"):
@@ -99,8 +99,7 @@ class BlockValidationTests(unittest.TestCase):
         self.assertIn(self.funding, self.parent)
 
     def test_absolute_height_locktime_requires_finality_at_candidate_height(self):
-        spend = signed_spend(self.funding, self.previous_output)
-        locked = Transaction(spend.version, spend.inputs, spend.outputs, lock_time=10)
+        locked = signed_spend(self.funding, self.previous_output, lock_time=10)
         with self.assertRaisesRegex(ValueError, "non-final"):
             validate_block_transactions(make_block([make_coinbase(1), locked]), self.parent, 10)
         result, _fees = validate_block_transactions(
@@ -109,15 +108,12 @@ class BlockValidationTests(unittest.TestCase):
         self.assertNotIn(self.funding, result)
 
     def test_final_sequence_overrides_unmet_absolute_locktime(self):
-        spend = signed_spend(self.funding, self.previous_output)
-        final_input = TxInput(spend.inputs[0].previous_output, spend.inputs[0].script_sig, 0xFFFFFFFF)
-        locked = Transaction(1, (final_input,), spend.outputs, lock_time=500)
+        locked = signed_spend(self.funding, self.previous_output, lock_time=500, sequence=0xFFFFFFFF)
         result, _fees = validate_block_transactions(make_block([make_coinbase(1), locked]), self.parent, 1)
         self.assertNotIn(self.funding, result)
 
     def test_timestamp_locktime_uses_parent_median_time_past(self):
-        spend = signed_spend(self.funding, self.previous_output)
-        locked = Transaction(spend.version, spend.inputs, spend.outputs, lock_time=1_700_000_000)
+        locked = signed_spend(self.funding, self.previous_output, lock_time=1_700_000_000)
         with self.assertRaisesRegex(ValueError, "median-time-past is required"):
             validate_block_transactions(make_block([make_coinbase(1), locked]), self.parent, 1)
         with self.assertRaisesRegex(ValueError, "non-final"):
