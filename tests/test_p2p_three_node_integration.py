@@ -9,6 +9,7 @@ from src.blackroot_p2p_handshake import VersionMessage
 from src.blackroot_p2p_inventory import decode_inventory
 from src.blackroot_p2p_manager import PeerManager
 from src.blackroot_p2p_multi_peer_sync import MultiPeerBlockScheduler
+from src.blackroot_p2p_node_service import NodePeerSyncService
 
 MAGIC = bytes.fromhex("b2a1c3d4")
 BITS = 0x207FFFFF
@@ -40,6 +41,7 @@ class ThreeNodeLoopbackTests(unittest.IsolatedAsyncioTestCase):
         self.store = Mock()
         self.store.connect_validated_block.return_value = 0
         self.scheduler = MultiPeerBlockScheduler(self.chain, self.store)
+        self.sync_service = NodePeerSyncService(self.scheduler)
         self.received = asyncio.Event()
         self.remote_requests = {"peer-1": asyncio.Event(), "peer-2": asyncio.Event()}
         self.remote_managers = []
@@ -68,14 +70,8 @@ class ThreeNodeLoopbackTests(unittest.IsolatedAsyncioTestCase):
             await manager.start_server("127.0.0.1", 0)
             self.remote_managers.append(manager)
 
-        self.peer_ids = {}
-        def central_factory(peer):
-            async def handler(command, payload):
-                if command == "block":
-                    peer_id = self.peer_ids[id(peer)]
-                    self.scheduler.accept_block(peer_id, payload)
-                    self.received.set()
-            return handler
+        async def central_message_factory(peer):
+            return self.sync_service.on_peer_message_factory(peer)
 
         self.central = PeerManager(
             magic=MAGIC,
@@ -83,13 +79,13 @@ class ThreeNodeLoopbackTests(unittest.IsolatedAsyncioTestCase):
             max_peers=3,
             handshake_timeout=2,
             idle_timeout=5,
-            on_peer_message_factory=central_factory,
+            on_peer_message_factory=self.sync_service.on_peer_message_factory,
+            on_peer_disconnected=self.sync_service.peer_disconnected,
         )
         self.peer_map = {}
         for peer_name, manager in zip(("peer-1", "peer-2"), self.remote_managers):
             host, port, *_ = manager.sockets[0].getsockname()
             peer = await self.central.connect(host, port)
-            self.peer_ids[id(peer)] = peer_name
             self.peer_map[peer_name] = peer
 
         async def wait_handshakes():
@@ -104,7 +100,7 @@ class ThreeNodeLoopbackTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_three_real_loopback_nodes_download_from_assigned_source(self):
         selected = await self.scheduler.request_block(
-            self.block.header.hash, self.peer_map
+            self.block.header.hash, self.sync_service.peers
         )
         await asyncio.wait_for(self.received.wait(), timeout=2)
         await asyncio.wait_for(self.remote_requests[selected].wait(), timeout=2)
