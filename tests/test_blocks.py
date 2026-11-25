@@ -24,7 +24,7 @@ def der_signature(r, s):
     return b"\x30" + bytes([len(body)]) + body
 
 
-def signed_spend(previous, previous_output, private_key=1, output_script=b'pay', lock_time=0, sequence=0xFFFFFFFF):
+def signed_spend(previous, previous_output, private_key=1, output_script=b'pay', lock_time=0, sequence=0xFFFFFFFE):
     point = _mul(private_key)
     pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
     unsigned = Transaction(
