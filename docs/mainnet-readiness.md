@@ -8,6 +8,7 @@ A public mainnet must not be announced until every mandatory gate is met.
 - [ ] Consensus test vectors for valid and invalid blocks/transactions
 - [ ] Difficulty-retarget and chainwork tests
 - [ ] Persistent UTXO database, crash recovery, and reorg tests
+- [ ] Coinbase maturity with persisted creation-height/coinbase provenance and safe schema migration (see docs/coinbase-maturity.md)
 - [ ] P2P protocol fuzzing and DoS protections
 - [ ] Wallet key generation, signing, backup, and restore review
 - [ ] RPC authentication and safe network defaults
