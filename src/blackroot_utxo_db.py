@@ -179,6 +179,17 @@ class UTXOStore:
         return None if row is None else (row[0], bytes(row[1]))
 
 
+    def block_header(self, height: int) -> bytes | None:
+        """Return the exact serialized header persisted at a connected height."""
+        if not isinstance(height, int) or isinstance(height, bool) or height < 0:
+            raise ValueError("height must be a non-negative integer")
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT header FROM blocks WHERE height=?", (height,)
+            ).fetchone()
+        return None if row is None else bytes(row[0])
+
+
     @staticmethod
     def _advance_provenance(block, parent_provenance, height):
         updated = dict(parent_provenance)
