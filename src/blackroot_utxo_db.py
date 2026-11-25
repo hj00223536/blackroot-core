@@ -11,6 +11,7 @@ from pathlib import Path
 
 from .blackroot_transactions import OutPoint, Transaction, TxOutput, validate_transaction
 from .blackroot_blocks import Block, validate_block_transactions
+from .blackroot_chain import HeaderChain
 
 
 class UTXOStore:
@@ -239,6 +240,57 @@ class UTXOStore:
             except Exception:
                 db.rollback()
                 raise
+
+    def reorganize_to_best(
+        self,
+        header_chain: HeaderChain,
+        replacement_blocks: dict[bytes, Block],
+    ) -> tuple[int, bytes]:
+        """Apply the HeaderChain's strictly-higher-work best branch to this UTXO store.
+
+        The active database tip must already exist in the supplied header DAG.
+        Every connecting body must be supplied by its exact header hash and its
+        serialized header must match. HeaderChain validates header-level rules;
+        this method validates transaction accounting and commits the UTXO switch
+        atomically. Script/signature and other unimplemented consensus checks
+        remain the caller's responsibility.
+        """
+        if not isinstance(header_chain, HeaderChain):
+            raise TypeError("header_chain must be a HeaderChain")
+        if not isinstance(replacement_blocks, dict):
+            raise TypeError("replacement_blocks must be a dict")
+        active = self.tip()
+        if active is None:
+            raise ValueError("cannot reorganize an empty UTXO chain")
+        active_height, active_hash = active
+        active_node = header_chain.node(active_hash)
+        if active_node is None or active_node.height != active_height:
+            raise ValueError("active database tip is absent or inconsistent in header chain")
+
+        best_hash = header_chain.best_hash
+        best_node = header_chain.node(best_hash)
+        if best_node is None:
+            raise ValueError("header chain has no best tip")
+        if best_node.chainwork <= active_node.chainwork:
+            return active
+
+        disconnect_headers, connect_headers = header_chain.reorganization(active_hash)
+        if not connect_headers:
+            return active
+
+        connect_blocks = []
+        for header in connect_headers:
+            block = replacement_blocks.get(header.hash)
+            if not isinstance(block, Block):
+                raise ValueError("missing replacement block body for best-chain header")
+            if block.header.serialize() != header.serialize():
+                raise ValueError("replacement block header does not match header-chain entry")
+            connect_blocks.append(block)
+
+        return self.reorganize(
+            tuple(header.hash for header in disconnect_headers),
+            tuple(connect_blocks),
+        )
 
     def reorganize(
         self,
