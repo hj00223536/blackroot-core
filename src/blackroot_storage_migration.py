@@ -288,6 +288,151 @@ def plan_coordinated_schema_merge(
         ],
     }
 
+
+def import_snapshot_set_to_coordinated_database(
+    header_snapshot_path: str | Path,
+    utxo_snapshot_path: str | Path,
+    recovery_journal_snapshot_path: str | Path,
+    destination_path: str | Path,
+    *,
+    batch_size: int = 512,
+) -> dict:
+    """Copy a validated three-snapshot set into a new, exclusive SQLite file.
+
+    This creates a staging database only. It preserves table/index CREATE SQL
+    and row values, never overwrites a destination, and never writes sources.
+    It does not itself authorize production cutover.
+    """
+    if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size < 1:
+        raise ValueError("batch_size must be a positive integer")
+    sources = {
+        "header": Path(header_snapshot_path).expanduser().resolve(strict=True),
+        "utxo": Path(utxo_snapshot_path).expanduser().resolve(strict=True),
+        "journal": Path(recovery_journal_snapshot_path).expanduser().resolve(strict=True),
+    }
+    destination_arg = Path(destination_path).expanduser()
+    parent = destination_arg.parent.resolve(strict=True)
+    destination = parent / destination_arg.name
+    if not parent.is_dir():
+        raise ValueError("destination parent must be an existing directory")
+    if destination.exists():
+        raise FileExistsError(f"coordinated database destination already exists: {destination}")
+    if destination.resolve(strict=False) in sources.values():
+        raise ValueError("coordinated destination must differ from every source snapshot")
+
+    # Validate the cross-store state before creating any output file.
+    consistency = validate_snapshot_set_consistency(
+        sources["header"], sources["utxo"], sources["journal"]
+    )
+    plan = plan_coordinated_schema_merge(
+        sources["header"], sources["utxo"], sources["journal"]
+    )
+    source_hashes = {kind: _sha256_file(path) for kind, path in sources.items()}
+
+    descriptor = os.open(destination, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    os.close(descriptor)
+    target: sqlite3.Connection | None = None
+    try:
+        source_dbs = {
+            kind: _readonly_connection(path) for kind, path in sources.items()
+        }
+        target = sqlite3.connect(str(destination), timeout=10.0)
+        target.execute("PRAGMA foreign_keys=ON")
+        target.execute("PRAGMA busy_timeout=10000")
+        target.execute("BEGIN IMMEDIATE")
+
+        for item in plan["objects"]:
+            if item["type"] == "table":
+                target.execute(item["create_sql"])
+                source = source_dbs[item["source"]]
+                table = item["name"]
+                quoted = '"' + table.replace('"', '""') + '"'
+                columns = [
+                    row[1] for row in source.execute(f"PRAGMA table_info({quoted})")
+                ]
+                if not columns:
+                    raise RuntimeError(f"source table {table!r} has no visible columns")
+                quoted_columns = ", ".join(
+                    '"' + column.replace('"', '""') + '"' for column in columns
+                )
+                placeholders = ", ".join("?" for _ in columns)
+                insert_sql = (
+                    f"INSERT INTO {quoted} ({quoted_columns}) "
+                    f"VALUES ({placeholders})"
+                )
+                cursor = source.execute(f"SELECT {quoted_columns} FROM {quoted}")
+                copied = 0
+                while True:
+                    rows = cursor.fetchmany(batch_size)
+                    if not rows:
+                        break
+                    target.executemany(insert_sql, rows)
+                    copied += len(rows)
+                source_count = source.execute(
+                    f"SELECT COUNT(*) FROM {quoted}"
+                ).fetchone()[0]
+                if copied != source_count:
+                    raise RuntimeError(
+                        f"row-copy count mismatch for {table!r}: {copied} != {source_count}"
+                    )
+            elif item["type"] == "index":
+                target.execute(item["create_sql"])
+
+        target.commit()
+        integrity = target.execute("PRAGMA integrity_check").fetchall()
+        if integrity != [("ok",)]:
+            raise RuntimeError(f"staged database integrity_check failed: {integrity!r}")
+        fk_errors = target.execute("PRAGMA foreign_key_check").fetchall()
+        if fk_errors:
+            raise RuntimeError(f"staged database foreign_key_check failed: {fk_errors!r}")
+
+        row_counts = {
+            table: target.execute(
+                'SELECT COUNT(*) FROM "' + table.replace('"', '""') + '"'
+            ).fetchone()[0]
+            for table in plan["table_order"]
+        }
+        for kind, source in source_dbs.items():
+            source.close()
+        source_dbs.clear()
+        target.close()
+        target = None
+        return {
+            "status": "coordinated_staging_database_created",
+            "destination": str(destination),
+            "destination_sha256": _sha256_file(destination),
+            "source_sha256": source_hashes,
+            "row_counts": row_counts,
+            "table_order": plan["table_order"],
+            "integrity_check": "ok",
+            "foreign_key_check": "ok",
+            "snapshot_consistency": consistency["status"],
+            "migration_performed": True,
+            "production_cutover_performed": False,
+            "source_files_modified": False,
+            "limitations": [
+                "staging database has not been reopened through PersistentNodeState",
+                "full transaction/script validation and independent consensus review remain required",
+                "no production cutover or mainnet launch was performed",
+            ],
+        }
+    except BaseException:
+        if target is not None:
+            try:
+                target.rollback()
+            except sqlite3.Error:
+                pass
+            target.close()
+        for candidate in (
+            destination, Path(str(destination) + "-wal"),
+            Path(str(destination) + "-shm"), Path(str(destination) + "-journal"),
+        ):
+            try:
+                candidate.unlink()
+            except FileNotFoundError:
+                pass
+        raise
+
 def create_consistent_sqlite_snapshot(
     source_path: str | Path,
     snapshot_path: str | Path,
