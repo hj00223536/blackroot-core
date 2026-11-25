@@ -28,7 +28,7 @@ def signed_spend(previous, previous_output, private_key=1, output_script=b'pay')
     point = _mul(private_key)
     pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
     unsigned = Transaction(
-        1, (TxInput(previous),), (TxOutput(9_000, b"pay"),)
+        1, (TxInput(previous),), (TxOutput(9_000, output_script),)
     )
     digest = legacy_sighash_all(unsigned, 0, previous_output.script_pubkey)
     nonce = 2
