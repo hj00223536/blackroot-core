@@ -77,4 +77,6 @@ A first, isolated primitive now exists in `src/blackroot_sqlite.py`:
 
 Unit tests cover commit, rollback (including transactional DDL), connection identity and closure, nested-transaction rejection, foreign-key configuration, and attempts by a store facade to take transaction ownership.
 
-**This is not yet an integrated storage transaction.** The existing header, UTXO, and recovery-journal stores still create independent connections and retain their own commit boundaries. The coordinator is a foundation for subsequent store adapters only; no cross-store atomicity claim is made, and the existing three-database layout remains unchanged.
+**Integration checkpoint — UTXO adapter (partial).** `UTXOStore` now accepts the coordinator's guarded connection for schema initialization, reads, block-body archival, and bootstrap-output insertion. Tests prove that schema creation plus bootstrap state commit together and roll back together on the exact coordinator connection. Methods that still open their own transaction (`apply`, `connect_block`, and `reorganize`) explicitly reject coordinator mode rather than silently breaking the outer transaction. These transaction-owning methods still require refactoring before block acceptance or reorganization can participate in the shared boundary.
+
+The header store and recovery journal remain unadapted and still create independent connections. This is a staged adapter, not an integrated node transaction; no cross-store atomicity claim is made, and the existing three-database layout remains the default.
