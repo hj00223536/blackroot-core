@@ -39,6 +39,7 @@ The current helper and header-chain behavior, including retarget boundaries, com
 - [ ] Compute and freeze the merkle root, initial target, nonce, serialized header, and block hash.
 - [ ] Add immutable test vectors to CI.
 - [x] Reproduce the current candidate transaction/header/hash/PoW vector in a separate Node.js implementation using only built-in crypto and byte primitives; CI runs it independently of the Python reference code. This is cross-language repository evidence, not an external client or audit.
+- [x] Add a Node.js 22 cross-language legacy transaction vector check for serialization, txid, CompactSize canonicality, truncation, and trailing-byte rejection. This is in-repository regression evidence only.
 - [ ] Reproduce every final, frozen vector in a separately maintained external client.
 - [ ] Decide and test whether the genesis output is unspendable.
 
