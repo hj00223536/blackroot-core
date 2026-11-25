@@ -160,5 +160,44 @@ class SeparateProcessNodeSmokeTests(unittest.TestCase):
                             process.communicate(timeout=5)
 
 
+    def test_cli_rejects_second_process_using_same_data_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config_path = root / "testnet.json"
+            _write_config(config_path)
+            data_dir = root / "shared-node-data"
+            env = os.environ.copy()
+            env["PYTHONPATH"] = str(ROOT) + os.pathsep + env.get("PYTHONPATH", "")
+            command = [
+                sys.executable, "-m", "src.blackroot_node",
+                "--config", str(config_path),
+                "--data-dir", str(data_dir),
+                "--bind-host", "127.0.0.1",
+            ]
+            owner = subprocess.Popen(
+                command, cwd=ROOT, env=env, stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, text=True, bufsize=1,
+            )
+            try:
+                record = _read_json_line(owner)
+                self.assertEqual(record["event"], "node_started")
+                contender = subprocess.run(
+                    command, cwd=ROOT, env=env, capture_output=True,
+                    text=True, timeout=10,
+                )
+                self.assertEqual(contender.returncode, 2)
+                self.assertIn("another BLACKROOT node already holds data directory",
+                              contender.stderr)
+            finally:
+                if owner.poll() is None:
+                    owner.terminate()
+                try:
+                    owner.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    owner.kill()
+                    owner.communicate(timeout=5)
+
+
+
 if __name__ == "__main__":
     unittest.main()
