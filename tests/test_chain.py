@@ -1,7 +1,7 @@
 import unittest
 
 from src.blackroot_chain import BlockHeader, HeaderChain, ZERO_HASH
-from src.blackroot_consensus import check_proof_of_work, decode_compact_target
+from src.blackroot_consensus import block_work, check_proof_of_work, decode_compact_target
 
 BITS = 0x207FFFFF
 POW_LIMIT = decode_compact_target(BITS)
@@ -30,6 +30,7 @@ class HeaderChainTests(unittest.TestCase):
         chain.add(next_header)
         self.assertEqual(chain.height, 1)
         self.assertEqual(chain.tip.hash, next_header.hash)
+        self.assertEqual(chain.chainwork, 2 * block_work(POW_LIMIT))
 
     def test_rejects_wrong_parent(self):
         genesis = mine_header(ZERO_HASH, 1)
