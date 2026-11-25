@@ -28,7 +28,7 @@ class GetHeadersCodecTests(unittest.TestCase):
     def test_rejects_noncanonical_and_excessive_locator(self):
         with self.assertRaisesRegex(ValueError, "non-canonical"):
             decode_getheaders(struct.pack("<i", 1) + b"\xfd\x01\x00" + b"z" * 32)
-        excessive = struct.pack("<i", 1) + b"\xfd" + (MAX_BLOCK_LOCATOR_HASHES + 1).to_bytes(2, "little")
+        excessive = struct.pack("<i", 1) + bytes((MAX_BLOCK_LOCATOR_HASHES + 1,))
         with self.assertRaisesRegex(ValueError, "locator exceeds"):
             decode_getheaders(excessive + b"z" * 32)
 
