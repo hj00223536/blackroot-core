@@ -43,3 +43,13 @@ Requires Python 3.10+.
 Do not use this prototype to store value, mine a public network, or accept deposits. A secure cryptocurrency requires a complete independently reviewed implementation: script execution and signature verification, coinbase and subsidy validation, mempool policy, peer-to-peer protocol, cumulative-chainwork selection, difficulty retargeting, persistent storage and reorg recovery, wallet key management, denial-of-service defenses, reproducible releases, and sustained adversarial testing. The new transaction module checks serialization and value accounting only; it does not authenticate spenders.
 
 No genesis hash, network identifier, address prefix, ports, DNS seeds, exchange listing, market price, or launch date is claimed by this repository.
+
+
+## Block validation prototype
+
+`src/blackroot_blocks.py` now validates the block transaction list, coinbase
+placement and reward ceiling, transaction IDs, merkle-root commitment, UTXO
+value accounting, and aggregate fees against a parent UTXO snapshot. This is
+still an accounting prototype: it does not verify scripts/signatures, enforce
+coinbase maturity, validate proof of work or timestamps, or persist block and
+UTXO state atomically. See [block validation notes](docs/block-validation.md).
