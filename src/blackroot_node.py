@@ -1,0 +1,87 @@
+"""Loopback-only local testnet node runner; not a public full-node release."""
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import signal
+import time
+from pathlib import Path
+
+from .blackroot_node_config import TestnetConfig
+from .blackroot_node_runtime import BlackrootNodeRuntime
+from .blackroot_node_state import PersistentNodeState
+from .blackroot_p2p_handshake import VersionMessage
+
+
+async def run_node(config: TestnetConfig, data_dir: Path, bind_host: str) -> None:
+    bind_host = config.validate_bind_host(bind_host)
+    data_dir.mkdir(parents=True, exist_ok=True)
+    state = PersistentNodeState.open_coordinated(
+        data_dir / "blackroot-node.sqlite",
+        config.pow_limit,
+        config.genesis_header,
+    )
+    runtime = None
+    try:
+        version = VersionMessage(
+            protocol_version=config.protocol_version,
+            services=0,
+            timestamp=int(time.time()),
+            nonce=0,
+            start_height=state.headers.chain.height,
+            user_agent="/blackroot-local-node/0.1/",
+        )
+        manager = config.create_peer_manager(version)
+        runtime = BlackrootNodeRuntime(
+            state,
+            manager,
+            protocol_version=config.protocol_version,
+        )
+        host, port = await runtime.listen(bind_host, config.p2p_port)
+        print(json.dumps({
+            "event": "node_started",
+            "network_id": config.network_id,
+            "genesis_hash": config.genesis_header.display_hash,
+            "height": state.headers.chain.height,
+            "best_hash": state.headers.chain.tip.display_hash,
+            "listen_host": host,
+            "listen_port": port,
+            "peer_count": runtime.peer_count,
+            "data_dir": str(data_dir.resolve()),
+            "warning": "local prototype; test coins have no value; not a public network",
+        }, sort_keys=True), flush=True)
+
+        stop = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(sig, stop.set)
+            except (NotImplementedError, RuntimeError):
+                pass
+        await stop.wait()
+    finally:
+        if runtime is not None:
+            await runtime.close()
+        state.close()
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Run an explicitly configured BLACKROOT local testnet node (loopback only)."
+    )
+    parser.add_argument("--config", required=True, help="strict JSON testnet config")
+    parser.add_argument("--data-dir", required=True, help="node-owned data directory")
+    parser.add_argument("--bind-host", default="127.0.0.1", help="literal loopback IP only")
+    args = parser.parse_args(argv)
+    try:
+        config = TestnetConfig.from_json_file(args.config)
+        config.validate_bind_host(args.bind_host)
+        asyncio.run(run_node(config, Path(args.data_dir), args.bind_host))
+    except (ValueError, OSError, RuntimeError) as exc:
+        parser.exit(2, f"blackroot-node: {exc}\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
