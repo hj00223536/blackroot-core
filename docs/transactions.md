@@ -39,9 +39,10 @@ The accounting-only `validate_transaction` and `apply_transaction` helpers do no
 execute scripts or authorize spends. Separately, block validation now invokes
 the fail-closed legacy P2PKH verifier for every regular transaction input before
 accounting. This is a narrow template check, not a general Script engine.
-Coinbase maturity, SegWit/witness, locktime/sequence semantics, transaction
-finality, block weight/size rules, mempool policy, and transaction malleability
-protections remain unimplemented. The standalone accounting helpers must never
+Coinbase maturity is conditional on authenticated provenance being supplied;
+SegWit/witness, locktime/sequence semantics, transaction finality, block
+weight/size rules, mempool policy, and transaction malleability protections
+remain unimplemented. The standalone accounting helpers must never
 be treated as proof that an input is authorized.
 
 Consequently, the UTXO accounting helper proves only value conservation against
@@ -63,8 +64,10 @@ This is deliberately a separate API:
 `validate_transaction_scripts(tx, utxos)`. It is wired into the current block-validation pipeline for regular inputs, but remains a narrow legacy P2PKH verifier and not a general Script engine.
 `validate_transaction`, block connection, or UTXO reorganization, so existing
 accounting-only test fixtures remain isolated from this authorization layer.
-Do not treat a transaction or block as fully valid until the block-validation
-pipeline requires this check for every non-coinbase input.
+Do not treat this narrow verifier as complete consensus validation. The block
+validator also accepts omitted provenance for legacy/test callers; coinbase
+maturity is enforced only when complete authenticated provenance is supplied.
+The standalone accounting helpers remain authorization-free.
 
 Limitations: no general Bitcoin Script interpreter, P2SH, SegWit, multisig,
 timelocks, script opcodes, sighash variants, or script resource accounting.
