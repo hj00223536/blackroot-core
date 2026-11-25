@@ -1,0 +1,82 @@
+import asyncio
+import unittest
+
+from src.blackroot_chain import BlockHeader, HeaderChain, ZERO_HASH
+from src.blackroot_consensus import check_proof_of_work, decode_compact_target
+from src.blackroot_p2p_getheaders import GetHeadersMessage, decode_getheaders, encode_getheaders
+from src.blackroot_p2p_headers import decode_headers, encode_headers
+from src.blackroot_p2p_header_sync import PeerHeaderSync, build_block_locator
+
+BITS = 0x207FFFFF
+POW_LIMIT = decode_compact_target(BITS)
+
+
+def mine(prev_hash, timestamp):
+    for nonce in range(1000):
+        header = BlockHeader(1, prev_hash, bytes([timestamp % 256]) * 32, timestamp, BITS, nonce)
+        if check_proof_of_work(header.serialize(), BITS, POW_LIMIT):
+            return header
+    raise AssertionError("test mining exhausted")
+
+
+class FakePeer:
+    connected = True
+
+    def __init__(self):
+        self.sent = []
+
+    async def send(self, command, payload):
+        self.sent.append((command, payload))
+
+
+class PeerHeaderSyncTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.genesis = mine(ZERO_HASH, 1)
+        self.chain = HeaderChain(POW_LIMIT, self.genesis)
+        self.sync = PeerHeaderSync(self.chain, protocol_version=70001, adjusted_time=lambda: 100_000)
+
+    def test_locator_starts_at_tip_and_ends_at_genesis(self):
+        parent = self.genesis
+        for timestamp in range(2, 15):
+            parent = mine(parent.hash, timestamp)
+            self.chain.add(parent)
+        locator = build_block_locator(self.chain)
+        self.assertEqual(locator[0], self.chain.tip.hash)
+        self.assertEqual(locator[-1], self.genesis.hash)
+        self.assertEqual(len(locator), len(set(locator)))
+
+    async def test_request_headers_sends_current_locator(self):
+        peer = FakePeer()
+        payload = await self.sync.request_headers(peer)
+        self.assertEqual(peer.sent, [("getheaders", payload)])
+        request = decode_getheaders(payload)
+        self.assertEqual(request.locator_hashes[0], self.genesis.hash)
+        self.assertEqual(request.stop_hash, ZERO_HASH)
+
+    async def test_serves_headers_after_first_known_locator(self):
+        first = mine(self.genesis.hash, 2)
+        second = mine(first.hash, 3)
+        self.chain.add(first)
+        self.chain.add(second)
+        request = GetHeadersMessage(70001, (b"x" * 32, self.genesis.hash), ZERO_HASH)
+        response = self.sync.make_headers_response(encode_getheaders(request))
+        self.assertEqual(decode_headers(response), [first, second])
+
+    async def test_serves_empty_when_no_locator_matches(self):
+        request = GetHeadersMessage(70001, (b"x" * 32,), ZERO_HASH)
+        response = self.sync.make_headers_response(encode_getheaders(request))
+        self.assertEqual(decode_headers(response), [])
+
+    async def test_rejects_messages_before_handshake(self):
+        peer = FakePeer()
+        peer.connected = False
+        with self.assertRaisesRegex(ConnectionError, "handshake"):
+            await self.sync.handle_message(peer, "headers", encode_headers([]))
+
+    async def test_rejects_unknown_sync_command(self):
+        with self.assertRaisesRegex(ValueError, "unsupported"):
+            await self.sync.handle_message(FakePeer(), "inv", b"")
+
+
+if __name__ == "__main__":
+    unittest.main()
