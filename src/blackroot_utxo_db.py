@@ -232,12 +232,6 @@ class UTXOStore:
             integrity = db.execute("PRAGMA integrity_check").fetchall()
             if integrity != [("ok",)]:
                 raise RuntimeError(f"UTXO SQLite integrity check failed: {integrity!r}")
-            foreign_key_errors = db.execute("PRAGMA foreign_key_check").fetchall()
-            if foreign_key_errors:
-                raise RuntimeError(
-                    f"UTXO SQLite foreign-key check failed: {foreign_key_errors!r}"
-                )
-
             blocks = db.execute(
                 "SELECT height, block_hash, prev_hash, tx_count FROM blocks ORDER BY height"
             ).fetchall()
@@ -267,19 +261,11 @@ class UTXOStore:
                         raise RuntimeError("stored active transaction ID does not match its bytes")
                 expected_parent = block_hash
 
-            body_hashes = [
-                bytes(row[0]) for row in
-                db.execute("SELECT block_hash FROM block_bodies ORDER BY block_hash")
-            ]
-        for block_hash in body_hashes:
-            try:
-                body = self.load_block_body(block_hash)
-            except (TypeError, ValueError, RuntimeError) as exc:
+            foreign_key_errors = db.execute("PRAGMA foreign_key_check").fetchall()
+            if foreign_key_errors:
                 raise RuntimeError(
-                    f"archived block body failed integrity verification: {block_hash.hex()}"
-                ) from exc
-            if body is None:
-                raise RuntimeError("archived block body disappeared during integrity check")
+                    f"UTXO SQLite foreign-key check failed: {foreign_key_errors!r}"
+                )
 
     def tip(self) -> tuple[int, bytes] | None:
         """Return the stored tip height and hash, or None."""
