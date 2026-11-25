@@ -52,6 +52,72 @@ class PersistentNodeStateTests(unittest.TestCase):
             self.genesis_block.header,
         )
 
+    def coordinated_state(self, database=None):
+        return PersistentNodeState(
+            self.root / "unused-headers.sqlite",
+            self.root / "unused-utxos.sqlite",
+            POW_LIMIT,
+            self.genesis_block.header,
+            database_path=self.root / "coordinated.sqlite" if database is None else database,
+        )
+
+    def test_coordinated_mode_uses_one_database_for_all_node_stores(self):
+        state = self.coordinated_state()
+        try:
+            self.assertTrue(state.coordinated)
+            self.assertEqual(state.connect_best_block(self.genesis_block, 0), 0)
+            self.assertEqual(state.utxos.tip(), (0, self.genesis_block.header.hash))
+            self.assertFalse(state.recovery_journal.pending())
+        finally:
+            state.close()
+
+        with sqlite3.connect(self.root / "coordinated.sqlite") as db:
+            tables = {
+                row[0] for row in db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+        self.assertTrue({"headers", "utxos", "blocks", "recovery_intent"} <= tables)
+
+        reopened = self.coordinated_state()
+        try:
+            self.assertEqual(reopened.utxos.tip(), (0, self.genesis_block.header.hash))
+            self.assertEqual(reopened.headers.chain.best_hash, self.genesis_block.header.hash)
+            self.assertFalse(reopened.recovery_journal.pending())
+        finally:
+            reopened.close()
+
+    def test_coordinated_header_addition_is_published_after_commit(self):
+        state = self.coordinated_state()
+        try:
+            candidate = make_block(self.genesis_block.header.hash, 1, 2)
+            state.add_header(candidate.header, adjusted_time=2)
+            self.assertEqual(state.headers.chain.best_hash, candidate.header.hash)
+            self.assertEqual(state.utxos.tip(), None)
+        finally:
+            state.close()
+
+    def test_coordinated_block_failure_rolls_back_body_utxo_and_journal_together(self):
+        state = self.coordinated_state()
+        try:
+            original_reconcile = state.recovery_journal.reconcile
+
+            def fail_after_utxo_write(observed_tip):
+                original_reconcile(observed_tip)
+                raise RuntimeError("fault after UTXO write")
+
+            state.recovery_journal.reconcile = fail_after_utxo_write
+            with self.assertRaisesRegex(RuntimeError, "fault after UTXO write"):
+                state.connect_best_block(self.genesis_block, 0)
+            state.recovery_journal.reconcile = original_reconcile
+            self.assertIsNone(state.utxos.tip())
+            self.assertIsNone(
+                state.utxos.load_block_body(self.genesis_block.header.hash)
+            )
+            self.assertFalse(state.recovery_journal.pending())
+        finally:
+            state.close()
+
     def test_rejects_shared_header_and_utxo_database_path(self):
         shared = self.root / "shared.sqlite"
         with self.assertRaisesRegex(ValueError, "sharing a SQLite file"):
