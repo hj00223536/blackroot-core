@@ -13,8 +13,8 @@ BITS = 0x207FFFFF
 POW_LIMIT = decode_compact_target(BITS)
 
 
-def coinbase(height):
-    tag = height.to_bytes(2, "little")
+def coinbase(height, timestamp):
+    tag = height.to_bytes(2, "little") + timestamp.to_bytes(4, "little")
     return Transaction(
         1,
         (TxInput(OutPoint(ZERO_TXID, COINBASE_INDEX), tag),),
@@ -23,7 +23,7 @@ def coinbase(height):
 
 
 def mined_block(height, previous, timestamp):
-    txs = (coinbase(height),)
+    txs = (coinbase(height, timestamp),)
     root = merkle_root([tx.txid for tx in txs])
     for nonce in range(10000):
         header = BlockHeader(1, previous, root, timestamp, BITS, nonce)
