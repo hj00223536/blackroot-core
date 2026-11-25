@@ -17,5 +17,6 @@ jobs:
       - name: Run unit tests with SQLite resource tracing
         env:
           PYTHONTRACEMALLOC: "10"
-        run: set -o pipefail
-          python -W always::ResourceWarning -m unittest discover -s tests -v 2>&1 | tee resource-warning.log
+        run: |
+          set -o pipefail
+          python scripts/diagnose_sqlite_resource_warnings.py 2>&1 | tee resource-warning.log
