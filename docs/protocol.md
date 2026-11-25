@@ -68,7 +68,7 @@ node application are not complete.
 - Normative transaction format, signature hashing, script language, sighash
   flags, witness rules, and consensus limits
 - Coinbase maturity and subsidy-plus-fees validation policy
-- Relative sequence-lock semantics: BIP68 height locks are implemented; timestamp-based relative locks remain rejected until UTXO creation-time MTP is authenticated and persisted.
+- Relative sequence-lock semantics: BIP68 height locks and timestamp-based relative locks are implemented in the block-validation path. Time locks use the parent-chain MTP of the candidate block and the persisted MTP immediately preceding UTXO creation; missing metadata fails closed. The SQLite UTXO schema is version 3 and schema-v2 databases require a verified reindex from genesis rather than an invented MTP history.
 - UTXO database format, undo data, reorg recovery, and atomic block-level
   best-chain state transitions
 - Peer discovery, bans, rate limits, DoS controls, and adversarial testing
