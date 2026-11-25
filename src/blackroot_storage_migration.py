@@ -532,10 +532,33 @@ def validate_coordinated_staging_database(
             except (TypeError, json.JSONDecodeError) as exc:
                 raise RuntimeError("staging database import manifest has invalid row counts") from exc
             if not isinstance(counts, dict) or any(
-                not isinstance(name, str) or not isinstance(count, int) or count < 0
+                not isinstance(name, str) or not isinstance(count, int)
+                or isinstance(count, bool) or count < 0
                 for name, count in counts.items()
             ):
                 raise RuntimeError("staging database import manifest has invalid row counts")
+
+            actual_tables = {
+                row[0] for row in manifest_db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' "
+                    "AND name NOT LIKE 'sqlite_%' "
+                    "AND name != 'blackroot_import_manifest'"
+                )
+            }
+            if set(counts) != actual_tables:
+                raise RuntimeError(
+                    "staging database import manifest table inventory does not match"
+                )
+            actual_counts = {}
+            for table in sorted(actual_tables):
+                quoted = '"' + table.replace('"', '""') + '"'
+                actual_counts[table] = manifest_db.execute(
+                    f"SELECT COUNT(*) FROM {quoted}"
+                ).fetchone()[0]
+            if counts != actual_counts:
+                raise RuntimeError(
+                    "staging database import manifest row counts do not match"
+                )
         finally:
             manifest_db.close()
 
