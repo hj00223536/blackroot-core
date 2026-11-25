@@ -40,6 +40,11 @@ class PersistentNodeState:
             raise RuntimeError(
                 "persistent UTXO tip is absent or inconsistent in replayed header DAG"
             )
+        stored_header = self.utxos.block_header(height)
+        if stored_header is None or stored_header != node.header.serialize():
+            raise RuntimeError(
+                "persistent UTXO block header does not match replayed header DAG"
+            )
         if height == 0 and block_hash != self.headers.chain.best_chain()[0].hash:
             raise RuntimeError("persistent UTXO genesis does not match header-store genesis")
 
