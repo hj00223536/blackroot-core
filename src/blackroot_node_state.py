@@ -28,15 +28,23 @@ def _validate_distinct_database_paths(
         "UTXO": Path(utxo_path).expanduser().resolve(),
         "recovery journal": Path(recovery_journal_path).expanduser().resolve(),
     }
-    seen: dict[Path, str] = {}
+    seen: list[tuple[Path, str]] = []
     for store_name, path in paths.items():
-        previous = seen.get(path)
-        if previous is not None:
-            raise ValueError(
-                f"{previous} and {store_name} databases must use distinct paths; "
-                "sharing a SQLite file does not provide a shared transaction boundary"
-            )
-        seen[path] = store_name
+        for previous_path, previous_name in seen:
+            same_file = path == previous_path
+            if not same_file and path.exists() and previous_path.exists():
+                try:
+                    same_file = path.samefile(previous_path)
+                except OSError:
+                    # Resolution and lexical comparison remain the conservative
+                    # checks when the filesystem cannot answer same-file queries.
+                    same_file = False
+            if same_file:
+                raise ValueError(
+                    f"{previous_name} and {store_name} databases must use distinct paths; "
+                    "sharing a SQLite file does not provide a shared transaction boundary"
+                )
+        seen.append((path, store_name))
 
 
 class PersistentNodeState:
