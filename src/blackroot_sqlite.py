@@ -93,6 +93,11 @@ class SQLiteTransactionCoordinator:
             self._transaction_active = False
 
     @property
+    def is_open(self) -> bool:
+        """Whether the coordinator currently owns an open SQLite connection."""
+        return self._connection is not None
+
+    @property
     def connection(self) -> SQLiteTransactionConnection:
         if self._facade is None:
             raise RuntimeError("SQLite coordinator is not open")
