@@ -263,7 +263,7 @@ def snapshot_legacy_node_databases(
             )
             created.append(destinations[kind])
 
-        snapshot_report = inspect_legacy_node_databases(
+        snapshot_report = validate_snapshot_set_consistency(
             destinations["header"],
             destinations["utxo"],
             destinations["journal"],
