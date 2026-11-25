@@ -5,6 +5,7 @@ from src.blackroot_blocks import Block, COINBASE_INDEX, ZERO_TXID
 from src.blackroot_chain import BlockHeader, HeaderChain, ZERO_HASH
 from src.blackroot_consensus import decode_compact_target, check_proof_of_work
 from src.blackroot_p2p_getheaders import decode_getheaders
+from src.blackroot_p2p_block_sync import BlockBodyRequestTracker
 from src.blackroot_p2p_header_sync import PeerHeaderSync
 from src.blackroot_p2p_inventory import INV_TYPE_BLOCK, InventoryVector, decode_inventory, encode_inventory
 from src.blackroot_p2p_sync_coordinator import PeerSyncCoordinator
@@ -101,6 +102,17 @@ class PeerSyncCoordinatorTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([command for command, _ in self.peer.sent], ["block", "notfound"])
         self.assertEqual(self.peer.sent[0][1], self.block.serialize())
         self.assertEqual(decode_inventory(self.peer.sent[1][1]), [missing])
+
+    async def test_expired_request_can_be_retried(self):
+        tracker = BlockBodyRequestTracker(clock=lambda: 10.0)
+        coordinator = PeerSyncCoordinator(self.header_sync, request_tracker=tracker)
+        coordinator.attach_store(self.store)
+        item = InventoryVector(INV_TYPE_BLOCK, self.block.header.hash)
+        await coordinator.handle_message(self.peer, "inv", encode_inventory([item]))
+        retried = await coordinator.retry_expired_requests(self.peer, 5, now=15.0)
+        self.assertEqual(retried, (self.block.header.hash,))
+        self.assertEqual([command for command, _ in self.peer.sent], ["getdata", "getdata"])
+        self.assertEqual(tracker.pending_hashes, (self.block.header.hash,))
 
     async def test_notfound_cancels_outstanding_request(self):
         item = InventoryVector(INV_TYPE_BLOCK, self.block.header.hash)
