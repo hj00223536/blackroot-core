@@ -1,8 +1,12 @@
 # Coinbase maturity: implementation contract
 
-**Status: NOT IMPLEMENTED.** This document fixes the required behavior and safe
-storage migration contract before consensus code is changed. Do not treat the
-current node prototype as enforcing coinbase maturity.
+**Status: PARTIALLY IMPLEMENTED (not active in persistent chain state).**
+`src/blackroot_maturity.py` defines the 100-block rule and authenticated
+provenance type. `validate_block_transactions` can enforce it when the caller
+supplies complete `parent_provenance`. The SQLite UTXO store does not yet persist
+that provenance or supply it, so its normal `connect_block` and reorganization
+paths do not currently enforce maturity. Do not treat the node prototype as
+having full coinbase-maturity consensus.
 
 ## Consensus rule
 
@@ -43,6 +47,13 @@ A future migration must either:
 The migration must be transactional, versioned, idempotent, and tested against
 interrupted migration and corrupted/incomplete block history. Never silently
 discard or relabel user state.
+
+## Completed prototype tests
+
+The unit suite covers the height-99 rejection, height-100 acceptance, invalid
+or incomplete provenance rejection, and provenance metadata validation. These
+tests exercise the block validator's optional provenance-aware path; they do
+not prove persistent-store enforcement.
 
 ## Required tests before marking implemented
 
