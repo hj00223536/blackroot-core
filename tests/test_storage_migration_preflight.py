@@ -4,8 +4,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.blackroot_chain import BlockHeader
-from src.blackroot_consensus import block_work, decode_compact_target
+from src.blackroot_chain import BlockHeader, ZERO_HASH
+from src.blackroot_blocks import Block, COINBASE_INDEX, ZERO_TXID
+from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput, merkle_root
+from src.blackroot_consensus import block_subsidy, block_work, check_proof_of_work, decode_compact_target
 from src.blackroot_node_state import PersistentNodeState
 
 from src.blackroot_storage_migration import (
@@ -276,6 +278,58 @@ class SQLiteSnapshotTests(unittest.TestCase):
             self.assertEqual(
                 db.execute("SELECT COUNT(*) FROM block_transactions").fetchone()[0], 0
             )
+
+    def test_real_legacy_stores_snapshot_import_and_reopen_with_active_genesis(self):
+        pow_limit = decode_compact_target(0x207fffff)
+        coinbase = Transaction(
+            1,
+            (TxInput(OutPoint(ZERO_TXID, COINBASE_INDEX), script_sig=b"\\x01\\x01"),),
+            (TxOutput(block_subsidy(0), b"\\x51"),),
+        )
+        merkle = merkle_root([coinbase.txid])
+        genesis = None
+        for nonce in range(10000):
+            candidate = BlockHeader(1, ZERO_HASH, merkle, 1, 0x207fffff, nonce)
+            if check_proof_of_work(candidate.serialize(), candidate.bits, pow_limit):
+                genesis = candidate
+                break
+        self.assertIsNotNone(genesis)
+        block = Block(genesis, (coinbase,))
+
+        header_path = self.root / "legacy-header.sqlite"
+        utxo_path = self.root / "legacy-utxo.sqlite"
+        journal_path = self.root / "legacy-journal.sqlite"
+        state = PersistentNodeState(
+            header_path, utxo_path, pow_limit, genesis,
+            recovery_journal_path=journal_path,
+        )
+        self.assertEqual(state.connect_best_block(block, 0), 0)
+        expected_tip = state.utxos.tip()
+        state.close()
+
+        snapshots_dir = self.root / "real-store-snapshots"
+        snapshots_dir.mkdir()
+        snapshot_report = snapshot_legacy_node_databases(
+            header_path, utxo_path, journal_path, snapshots_dir
+        )
+        self.assertEqual(snapshot_report["status"], "snapshots_validated")
+
+        staged = self.root / "real-store-coordinated.sqlite"
+        imported = import_snapshot_set_to_coordinated_database(
+            snapshots_dir / "blackroot-header-snapshot.sqlite",
+            snapshots_dir / "blackroot-utxo-snapshot.sqlite",
+            snapshots_dir / "blackroot-journal-snapshot.sqlite",
+            staged,
+            batch_size=2,
+        )
+        self.assertEqual(imported["status"], "coordinated_staging_database_created")
+        reopened = validate_coordinated_staging_database(
+            staged, pow_limit=pow_limit, genesis=genesis
+        )
+        self.assertEqual(reopened["status"], "coordinated_node_reopen_passed")
+        self.assertEqual(reopened["utxo_tip"], (expected_tip[0], expected_tip[1].hex()))
+        self.assertEqual(reopened["header_best_hash"], genesis.hash.hex())
+        self.assertFalse(reopened["production_cutover_performed"])
 
     def test_coordinated_staging_validator_reopens_real_node_stores(self):
         genesis = BlockHeader(1, bytes(32), bytes(32), 1, 0x207fffff, 0)
