@@ -116,6 +116,35 @@ class P2PServiceReorganizationLoopbackTests(unittest.IsolatedAsyncioTestCase):
         for manager in self.remote_managers:
             await manager.close()
 
+    async def test_disconnect_reassigns_fork_bodies_to_surviving_peer(self):
+        assignments = await self.service.reorg.request_missing_bodies(
+            self.service._peers()
+        )
+        self.assertEqual(len(assignments), 2)
+
+        disconnected_peer = assignments[self.fork_one.header.hash]
+        surviving_peer = next(
+            peer for peer in self.central.peers if peer is not disconnected_peer
+        )
+        await disconnected_peer.close()
+
+        async def wait_for_reassignment():
+            while any(
+                self.service.reorg.pool.assigned_peer(block_hash) is not surviving_peer
+                for block_hash in assignments
+            ):
+                await asyncio.sleep(0.01)
+
+        await asyncio.wait_for(wait_for_reassignment(), timeout=3)
+
+        async def wait_for_reorg():
+            while self.store.tip() != (2, self.fork_two.header.hash):
+                await asyncio.sleep(0.01)
+
+        await asyncio.wait_for(wait_for_reorg(), timeout=3)
+        self.assertEqual(self.service.reorg.pool.pending_hashes, ())
+        self.assertEqual(self.store.tip(), (2, self.fork_two.header.hash))
+
     async def test_service_downloads_fork_bodies_over_tcp_and_reorganizes(self):
         assignments = await self.service.reorg.request_missing_bodies(
             self.service._peers()
