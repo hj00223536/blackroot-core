@@ -102,8 +102,10 @@ class RetargetAndWorkTests(unittest.TestCase):
 
     def test_retarget_clamps_fast_and_slow_timespans(self):
         from src.blackroot_consensus import retarget_compact
-        bits = 0x207FFFFF
-        limit = decode_compact_target(bits)
+        # Start below the pow limit so slower timespans can increase target.
+        bits = 0x1F3FFFFF
+        limit = decode_compact_target(0x207FFFFF)
+        previous_target = decode_compact_target(bits)
         target_span = 2016 * 600
         quarter_bits = retarget_compact(bits, 1, limit, target_span)
         nominal_bits = retarget_compact(bits, target_span, limit, target_span)
@@ -111,16 +113,16 @@ class RetargetAndWorkTests(unittest.TestCase):
         four_x_bits = retarget_compact(bits, target_span * 20, limit, target_span)
         # Fixed expected encodings independently derived from the specified
         # integer formula and compact-target truncation.
-        self.assertEqual(quarter_bits, 0x201FFFFF)
-        self.assertEqual(nominal_bits, 0x207FFFFF)
-        self.assertEqual(double_bits, 0x2100FFFF)
-        self.assertEqual(four_x_bits, 0x207FFFFF)
+        self.assertEqual(quarter_bits, 0x1F0FFFFF)
+        self.assertEqual(nominal_bits, 0x1F3FFFFF)
+        self.assertEqual(double_bits, 0x1F7FFFFE)
+        self.assertEqual(four_x_bits, 0x2000FFFF)
         quarter_target = decode_compact_target(quarter_bits)
-        self.assertLessEqual(quarter_target, limit // 4)
-        self.assertLess((limit // 4) - quarter_target, 1 << 232)
-        self.assertEqual(decode_compact_target(nominal_bits), limit)
-        self.assertLessEqual(decode_compact_target(double_bits), limit * 2)
-        self.assertEqual(decode_compact_target(four_x_bits), limit)
+        self.assertLessEqual(quarter_target, previous_target // 4)
+        self.assertLess((previous_target // 4) - quarter_target, 1 << 224)
+        self.assertEqual(decode_compact_target(nominal_bits), previous_target)
+        self.assertLessEqual(decode_compact_target(double_bits), previous_target * 2)
+        self.assertLessEqual(decode_compact_target(four_x_bits), min(previous_target * 4, limit))
 
     def test_retarget_rejects_bad_inputs(self):
         from src.blackroot_consensus import retarget_compact
