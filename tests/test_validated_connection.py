@@ -68,6 +68,30 @@ class ValidatedConnectionTests(unittest.TestCase):
         with self.assertRaisesRegex(TypeError, "header_chain"):
             self.store.connect_validated_block(self.genesis, 0, object())
 
+
+    def test_owned_connections_are_closed_after_read_and_initialization(self):
+        import sqlite3
+        from unittest.mock import patch
+
+        original_connect = sqlite3.connect
+        opened = []
+
+        def tracking_connect(*args, **kwargs):
+            connection = original_connect(*args, **kwargs)
+            opened.append(connection)
+            return connection
+
+        path = Path(self.tmp.name) / "connection-lifecycle.sqlite"
+        with patch("src.blackroot_utxo_db.sqlite3.connect", side_effect=tracking_connect):
+            store = UTXOStore(path)
+            self.assertEqual(store.count(), 0)
+            self.assertIsNone(store.tip())
+
+        self.assertGreaterEqual(len(opened), 3)
+        for connection in opened:
+            with self.assertRaises(sqlite3.ProgrammingError):
+                connection.execute("SELECT 1")
+
     def test_connect_block_uses_coordinator_owned_transaction(self):
         shared_path = Path(self.tmp.name) / "shared.sqlite"
         with SQLiteTransactionCoordinator(shared_path) as coordinator:
