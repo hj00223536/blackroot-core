@@ -189,6 +189,32 @@ class HeaderChain:
                 self._best_hash = block_hash
         return header.display_hash
 
+    def add_batch(
+        self, headers: list[BlockHeader], *, adjusted_time: int | None = None,
+        max_future_seconds: int = 7_200,
+    ) -> list[str]:
+        """Validate and add a contiguous header batch atomically.
+
+        If any header fails validation, the in-memory DAG and best tip are
+        restored to their exact pre-call state.
+        """
+        if not isinstance(headers, list):
+            raise TypeError("headers must be a list")
+        original_nodes = self._nodes.copy()
+        original_best_hash = self._best_hash
+        accepted = []
+        try:
+            for header in headers:
+                accepted.append(self.add_to_branch(
+                    header, adjusted_time=adjusted_time,
+                    max_future_seconds=max_future_seconds,
+                ))
+        except Exception:
+            self._nodes = original_nodes
+            self._best_hash = original_best_hash
+            raise
+        return accepted
+
     def _path_hashes(self, tip_hash: bytes) -> list[bytes]:
         if tip_hash not in self._nodes:
             raise ValueError("unknown tip hash")
