@@ -1,0 +1,10 @@
+[project]
+name = "blackroot-core"
+version = "0.1.0"
+description = "Experimental BLACKROOT consensus reference helpers"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
