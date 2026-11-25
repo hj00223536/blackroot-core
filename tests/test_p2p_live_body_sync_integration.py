@@ -1,8 +1,8 @@
-"""Real TCP loopback integration for header plus requested block-body sync.
+"""Three independent persistent nodes synchronize a block over real TCP.
 
-This verifies the current experimental transport path with independent node
-state, real PeerManager sockets, and a real persistent UTXO store. It is not a
-production-consensus or public-network readiness test.
+The source and both destinations use separate persistent header/UTXO stores,
+real PeerManager sockets, and the normal runtime sync path. This is a focused
+local integration test, not proof of complete consensus or public readiness.
 """
 import asyncio
 import tempfile
@@ -43,7 +43,7 @@ def mined_block(height, previous, timestamp):
     raise AssertionError("integration block mining exhausted")
 
 
-class LiveBlockBodySyncTests(unittest.IsolatedAsyncioTestCase):
+class ThreeNodeLiveBlockBodySyncTests(unittest.IsolatedAsyncioTestCase):
     async def test_tcp_peer_sync_downloads_and_connects_real_block_body(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
