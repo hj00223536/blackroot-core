@@ -139,3 +139,24 @@ active peer set; asynchronous callbacks are awaited. A node-level owner can
 use this hook to remove the peer from its registry and call both the ordinary
 block scheduler's and fork downloader's disconnect cleanup methods. The hook
 does not itself select replacement peers or run a retry loop.
+
+
+## Node-level P2P service wiring
+
+`P2PSyncService` is the opt-in adapter between an existing `PeerManager`,
+the validated `HeaderChain`, and `MultiPeerReorganizationSync`. It installs
+the manager's per-peer message factory and disconnect callback, maintains a
+header-sync coordinator per connection, routes `headers`/`getheaders`,
+`block`, and `notfound` messages, and uses the actual connection object as
+the request-pool peer identity. A validated header batch triggers requests for
+missing bodies on the current best-work fork. A matching block response is
+passed to the reorganization downloader; a peer's `notfound` response or
+disconnect releases only that peer's assignments and attempts reassignment to
+remaining connected peers.
+
+The application starts header synchronization with `start_peer_sync()` and
+must call `retry_expired()` from its own timer/event loop. The service does
+not create hidden background timers, discover public peers, or enable the
+service automatically for every node. Header discovery, body transfer, and
+reorganization still depend on the caller constructing a correctly configured
+`PeerManager`, persistent chain, and UTXO store.
