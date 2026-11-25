@@ -34,6 +34,15 @@ class LoopbackSyncIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.client_sync = PeerSyncCoordinator(
             PeerHeaderSync(self.chain, protocol_version=1)
         )
+        self.headers_received = asyncio.Event()
+
+        def client_handler(peer):
+            dispatch = self.client_sync.bind(peer)
+            async def handle(command, payload):
+                await dispatch(command, payload)
+                if command == "headers":
+                    self.headers_received.set()
+            return handle
         self.server = PeerManager(
             magic=MAGIC, local_version=version(11), max_peers=2,
             handshake_timeout=2, idle_timeout=5,
@@ -42,7 +51,7 @@ class LoopbackSyncIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.client = PeerManager(
             magic=MAGIC, local_version=version(22), max_peers=2,
             handshake_timeout=2, idle_timeout=5,
-            on_peer_message_factory=self.client_sync.bind,
+            on_peer_message_factory=client_handler,
         )
 
     async def asyncTearDown(self):
@@ -64,10 +73,7 @@ class LoopbackSyncIntegrationTests(unittest.IsolatedAsyncioTestCase):
         await self.client_sync.header_sync.request_headers(outbound)
 
         # The remote coordinator answers with a valid empty headers message.
-        async def received_response():
-            return self.client_sync.header_sync._last_locator != ()
-
-        await asyncio.wait_for(received_response(), timeout=1)
+        await asyncio.wait_for(self.headers_received.wait(), timeout=2)
         self.assertTrue(outbound.connected)
         self.assertEqual(self.server.peer_count, 1)
         self.assertEqual(self.client_sync.header_sync._last_locator[0], self.chain.get(0).hash)
