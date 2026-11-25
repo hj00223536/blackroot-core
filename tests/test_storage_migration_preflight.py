@@ -26,8 +26,10 @@ class LegacyStoragePreflightTests(unittest.TestCase):
             db.execute("INSERT INTO header_metadata VALUES('schema_version', '1')")
             db.execute("INSERT INTO header_metadata VALUES('pow_limit', '123')")
             db.execute("INSERT INTO header_metadata VALUES('genesis_hash', '00')")
-            db.execute("CREATE TABLE headers(block_hash BLOB PRIMARY KEY, height INTEGER)")
-            db.execute("INSERT INTO headers VALUES(?, 0)", (bytes(32),))
+            db.execute("""CREATE TABLE headers(
+                block_hash BLOB PRIMARY KEY, height INTEGER, version INTEGER,
+                prev_hash BLOB, merkle_root BLOB, timestamp INTEGER, bits INTEGER,
+                nonce INTEGER, chainwork TEXT)""")
 
         with sqlite3.connect(self.utxo) as db:
             db.execute("CREATE TABLE metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
@@ -97,12 +99,17 @@ class SQLiteSnapshotTests(unittest.TestCase):
             db.execute("INSERT INTO header_metadata VALUES('schema_version', '1')")
             db.execute("INSERT INTO header_metadata VALUES('pow_limit', '123')")
             db.execute("INSERT INTO header_metadata VALUES('genesis_hash', '00')")
-            db.execute("CREATE TABLE headers(block_hash BLOB PRIMARY KEY, height INTEGER)")
-            db.execute("INSERT INTO headers VALUES(?, 0)", (bytes(32),))
+            db.execute("""CREATE TABLE headers(
+                block_hash BLOB PRIMARY KEY, height INTEGER, version INTEGER,
+                prev_hash BLOB, merkle_root BLOB, timestamp INTEGER, bits INTEGER,
+                nonce INTEGER, chainwork TEXT)""")
         with sqlite3.connect(self.utxo) as db:
             db.execute("CREATE TABLE metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
             db.execute("INSERT INTO metadata VALUES('schema_version', '2')")
-            for table in ("utxos", "blocks", "block_transactions", "block_bodies",
+            db.execute("""CREATE TABLE blocks(
+                height INTEGER PRIMARY KEY, block_hash BLOB, prev_hash BLOB,
+                header BLOB, tx_count INTEGER, total_fees INTEGER)""")
+            for table in ("utxos", "block_transactions", "block_bodies",
                           "block_undo_spent", "block_undo_created"):
                 db.execute(f'CREATE TABLE "{table}" (id INTEGER PRIMARY KEY)')
         with sqlite3.connect(self.journal) as db:
