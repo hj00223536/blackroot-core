@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from .blackroot_chain import HeaderChain
 from .blackroot_p2p_header_sync import PeerHeaderSync
-from .blackroot_p2p_inventory import INV_TYPE_BLOCK, decode_inventory
 from .blackroot_p2p_reorg_sync import MultiPeerReorganizationSync
 
 
@@ -66,7 +65,10 @@ class P2PSyncService:
             elif command == "notfound":
                 released = self.reorg.peer_notfound(peer, payload)
                 if released:
-                    await self.reorg.retry_released_bodies(released, self._peers())
+                    alternatives = self._peers()
+                    alternatives.pop(peer, None)
+                    if alternatives:
+                        await self.reorg.retry_released_bodies(released, alternatives)
             elif previous is not None:
                 result = previous(command, payload)
                 if hasattr(result, "__await__"):
