@@ -65,7 +65,14 @@ if mode in ("reorg_during_transaction", "reorg_after_commit", "reorg_crash_with_
     side_two = make_block(side_one.header.hash, 2, 4)
     state.add_header(side_two.header, adjusted_time=4)
     replacements = {side_one.header.hash: side_one, side_two.header.hash: side_two}
-    if mode == "reorg_during_transaction":
+    if mode == "reorg_after_intent":
+        original_prepare = state.recovery_journal.prepare
+        def crash_after_intent(old_tip, new_tip):
+            original_prepare(old_tip, new_tip)
+            os._exit(80)
+        state.recovery_journal.prepare = crash_after_intent
+        state.reorganize_best(replacements)
+    elif mode == "reorg_during_transaction":
         original = state.recovery_journal.reconcile
         def crash_after_reorg_writes(observed_tip):
             original(observed_tip)
@@ -190,6 +197,35 @@ class CoordinatedNodeStateProcessCrashTests(unittest.TestCase):
                 self.assertEqual(reopened.utxos.tip(), (1, old.header.hash))
                 self.assertFalse(reopened.recovery_journal.pending())
                 self.assertEqual(reopened.headers.chain.best_hash, side_two.header.hash)
+                self.assertIsNone(reopened.utxos.load_block_body(side_one.header.hash))
+                self.assertIsNone(reopened.utxos.load_block_body(side_two.header.hash))
+                reopened.utxos.verify_integrity()
+            finally:
+                reopened.close()
+
+    def test_process_exit_after_recovery_intent_rolls_back_intent_and_switch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            genesis = make_block(ZERO_HASH, 0, 1)
+            completed = subprocess.run(
+                [sys.executable, "-c", CHILD, str(root), "reorg_after_intent"],
+                cwd=Path(__file__).resolve().parents[1],
+                check=False, capture_output=True, text=True, timeout=30,
+            )
+            self.assertEqual(
+                completed.returncode, 80,
+                msg=f"child stdout={completed.stdout!r} stderr={completed.stderr!r}",
+            )
+            reopened = PersistentNodeState.open_coordinated(
+                root / "node.sqlite", POW_LIMIT, genesis.header
+            )
+            try:
+                old = make_block(genesis.header.hash, 1, 2)
+                side_one = make_block(genesis.header.hash, 1, 3)
+                side_two = make_block(side_one.header.hash, 2, 4)
+                self.assertEqual(reopened.utxos.tip(), (1, old.header.hash))
+                self.assertEqual(reopened.headers.chain.best_hash, side_two.header.hash)
+                self.assertFalse(reopened.recovery_journal.pending())
                 self.assertIsNone(reopened.utxos.load_block_body(side_one.header.hash))
                 self.assertIsNone(reopened.utxos.load_block_body(side_two.header.hash))
                 reopened.utxos.verify_integrity()
