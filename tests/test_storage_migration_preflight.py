@@ -34,8 +34,11 @@ class LegacyStoragePreflightTests(unittest.TestCase):
         with sqlite3.connect(self.utxo) as db:
             db.execute("CREATE TABLE metadata(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
             db.execute("INSERT INTO metadata VALUES('schema_version', '2')")
+            db.execute("""CREATE TABLE blocks(
+                height INTEGER PRIMARY KEY, block_hash BLOB, prev_hash BLOB,
+                header BLOB, tx_count INTEGER, total_fees INTEGER)""")
             for table in (
-                "utxos", "blocks", "block_transactions", "block_bodies",
+                "utxos", "block_transactions", "block_bodies",
                 "block_undo_spent", "block_undo_created",
             ):
                 db.execute(f'CREATE TABLE "{table}" (id INTEGER PRIMARY KEY)')
@@ -156,7 +159,7 @@ class SQLiteSnapshotTests(unittest.TestCase):
         self.assertFalse(report["migration_performed"])
         self.assertFalse(report["source_files_modified"])
         self.assertEqual(before, {p: p.read_bytes() for p in before})
-        self.assertEqual(report["snapshot_preflight"]["status"], "preflight_passed")
+        self.assertEqual(report["snapshot_preflight"]["status"], "snapshot_set_consistent")
         self.assertEqual(len(list(out.glob("*.sqlite"))), 3)
 
     def test_all_store_snapshot_refuses_existing_destination_before_any_copy(self):
