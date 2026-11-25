@@ -233,7 +233,8 @@ def validate_transaction(tx: Transaction, utxos: dict[OutPoint, TxOutput]) -> tu
     """Check UTXO existence, duplicate spends and value conservation only.
 
     Returns (input_value, output_value). Script/signature authorization, fees
-    policy, coinbase maturity, locktime and sequence semantics are NOT checked.
+    policy, coinbase maturity, absolute locktime and BIP68 sequence semantics
+    are enforced by the block-validation path, not by this accounting helper.
     """
     if not isinstance(tx, Transaction):
         raise TypeError("tx must be a Transaction")
