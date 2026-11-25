@@ -110,6 +110,30 @@ Path(result).write_text(stored.hex())
             self.assertEqual(db.execute("SELECT COUNT(*) FROM block_bodies").fetchone()[0], 1)
         reopened.verify_integrity()
 
+    def test_conflicting_archived_body_for_same_header_fails_closed(self):
+        path = Path(self.temp.name) / "conflicting-body-archive.sqlite"
+        store = UTXOStore(path)
+        block = self.side_one
+        original = block.serialize()
+        conflicting = original + b"\x00"
+        with store._connect() as db:
+            db.execute(
+                "INSERT INTO block_bodies(block_hash, raw_block, serialized_size) VALUES(?, ?, ?)",
+                (block.header.hash, conflicting, len(conflicting)),
+            )
+        with self.assertRaisesRegex(RuntimeError, "conflicting archived body"):
+            store.store_block_body(block)
+        with store._connect() as db:
+            row = db.execute(
+                "SELECT raw_block, serialized_size FROM block_bodies WHERE block_hash=?",
+                (block.header.hash,),
+            ).fetchone()
+        self.assertEqual(bytes(row[0]), conflicting)
+        self.assertEqual(row[1], len(conflicting))
+        with self.assertRaises((ValueError, RuntimeError)):
+            store.load_block_body(block.header.hash)
+        store.verify_integrity()
+
     def test_archiving_same_block_body_is_idempotent(self):
         first = self.store.store_block_body(self.side_one)
         second = self.store.store_block_body(self.side_one)
