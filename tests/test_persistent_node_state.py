@@ -103,7 +103,7 @@ class PersistentNodeStateTests(unittest.TestCase):
         state.add_header(second.header, adjusted_time=2)
         state.connect_best_block(second, 1)
         with sqlite3.connect(self.root / "utxos.sqlite") as db:
-            db.execute("UPDATE blocks SET prev_hash=? WHERE height=1", (b"\\x11" * 32,))
+            db.execute("UPDATE blocks SET prev_hash=? WHERE height=1", (bytes([0x11]) * 32,))
         with self.assertRaisesRegex(RuntimeError, "parent linkage is corrupt"):
             self.state()
 
