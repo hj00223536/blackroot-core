@@ -177,3 +177,6 @@ A subprocess test deliberately exits with os._exit after the staged table-copy t
 ## Manifest-to-database consistency
 
 Strict import validation now checks that the manifest table inventory exactly matches the imported non-internal tables and that each recorded row count equals the actual SQLite row count. Boolean values are rejected as counts even though Python treats bool as an int. A regression test edits the manifest count after import and verifies strict validation refuses the staging database. This detects accidental or unsophisticated metadata drift; it is not a cryptographic integrity mechanism and does not validate transaction scripts or consensus independently.
+
+
+Manifest row counts are an import-time receipt, not a live invariant: ordinary block connection and UTXO spending legitimately change table counts after import. Call strict validation with both `require_import_manifest=True` and `verify_manifest_counts=True` at initial import acceptance to compare counts against the imported database. Later reopen checks may require the manifest but leave `verify_manifest_counts` disabled, preserving the historical receipt without rejecting legitimate node activity.
