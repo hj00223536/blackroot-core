@@ -179,6 +179,20 @@ class SQLiteSnapshotTests(unittest.TestCase):
         self.assertEqual(len(list(out.glob("*.sqlite"))), 3)
 
 
+
+    def test_snapshot_set_rejects_malformed_genesis_metadata(self):
+        out = self.root / "snapshots"
+        out.mkdir()
+        with sqlite3.connect(self.header) as db:
+            db.execute(
+                "UPDATE header_metadata SET value='00' WHERE key='genesis_hash'"
+            )
+        with self.assertRaisesRegex(RuntimeError, "malformed genesis hash"):
+            snapshot_legacy_node_databases(
+                self.header, self.utxo, self.journal, out
+            )
+        self.assertEqual(list(out.iterdir()), [])
+
     def test_snapshot_set_rejects_active_utxo_block_missing_from_header_store(self):
         out = self.root / "snapshots"
         out.mkdir()
