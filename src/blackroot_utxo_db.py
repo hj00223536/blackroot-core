@@ -299,6 +299,24 @@ class UTXOStore:
                         raise RuntimeError("stored active transaction ID does not match its bytes")
                 expected_parent = block_hash
 
+            archived_bodies = db.execute(
+                "SELECT block_hash, raw_block, serialized_size FROM block_bodies"
+            ).fetchall()
+            from .blackroot_transactions import merkle_root
+            for archived_hash, raw_block, serialized_size in archived_bodies:
+                archived_hash = bytes(archived_hash)
+                raw = bytes(raw_block)
+                if len(raw) != serialized_size:
+                    raise RuntimeError("archived block body size metadata is corrupt")
+                try:
+                    archived_block = Block.deserialize(raw)
+                except (TypeError, ValueError) as exc:
+                    raise RuntimeError("archived block body is malformed") from exc
+                if archived_block.header.hash != archived_hash:
+                    raise RuntimeError("archived block body header hash does not match archive key")
+                if merkle_root(tx.txid for tx in archived_block.transactions) != archived_block.header.merkle_root:
+                    raise RuntimeError("archived block body merkle root is corrupt")
+
             foreign_key_errors = db.execute("PRAGMA foreign_key_check").fetchall()
             if foreign_key_errors:
                 raise RuntimeError(
