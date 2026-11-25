@@ -133,9 +133,19 @@ class HeaderChain:
             raise ValueError("header does not extend current tip")
         return self.add_to_branch(header)
 
-    def add_to_branch(self, header: BlockHeader) -> str:
+    def add_to_branch(
+        self, header: BlockHeader, *, adjusted_time: int | None = None,
+        max_future_seconds: int = 7_200,
+    ) -> str:
         if not isinstance(header, BlockHeader):
             raise TypeError("header must be a BlockHeader")
+        if adjusted_time is not None:
+            if not isinstance(adjusted_time, int) or isinstance(adjusted_time, bool) or adjusted_time < 0:
+                raise ValueError("adjusted_time must be a non-negative integer")
+            if not isinstance(max_future_seconds, int) or isinstance(max_future_seconds, bool) or max_future_seconds < 0:
+                raise ValueError("max_future_seconds must be a non-negative integer")
+            if header.timestamp > adjusted_time + max_future_seconds:
+                raise ValueError("header timestamp exceeds network-adjusted future-time limit")
         block_hash = header.hash
         if block_hash in self._nodes:
             raise ValueError("duplicate header")
