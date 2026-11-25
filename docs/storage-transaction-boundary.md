@@ -63,3 +63,17 @@ The migration is not complete until automated tests demonstrate:
 The existing recovery journal and startup consistency checks remain in place. The current architecture still has separate databases and no atomic cross-database commit. This document is a design checkpoint, not evidence of an implemented atomic-storage guarantee.
 
 **Mainnet status remains NOT READY.**
+
+## Connection-coordinator prototype checkpoint
+
+A first, isolated primitive now exists in `src/blackroot_sqlite.py`:
+
+- one coordinator owns one SQLite connection and closes it on exit;
+- callers receive that exact connection inside an explicit write transaction;
+- successful exit commits once; any exceptional exit rolls back;
+- nested or externally started transactions are rejected;
+- foreign-key enforcement, WAL mode, busy timeout, and FULL synchronous mode are configured on the owned connection.
+
+Unit tests cover commit, rollback (including transactional DDL), connection identity and closure, nested-transaction rejection, and foreign-key configuration.
+
+**This is not yet an integrated storage transaction.** The existing header, UTXO, and recovery-journal stores still create independent connections and retain their own commit boundaries. The coordinator is a foundation for subsequent store adapters only; no cross-store atomicity claim is made, and the existing three-database layout remains unchanged.
