@@ -85,3 +85,22 @@ missing replacement body leaves the active database unchanged, and that
 repeating a completed switch is idempotent. These are local storage/consensus
 integration tests; they do not yet prove automatic fork-body acquisition and
 reorganization orchestration across remote peers.
+
+
+## Multi-peer best-fork body acquisition and activation
+
+`MultiPeerReorganizationSync` operates after candidate headers have already
+been accepted into the `HeaderChain`. It compares the active UTXO tip with
+the DAG's best-work tip, derives the fork's connecting headers, and requests
+every missing body from connected peers using the bounded assignment pool.
+A response is accepted only from its assigned peer, and its serialized header
+and Merkle commitment must match the validated DAG entry. Accepted bodies are
+archived by hash. Once all bodies required for the best branch are present and
+there are no outstanding assignments, the coordinator invokes
+`UTXOStore.reorganize_to_best`, which performs the database switch atomically.
+
+The integration tests cover two-peer body distribution, completion-triggered
+reorganization, rejection of an unassigned source, and release on disconnect.
+This remains an opt-in orchestration component: header discovery, automatic
+peer lifecycle wiring, timeout/retry policy, peer scoring, and production
+consensus hardening remain outstanding.
