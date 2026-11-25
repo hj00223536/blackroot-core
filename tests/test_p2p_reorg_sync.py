@@ -90,6 +90,22 @@ class MultiPeerReorganizationSyncTests(unittest.IsolatedAsyncioTestCase):
             self.sync.accept_block("attacker", block.serialize())
         self.assertEqual(self.sync.pool.assigned_peer(block.header.hash), assigned)
 
+    async def test_invalid_merkle_body_is_rejected_and_request_slot_released(self):
+        assignments = await self.sync.request_missing_bodies(self.peers)
+        block_hash = self.fork_one.header.hash
+        assigned_peer = assignments[block_hash]
+        invalid_body = Block(self.fork_one.header, (coinbase(99),))
+        original_tip = self.store.tip()
+
+        with self.assertRaisesRegex(ValueError, "Merkle root mismatch"):
+            self.sync.accept_block(assigned_peer, invalid_body.serialize())
+
+        self.assertIsNone(self.store.load_block_body(block_hash))
+        self.assertEqual(self.store.tip(), original_tip)
+        self.assertIsNone(self.sync.pool.assigned_peer(block_hash))
+        self.assertNotIn(block_hash, self.sync.pool.pending_hashes)
+        self.assertNotIn(block_hash, self.sync._requested_at)
+
     async def test_expired_request_is_reassigned_to_another_connected_peer(self):
         import time
 
