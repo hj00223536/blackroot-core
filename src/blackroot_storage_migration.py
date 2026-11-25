@@ -485,6 +485,7 @@ def validate_coordinated_staging_database(
     *,
     pow_limit: int,
     genesis,
+    require_import_manifest: bool = False,
 ) -> dict:
     """Reopen a staged DB through the real coordinated node stores.
 
