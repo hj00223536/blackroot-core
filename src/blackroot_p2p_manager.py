@@ -32,6 +32,7 @@ class PeerManager:
         on_message: MessageHandler | None = None,
         on_peer_message_factory: Callable[[PeerConnection], MessageHandler] | None = None,
         on_peer_error: Callable[[Exception], object] | None = None,
+        on_peer_disconnected: Callable[[PeerConnection], object] | None = None,
     ) -> None:
         if not isinstance(magic, bytes) or len(magic) != 4:
             raise ValueError("network magic must be exactly four bytes")
@@ -52,6 +53,9 @@ class PeerManager:
         self.on_message = on_message
         self.on_peer_message_factory = on_peer_message_factory
         self.on_peer_error = on_peer_error
+        if on_peer_disconnected is not None and not callable(on_peer_disconnected):
+            raise TypeError("on_peer_disconnected must be callable")
+        self.on_peer_disconnected = on_peer_disconnected
         self._server: asyncio.AbstractServer | None = None
         self._peers: set[PeerConnection] = set()
         self._tasks: set[asyncio.Task] = set()
@@ -121,6 +125,10 @@ class PeerManager:
         finally:
             await peer.close()
             self._peers.discard(peer)
+            if self.on_peer_disconnected is not None:
+                result = self.on_peer_disconnected(peer)
+                if asyncio.iscoroutine(result):
+                    await result
 
     async def start_server(self, host: str = "127.0.0.1", port: int = 0) -> tuple:
         """Start an inbound TCP listener and return its bound socket address."""
