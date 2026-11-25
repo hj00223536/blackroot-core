@@ -381,11 +381,14 @@ class UTXOStore:
                             raise ValueError("replacement block does not extend replacement tip")
 
                     parent: dict[OutPoint, TxOutput] = {}
-                    for txid, index, value, script in db.execute(
-                        "SELECT txid, output_index, value, script_pubkey FROM utxos"
+                    provenance: dict[OutPoint, UTXOProvenance] = {}
+                    for txid, index, value, script, created_height, is_coinbase_flag in db.execute(
+                        "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase FROM utxos"
                     ).fetchall():
-                        parent[OutPoint(bytes(txid), index)] = TxOutput(value, bytes(script))
-                    updated, fees = validate_block_transactions(block, parent, height)
+                        outpoint = OutPoint(bytes(txid), index)
+                        parent[outpoint] = TxOutput(value, bytes(script))
+                        provenance[outpoint] = UTXOProvenance(created_height, bool(is_coinbase_flag))
+                    updated, fees = validate_block_transactions(block, parent, height, provenance)
 
                     db.execute(
                         "INSERT INTO blocks(height, block_hash, prev_hash, header, tx_count, total_fees) "
@@ -399,10 +402,11 @@ class UTXOStore:
                             spent_output = parent.get(previous)
                             if spent_output is not None:
                                 db.execute(
-                                    "INSERT INTO block_undo_spent(height, txid, output_index, value, script_pubkey) "
-                                    "VALUES(?, ?, ?, ?, ?)",
+                                    "INSERT INTO block_undo_spent(height, txid, output_index, value, script_pubkey, created_height, is_coinbase) "
+                                    "VALUES(?, ?, ?, ?, ?, ?, ?)",
                                     (height, previous.txid, previous.index,
-                                     spent_output.value, spent_output.script_pubkey),
+                                     spent_output.value, spent_output.script_pubkey,
+                                     provenance[previous].created_height, int(provenance[previous].is_coinbase)),
                                 )
                     for tx in block.transactions:
                         for index, _output in enumerate(tx.outputs):
@@ -418,8 +422,10 @@ class UTXOStore:
                         )
                     db.execute("DELETE FROM utxos")
                     db.executemany(
-                        "INSERT INTO utxos(txid, output_index, value, script_pubkey) VALUES(?, ?, ?, ?)",
-                        [(op.txid, op.index, output.value, output.script_pubkey)
+                        "INSERT INTO utxos(txid, output_index, value, script_pubkey, created_height, is_coinbase) VALUES(?, ?, ?, ?, ?, ?)",
+                        [(op.txid, op.index, output.value, output.script_pubkey,
+                          height if op.txid == block.transactions[0].txid else 0,
+                          1 if op.txid == block.transactions[0].txid else 0)
                          for op, output in updated.items()],
                     )
 
@@ -465,15 +471,15 @@ class UTXOStore:
                     )
 
                 spent = db.execute(
-                    "SELECT txid, output_index, value, script_pubkey "
+                    "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase "
                     "FROM block_undo_spent WHERE height=?",
                     (height,),
                 ).fetchall()
-                for txid, index, value, script in spent:
+                for txid, index, value, script, created_height, is_coinbase_flag in spent:
                     db.execute(
-                        "INSERT INTO utxos(txid, output_index, value, script_pubkey) "
-                        "VALUES(?, ?, ?, ?)",
-                        (txid, index, value, script),
+                        "INSERT INTO utxos(txid, output_index, value, script_pubkey, created_height, is_coinbase) "
+                        "VALUES(?, ?, ?, ?, ?, ?)",
+                        (txid, index, value, script, created_height, is_coinbase_flag),
                     )
 
                 db.execute("DELETE FROM blocks WHERE height=?", (height,))
