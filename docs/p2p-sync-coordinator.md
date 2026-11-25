@@ -169,3 +169,27 @@ block bodies are rejected. A matching `notfound` or peer disconnect releases
 both the best-chain and fork-body assignments and retries against remaining
 peers. For a `notfound` response, the source peer is excluded from the
 immediate retry so it is not selected again for the same unavailable body.
+
+
+
+## Ordinary best-chain node dispatcher
+
+`NodePeerSyncService` in `src/blackroot_p2p_node_service.py` is a separate,
+opt-in adapter for ordinary selected-best-chain block downloads. The embedding
+application registers each handshaken peer, installs
+`on_peer_message_factory(peer_id)` as the manager's message factory, and
+passes `peer_disconnected` as the manager disconnect callback. Known selected
+best-chain block announcements in `inv` are routed through one shared
+`MultiPeerBlockScheduler`; matching `block` responses are accepted only from
+the assigned peer. A matching `notfound` or disconnect releases the request
+and immediately attempts reassignment to another connected peer. Timed-out
+requests can be retried by explicitly calling `retry_expired(timeout)` from
+the application's event loop.
+
+This adapter does not discover unknown headers, serve `getdata`, relay
+transactions, or orchestrate higher-work fork bodies. Those remain separate
+components and must be wired by the application. Tests in
+`tests/test_p2p_node_service.py` cover inventory routing, assigned-source
+acceptance, `notfound` reassignment, disconnect reassignment, and rejection of
+an unassigned `notfound`. This is not a public-network or mainnet readiness
+claim.
