@@ -17,6 +17,28 @@ from .blackroot_utxo_db import UTXOStore
 from .blackroot_recovery_journal import NodeRecoveryJournal
 
 
+def _validate_distinct_database_paths(
+    header_path: str | Path,
+    utxo_path: str | Path,
+    recovery_journal_path: str | Path,
+) -> None:
+    """Reject path aliases: separate stores are not transactionally atomic."""
+    paths = {
+        "header": Path(header_path).expanduser().resolve(),
+        "UTXO": Path(utxo_path).expanduser().resolve(),
+        "recovery journal": Path(recovery_journal_path).expanduser().resolve(),
+    }
+    seen: dict[Path, str] = {}
+    for store_name, path in paths.items():
+        previous = seen.get(path)
+        if previous is not None:
+            raise ValueError(
+                f"{previous} and {store_name} databases must use distinct paths; "
+                "sharing a SQLite file does not provide a shared transaction boundary"
+            )
+        seen[path] = store_name
+
+
 class PersistentNodeState:
     """Coordinate replay-verified headers with the persistent active UTXO tip."""
 
@@ -28,10 +50,11 @@ class PersistentNodeState:
         genesis: BlockHeader,
         recovery_journal_path: str | Path | None = None,
     ) -> None:
-        self.headers = PersistentHeaderStore(header_path, pow_limit, genesis)
-        self.utxos = UTXOStore(utxo_path)
         journal_path = (Path(str(utxo_path) + ".recovery.sqlite")
                         if recovery_journal_path is None else recovery_journal_path)
+        _validate_distinct_database_paths(header_path, utxo_path, journal_path)
+        self.headers = PersistentHeaderStore(header_path, pow_limit, genesis)
+        self.utxos = UTXOStore(utxo_path)
         self.recovery_journal = NodeRecoveryJournal(journal_path)
         self.utxos.verify_integrity()
         self._verify_persistent_tip()
