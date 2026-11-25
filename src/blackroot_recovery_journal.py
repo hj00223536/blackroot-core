@@ -75,6 +75,7 @@ class NodeRecoveryJournal:
             yield self._external_connection
             return
         with self._connect() as db:
+            db.execute("PRAGMA synchronous=FULL")
             db.execute("BEGIN IMMEDIATE")
             try:
                 yield db
@@ -96,8 +97,6 @@ class NodeRecoveryJournal:
         old_height, old_hash = self._columns(old_tip)
         new_height, new_hash = self._columns(new_tip)
         with self._write_scope() as db:
-            if self._external_connection is None:
-                db.execute("PRAGMA synchronous=FULL")
             pending = db.execute(
                 "SELECT 1 FROM recovery_intent WHERE singleton=1"
             ).fetchone()
