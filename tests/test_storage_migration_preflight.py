@@ -313,7 +313,40 @@ class SQLiteSnapshotTests(unittest.TestCase):
             recovery_journal_path=journal_path,
         )
         self.assertEqual(state.connect_best_block(block, 0), 0)
+
+        # Build and activate two descendants so the snapshot/import/reopen
+        # exercise a multi-block active history, not just the genesis row.
+        parent = genesis
+        for height in (1, 2):
+            next_coinbase = Transaction(
+                1,
+                (TxInput(
+                    OutPoint(ZERO_TXID, COINBASE_INDEX),
+                    script_sig=b"\\x01" + bytes([height]),
+                ),),
+                (TxOutput(block_subsidy(height), b"\\x51"),),
+            )
+            next_merkle = merkle_root([next_coinbase.txid])
+            next_header = None
+            for nonce in range(10000):
+                candidate = BlockHeader(
+                    1, parent.hash, next_merkle, height + 1,
+                    0x207fffff, nonce,
+                )
+                if check_proof_of_work(candidate.serialize(), candidate.bits, pow_limit):
+                    next_header = candidate
+                    break
+            self.assertIsNotNone(next_header)
+            self.assertEqual(
+                state.add_header(next_header, adjusted_time=height + 1),
+                "best",
+            )
+            next_block = Block(next_header, (next_coinbase,))
+            self.assertEqual(state.connect_best_block(next_block, height), 0)
+            parent = next_header
+
         expected_tip = state.utxos.tip()
+        self.assertEqual(expected_tip[0], 2)
         state.close()
 
         snapshots_dir = self.root / "real-store-snapshots"
@@ -337,7 +370,8 @@ class SQLiteSnapshotTests(unittest.TestCase):
         )
         self.assertEqual(reopened["status"], "coordinated_node_reopen_passed")
         self.assertEqual(reopened["utxo_tip"], (expected_tip[0], expected_tip[1].hex()))
-        self.assertEqual(reopened["header_best_hash"], genesis.hash.hex())
+        self.assertEqual(reopened["header_height"], 2)
+        self.assertEqual(reopened["header_best_hash"], parent.hash.hex())
         self.assertFalse(reopened["production_cutover_performed"])
 
     def test_coordinated_staging_validator_reopens_real_node_stores(self):
