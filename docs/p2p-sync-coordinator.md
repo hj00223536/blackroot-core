@@ -193,3 +193,19 @@ components and must be wired by the application. Tests in
 acceptance, `notfound` reassignment, disconnect reassignment, and rejection of
 an unassigned `notfound`. This is not a public-network or mainnet readiness
 claim.
+
+### Real TCP service-level reorganization and disconnect recovery
+
+`tests/test_p2p_service_reorg_loopback.py` exercises `P2PSyncService`
+with two real loopback TCP serving peers and a requesting node. The test
+constructs a higher-work two-block fork, asks the service to fetch its bodies,
+and verifies that the UTXO tip changes only after the required bodies arrive
+and validate. A second test closes the peer that owns one of the outstanding
+requests; the manager's disconnect hook releases that peer's assignments,
+reassigns the missing fork bodies to the surviving connected peer, and allows
+the reorganization to complete.
+
+These tests validate local callback wiring, source ownership, request release,
+reassignment, and the reorganization path over TCP. They do not test public
+internet peers, malicious network behavior, power-loss atomicity across the
+separate header and UTXO databases, or production consensus interoperability.
