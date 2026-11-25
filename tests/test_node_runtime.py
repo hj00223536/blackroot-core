@@ -70,6 +70,50 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.runtime.synchronize(), {})
         self.assertEqual(self.runtime.peer_count, 0)
 
+    async def test_runtime_restart_replays_persistent_headers_and_utxo_tip(self):
+        genesis = self.state.headers.chain.get(0)
+        self.assertEqual(self.state.connect_best_block(
+            genesis_block(), 0
+        ), 0)
+
+        await self.runtime.close()
+
+        root = Path(self.temp.name)
+        reopened_state = PersistentNodeState(
+            root / "headers.sqlite",
+            root / "utxos.sqlite",
+            POW_LIMIT,
+            genesis,
+        )
+        self.assertEqual(
+            reopened_state.utxos.tip(),
+            (0, genesis.hash),
+        )
+        self.assertEqual(
+            reopened_state.headers.chain.get(0).hash,
+            genesis.hash,
+        )
+
+        manager = PeerManager(
+            magic=MAGIC,
+            local_version=VersionMessage(
+                1, 0, 1_800_000_001, 102, 0, "/blackroot:restart-test/"
+            ),
+            max_peers=4,
+            handshake_timeout=1,
+            idle_timeout=2,
+        )
+        restarted = BlackrootNodeRuntime(
+            reopened_state, manager, protocol_version=1, request_timeout=1
+        )
+        try:
+            address = await restarted.listen()
+            self.assertTrue(restarted.listening)
+            self.assertEqual(address[0], "127.0.0.1")
+            self.assertEqual(restarted.state.utxos.tip(), (0, genesis.hash))
+        finally:
+            await restarted.close()
+
     async def test_close_is_idempotent_and_blocks_new_network_actions(self):
         await self.runtime.close()
         await self.runtime.close()
