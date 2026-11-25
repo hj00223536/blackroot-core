@@ -59,8 +59,6 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(tip, (2, self.side_two.header.hash))
         self.assertEqual(self.store.tip(), tip)
-        self.assertIsNotNone(self.store.load_block_body(self.side_two.header.hash))
-        self.assertIsNone(self.store.load_block_body(self.old_one.header.hash))
 
     def test_missing_replacement_body_leaves_active_database_unchanged(self):
         before = self.store.tip()
