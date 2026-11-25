@@ -67,6 +67,22 @@ class PersistentHeaderStoreTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "metadata mismatch"):
             PersistentHeaderStore(self.path, POW_LIMIT, self.genesis)
 
+    def test_stale_writer_fails_closed_after_concurrent_header_commit(self):
+        first = PersistentHeaderStore(self.path, POW_LIMIT, self.genesis)
+        stale = PersistentHeaderStore(self.path, POW_LIMIT, self.genesis)
+        first_child = mine(self.genesis.hash, 2)
+        stale_child = mine(self.genesis.hash, 3)
+
+        first.add_to_branch(first_child)
+        with self.assertRaisesRegex(RuntimeError, "changed concurrently"):
+            stale.add_to_branch(stale_child)
+
+        refreshed = PersistentHeaderStore(self.path, POW_LIMIT, self.genesis)
+        refreshed.add_to_branch(stale_child)
+        self.assertEqual(refreshed.chain.height, 1)
+        self.assertIsNotNone(refreshed.chain.node(first_child.hash))
+        self.assertIsNotNone(refreshed.chain.node(stale_child.hash))
+
     def test_duplicate_header_is_rejected_without_mutating_store(self):
         store = PersistentHeaderStore(self.path, POW_LIMIT, self.genesis)
         child = mine(self.genesis.hash, 2)
