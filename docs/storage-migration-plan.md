@@ -180,3 +180,8 @@ Strict import validation now checks that the manifest table inventory exactly ma
 
 
 Manifest row counts are an import-time receipt, not a live invariant: ordinary block connection and UTXO spending legitimately change table counts after import. Call strict validation with both `require_import_manifest=True` and `verify_manifest_counts=True` at initial import acceptance to compare counts against the imported database. Later reopen checks may require the manifest but leave `verify_manifest_counts` disabled, preserving the historical receipt without rejecting legitimate node activity.
+
+
+## Read-only inspection of interrupted staging artifacts
+
+`inspect_staged_import_artifact(path)` classifies a staging path without modifying or deleting it. It distinguishes missing paths, non-regular files, unreadable/non-SQLite files, SQLite integrity failures, databases without a completion manifest, malformed/incomplete manifests, and artifacts with a structurally complete import marker. The last status is deliberately named as marker presence only: it does not mean the database passed network-consensus validation or is ready for production. The helper never attempts automatic cleanup, repair, quarantine, or cutover; operators must preserve evidence and make any cleanup decision separately.
