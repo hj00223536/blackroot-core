@@ -1,4 +1,5 @@
 import tempfile
+from contextlib import closing
 import unittest
 from pathlib import Path
 
@@ -124,7 +125,7 @@ class ValidatedConnectionTests(unittest.TestCase):
                     store.connect_validated_block(self.genesis, 0, self.headers)
                     self.assertEqual(store.tip(), (0, self.genesis.header.hash))
                     raise RuntimeError("abort after block connection")
-        with __import__("sqlite3").connect(shared_path) as db:
+        with closing(__import__("sqlite3").connect(shared_path)) as db:
             tables = db.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='blocks'"
             ).fetchall()
