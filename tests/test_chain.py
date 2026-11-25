@@ -137,5 +137,26 @@ class HeaderChainTests(unittest.TestCase):
             chain.add(wrong)
 
 
+    def test_network_adjusted_future_time_limit_is_deterministic(self):
+        genesis = mine_header(ZERO_HASH, 1)
+        chain = HeaderChain(POW_LIMIT, genesis)
+        too_far = mine_header(genesis.hash, 7_301)
+        with self.assertRaisesRegex(ValueError, "future-time limit"):
+            chain.add_to_branch(too_far, adjusted_time=1, max_future_seconds=7_200)
+
+        accepted = mine_header(genesis.hash, 7_201)
+        chain.add_to_branch(accepted, adjusted_time=1, max_future_seconds=7_200)
+        self.assertEqual(chain.node(accepted.hash).height, 1)
+
+    def test_future_time_limit_rejects_invalid_parameters(self):
+        genesis = mine_header(ZERO_HASH, 1)
+        chain = HeaderChain(POW_LIMIT, genesis)
+        candidate = mine_header(genesis.hash, 2)
+        with self.assertRaisesRegex(ValueError, "adjusted_time"):
+            chain.add_to_branch(candidate, adjusted_time=-1)
+        with self.assertRaisesRegex(ValueError, "max_future_seconds"):
+            chain.add_to_branch(candidate, adjusted_time=1, max_future_seconds=-1)
+
+
 if __name__ == "__main__":
     unittest.main()
