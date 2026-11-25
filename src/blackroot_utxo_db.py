@@ -191,6 +191,36 @@ class UTXOStore:
             updated[OutPoint(coinbase.txid, index)] = UTXOProvenance(height, True)
         return updated
 
+    def connect_validated_block(
+        self, block: Block, height: int, header_chain: HeaderChain
+    ) -> int:
+        """Connect one block only when its exact header is on the validated best chain.
+
+        HeaderChain supplies header linkage, proof-of-work, timestamp, and
+        difficulty checks. This method additionally binds the body to the
+        selected header-chain position before using the persistent UTXO path.
+        The caller must still ensure the HeaderChain itself was initialized
+        from the intended, independently agreed genesis parameters.
+        """
+        if not isinstance(header_chain, HeaderChain):
+            raise TypeError("header_chain must be a HeaderChain")
+        if not isinstance(block, Block):
+            raise TypeError("block must be a Block")
+        if not isinstance(height, int) or isinstance(height, bool) or height < 0:
+            raise ValueError("height must be a non-negative integer")
+        if height > header_chain.height:
+            raise ValueError("block height is above validated header-chain tip")
+        selected_header = header_chain.get(height)
+        if selected_header.serialize() != block.header.serialize():
+            raise ValueError("block header is not the selected validated best-chain header")
+        active = self.tip()
+        if active is None:
+            if height != 0:
+                raise ValueError("first validated block must be genesis at height zero")
+        elif height != active[0] + 1 or block.header.prev_hash != active[1]:
+            raise ValueError("validated block must directly extend persistent active tip")
+        return self.connect_block(block, height)
+
     def connect_block(self, block: Block, height: int) -> int:
         """Atomically validate and persist a block and its resulting UTXO set.
 
