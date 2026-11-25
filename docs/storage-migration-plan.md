@@ -1,6 +1,6 @@
 # Legacy SQLite storage migration plan
 
-**Status: design only. No migration utility is implemented and no existing database has been modified.**
+**Status: partial tooling only. Read-only preflight and exclusive SQLite backup snapshots are implemented; table import, domain validation across snapshots, and final publication are not implemented. No existing database has been modified.**
 
 ## Purpose and safety invariants
 
@@ -24,6 +24,12 @@ The future utility must satisfy all of these invariants:
 - Recovery journal database: `recovery_intent`. A non-empty pending intent must be reconciled against the UTXO tip before migration; the utility must not silently discard it.
 
 These names are a source-code inventory, not proof that any particular user's files have these schemas. Runtime schema inspection is mandatory.
+
+## Implemented safety primitives
+
+- `inspect_legacy_node_databases(...)` opens the three legacy inputs read-only and checks required tables, known schema versions, SQLite integrity, foreign keys, path aliases, and a clean recovery journal. It does not prove consensus or full domain consistency.
+- `create_consistent_sqlite_snapshot(source_path, snapshot_path)` opens the source read-only, reserves a new destination exclusively, copies through SQLite's backup API, validates integrity and foreign keys on the snapshot, and removes only its own incomplete destination on failure. It refuses overwrite and source/destination identity. Tests exercise committed WAL data, source-file stability, overwrite refusal, alias refusal, and failed-backup cleanup.
+- These helpers are not a migration command. They do not import or publish a coordinated node database.
 
 ## Required validation sequence
 
