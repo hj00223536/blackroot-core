@@ -65,13 +65,14 @@ digests. Unknown script templates, malformed pushes, wrong keys, invalid
 signatures, and unsupported sighash modes fail verification.
 
 This is deliberately a separate API:
-`validate_transaction_scripts(tx, utxos)`. It is wired into the current block-validation pipeline for regular inputs, but remains a narrow legacy P2PKH verifier and not a general Script engine.
-`validate_transaction`, block connection, or UTXO reorganization, so existing
-accounting-only test fixtures remain isolated from this authorization layer.
-Do not treat this narrow verifier as complete consensus validation. The block
-validator also accepts omitted provenance for legacy/test callers; coinbase
-maturity is enforced only when complete authenticated provenance is supplied.
-The standalone accounting helpers remain authorization-free.
+`validate_transaction_scripts(tx, utxos)`. It is invoked by the current block-validation path for regular transaction
+inputs, but remains a narrow legacy P2PKH verifier and not a general Script
+engine. The separate `validate_transaction` and `apply_transaction` accounting
+helpers remain authorization-free; callers must not mistake their value-
+conservation checks for spend authorization. Do not treat this narrow verifier
+as complete consensus validation. The block validator also accepts omitted
+provenance for legacy/test callers; coinbase maturity is enforced only when
+complete authenticated provenance is supplied.
 
 Limitations: no general Bitcoin Script interpreter, P2SH, SegWit, multisig,
 timelocks, script opcodes, sighash variants, or script resource accounting.
