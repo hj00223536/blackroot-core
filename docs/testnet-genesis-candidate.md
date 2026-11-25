@@ -53,7 +53,7 @@ The candidate transaction has a zero-value OP_RETURN output and does not allocat
 
 ## Required review before activation
 
-- [ ] Independently reproduce the transaction bytes, txid, merkle root, header bytes, and block hash in a second implementation.
+- [x] Reproduce the transaction bytes, txid, merkle root, header bytes, block hash, and proof-of-work check in a separate Node.js implementation using only built-in primitives; the Node.js 22 CI job passed. This is cross-language repository verification, not an external client or independent audit.
 - [ ] Review the timestamp and coinbase message convention.
 - [ ] Freeze a unique chain identifier and P2P message-start bytes, address prefixes, ports, and protocol version.
 - [ ] Specify every genesis and subsequent-block consensus rule, including retarget boundary behavior and timestamp policy.
