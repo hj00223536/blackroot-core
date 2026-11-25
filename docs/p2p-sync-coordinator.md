@@ -27,3 +27,19 @@ This is a prototype coordinator, not a complete synchronization service.
 Request expiry/retry scheduling, peer scoring, multi-peer source selection,
 mempool relay, compact blocks, reorg-aware request cancellation, persistent
 network parameters, and production anti-DoS policy remain future work.
+
+
+## Multi-peer block request assignment
+
+`MultiPeerBlockRequestPool` provides a bounded assignment layer for callers
+that manage several already-connected peers. The caller supplies eligible peer
+IDs for each block hash; the pool selects a least-loaded peer with rotating
+tie-breaking, enforces global and per-peer limits, and records exactly one
+source for each request. A response can complete an assignment only when it
+comes from the assigned peer. Disconnect cleanup releases every assignment
+owned by that peer so another eligible source can be selected.
+
+This scheduler is a separate coordination primitive; it is not yet wired into
+`PeerSyncCoordinator` or `PeerManager`. Received payloads still require
+independent header, block, and UTXO validation. It does not establish peer
+honesty, network diversity, or Sybil resistance.
