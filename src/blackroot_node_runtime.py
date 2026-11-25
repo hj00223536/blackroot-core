@@ -36,6 +36,7 @@ class BlackrootNodeRuntime:
             protocol_version=protocol_version,
             request_timeout=request_timeout,
             adjusted_time=adjusted_time,
+            persist_headers=state.headers.persist_chain,
         )
         self._closed = False
 
