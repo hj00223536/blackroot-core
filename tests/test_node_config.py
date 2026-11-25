@@ -49,7 +49,7 @@ class TestnetConfigTests(unittest.TestCase):
             config(genesis_hash=bytes(32))
 
     def test_genesis_must_satisfy_configured_pow_limit(self):
-        with self.assertRaisesRegex(ValueError, "proof of work limit"):
+        with self.assertRaisesRegex(ValueError, "proof-of-work limit"):
             config(pow_limit=1)
 
     def test_reject_production_network_names_and_zero_magic(self):
