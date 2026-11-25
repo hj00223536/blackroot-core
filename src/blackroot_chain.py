@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .blackroot_consensus import block_work, check_proof_of_work, decode_compact_target, format_hash, serialize_header, sha256d
+from .blackroot_consensus import (DIFFICULTY_INTERVAL, TARGET_SPACING, block_work, check_proof_of_work, decode_compact_target, format_hash, retarget_compact, serialize_header, sha256d)
 
 ZERO_HASH = bytes(32)
 
@@ -96,6 +96,38 @@ class HeaderChain:
         times.sort()
         return times[len(times) // 2]
 
+    def _ancestor_hash(self, tip_hash: bytes, height: int) -> bytes:
+        node = self._nodes.get(tip_hash)
+        if node is None or not 0 <= height <= node.height:
+            raise ValueError("requested ancestor height is out of range")
+        current = tip_hash
+        while self._nodes[current].height > height:
+            current = self._nodes[current].parent_hash
+        return current
+
+    def expected_bits(self, parent_hash: bytes, candidate_height: int) -> int:
+        """Return required nBits using fixed 2016-block retarget intervals."""
+        parent = self._nodes.get(parent_hash)
+        if parent is None:
+            raise ValueError("unknown parent header")
+        if candidate_height != parent.height + 1:
+            raise ValueError("candidate height must follow parent")
+        if candidate_height % DIFFICULTY_INTERVAL != 0:
+            return parent.header.bits
+
+        first_height = candidate_height - DIFFICULTY_INTERVAL
+        first_hash = self._ancestor_hash(parent_hash, first_height)
+        first_timestamp = self._nodes[first_hash].header.timestamp
+        actual_timespan = parent.header.timestamp - first_timestamp
+        if actual_timespan <= 0:
+            actual_timespan = 1
+        return retarget_compact(
+            parent.header.bits,
+            actual_timespan,
+            self.pow_limit,
+            TARGET_SPACING * DIFFICULTY_INTERVAL,
+        )
+
     def add(self, header: BlockHeader) -> str:
         if header.prev_hash != self.best_hash:
             raise ValueError("header does not extend current tip")
@@ -118,6 +150,10 @@ class HeaderChain:
             height, parent_work = parent.height + 1, parent.chainwork
             if header.timestamp <= self.median_time_past(header.prev_hash):
                 raise ValueError("timestamp must be greater than median-time-past")
+        if header.prev_hash != ZERO_HASH:
+            required_bits = self.expected_bits(header.prev_hash, height)
+            if header.bits != required_bits:
+                raise ValueError("incorrect proof-of-work difficulty bits")
         target = decode_compact_target(header.bits)
         if target > self.pow_limit:
             raise ValueError("target exceeds network proof-of-work limit")
