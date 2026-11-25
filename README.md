@@ -24,6 +24,8 @@ With integer atomic-unit halving, the emitted total is slightly below 21 million
 - src/blackroot_consensus.py: reference helpers for subsidy, block-header hashing, compact target decoding, and proof-of-work checks.
 - src/blackroot_chain.py: in-memory header-linkage, proof-of-work, and cumulative-work accounting prototype (not competing-branch selection).
 - src/blackroot_transactions.py: transaction serialization, merkle-root helper, and basic in-memory UTXO value accounting; no script/signature validation.
+- src/blackroot_utxo_db.py: SQLite-backed UTXO persistence prototype with atomic spend/create updates; no script/signature validation.
+- tests/test_utxo_db.py: persistence, atomicity, rollback, and duplicate-outpoint tests.
 - docs/transactions.md: transaction format and explicit security omissions.
 - docs/difficulty-and-chainwork.md: proposed retarget arithmetic, chainwork, and unresolved boundary rules.
 - tests/: unit tests for reference helpers, header linkage, transaction encoding, merkle roots, and UTXO accounting.
