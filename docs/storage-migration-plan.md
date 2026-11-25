@@ -157,3 +157,10 @@ transaction rollback, not sudden power loss or storage-device failure.
 The schema planner also rejects SQLite virtual tables explicitly. Their
 implementation depends on virtual-table modules and hidden/shadow-table
 semantics that a generic table-and-index copier cannot safely preserve.
+
+
+## Import completion marker and interruption handling
+
+The staged importer now sets SQLite synchronous=FULL and writes a blackroot_import_manifest completion record only after table copying, integrity/foreign-key checks, and post-copy source-hash comparison succeed. The marker stores the three source snapshot hashes and deterministic logical row counts. It is committed as a separate final transaction. A strict reopen can request require_import_manifest=True; missing, incomplete, or malformed markers are rejected before the node stores are opened. This makes a database left by a process interruption before marker commit distinguishable from a completed importer output. The generic coordinated-node validator keeps its default behavior for databases created by other legitimate paths.
+
+This marker is an acceptance gate, not a cryptographic signature or proof of consensus. It does not prevent direct callers from opening a partial SQLite file outside the strict validator, and it does not provide atomic publication to a production path. The destination remains a staging artifact and must never be treated as a live node database solely because a file exists.
