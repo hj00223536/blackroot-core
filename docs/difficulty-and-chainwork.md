@@ -41,3 +41,5 @@ external consensus/security review.
 The in-memory HeaderChain now stores headers by hash, permits extending any known parent through add_to_branch, accumulates per-header work, and selects the branch with greatest cumulative work (with a deterministic raw-hash tie-break). best_chain() returns the selected header path. reorganization(old_tip_hash) reports headers to disconnect in tip-first order and headers to connect in fork-first order.
 
 This is header-only scaffolding. It does not validate median-time-past, future-time limits, retarget boundaries, full block bodies, scripts, UTXOs, or persistent side branches. The returned paths are not authorization to mutate the persistent UTXO database. Full consensus validation and atomic block-level reorganization must be implemented before any node can use this for consensus.
+
+The header DAG also enforces the median-time-past rule using up to the 11 timestamps ending at the candidate's parent. It intentionally does not yet implement the network-adjusted future-time bound or difficulty-retarget boundary calculation.
