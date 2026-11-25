@@ -112,6 +112,58 @@ class PersistentNodeStateTests(unittest.TestCase):
             (1, candidate.header.hash),
         )
 
+    def test_recovery_journal_discards_intent_when_utxo_commit_never_happened(self):
+        state = self.state()
+        state.connect_best_block(self.genesis_block, 0)
+        candidate = make_block(self.genesis_block.header.hash, 1, 2)
+        state.add_header(candidate.header, adjusted_time=2)
+        old_tip = state.utxos.tip()
+        new_tip = (1, candidate.header.hash)
+        state.recovery_journal.prepare(old_tip, new_tip)
+
+        reopened = self.state()
+        self.assertEqual(reopened.utxos.tip(), old_tip)
+        self.assertFalse(reopened.recovery_journal.pending())
+        reopened.archive_block_body(candidate)
+        self.assertEqual(reopened.reorganize_best(), new_tip)
+
+    def test_recovery_journal_recognizes_utxo_commit_before_restart(self):
+        state = self.state()
+        state.connect_best_block(self.genesis_block, 0)
+        candidate = make_block(self.genesis_block.header.hash, 1, 2)
+        state.add_header(candidate.header, adjusted_time=2)
+        old_tip = state.utxos.tip()
+        new_tip = (1, candidate.header.hash)
+        state.recovery_journal.prepare(old_tip, new_tip)
+
+        # Simulate process death after the UTXO transaction committed but before
+        # the journal intent could be cleared.
+        state.utxos.store_block_body(candidate)
+        state.utxos.connect_validated_block(candidate, 1, state.headers.chain)
+        reopened = self.state()
+        self.assertEqual(reopened.utxos.tip(), new_tip)
+        self.assertFalse(reopened.recovery_journal.pending())
+
+    def test_recovery_journal_fails_closed_on_unexpected_utxo_tip(self):
+        state = self.state()
+        state.connect_best_block(self.genesis_block, 0)
+        first = make_block(self.genesis_block.header.hash, 1, 2)
+        second = make_block(first.header.hash, 2, 3)
+        state.add_header(first.header, adjusted_time=2)
+        state.add_header(second.header, adjusted_time=3)
+        state.recovery_journal.prepare(
+            state.utxos.tip(), (1, first.header.hash)
+        )
+        state.utxos.store_block_body(first)
+        state.utxos.connect_validated_block(first, 1, state.headers.chain)
+        state.utxos.store_block_body(second)
+        state.utxos.connect_validated_block(second, 2, state.headers.chain)
+
+        with self.assertRaisesRegex(
+            RuntimeError, "neither endpoint of pending recovery intent"
+        ):
+            self.state()
+
     def test_reorganizes_to_archived_best_branch_after_reopen(self):
         state = self.state()
         state.connect_best_block(self.genesis_block, 0)
