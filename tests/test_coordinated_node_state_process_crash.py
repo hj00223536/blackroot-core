@@ -274,9 +274,14 @@ finally:
                 self.assertTrue(result.read_text().startswith("accepted:2:"))
             finally:
                 for process in (first, second):
-                    if process is not None and process.poll() is None:
-                        process.kill()
-                        process.wait()
+                    if process is not None:
+                        if process.poll() is None:
+                            process.kill()
+                            process.wait()
+                        if process.stdout is not None:
+                            process.stdout.close()
+                        if process.stderr is not None:
+                            process.stderr.close()
 
             # A fresh open must observe one complete branch and no pending intent.
             from src.blackroot_chain import BlockHeader
