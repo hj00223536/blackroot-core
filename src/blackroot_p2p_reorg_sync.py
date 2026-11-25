@@ -8,6 +8,7 @@ path. This component does not discover headers or provide production consensus.
 from __future__ import annotations
 
 from collections.abc import Mapping
+import time
 
 from .blackroot_blocks import Block
 from .blackroot_chain import HeaderChain
@@ -31,6 +32,7 @@ class MultiPeerReorganizationSync:
         self.chain = chain
         self.store = store
         self.pool = request_pool or MultiPeerBlockRequestPool()
+        self._requested_at: dict[bytes, float] = {}
 
     def missing_best_branch_bodies(self) -> tuple[bytes, ...]:
         active = self.store.tip()
@@ -66,6 +68,7 @@ class MultiPeerReorganizationSync:
             except Exception:
                 self.pool.cancel(block_hash)
                 raise
+            self._requested_at[block_hash] = time.monotonic()
             requested[block_hash] = peer_id
         return requested
 
@@ -85,10 +88,54 @@ class MultiPeerReorganizationSync:
         self.store.store_block_body(block)
         if not self.pool.complete(block_hash, peer_id):
             raise RuntimeError("fork body assignment disappeared during acceptance")
+        self._requested_at.pop(block_hash, None)
         if not self.missing_best_branch_bodies() and not self.pool.pending_hashes:
             return self.store.reorganize_to_best(self.chain)
         return None
 
+    def expire_requests(self, timeout: float, *, now: float | None = None) -> tuple[bytes, ...]:
+        """Release body requests older than timeout, using a monotonic clock."""
+        if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or timeout <= 0:
+            raise ValueError("timeout must be a positive number")
+        current = time.monotonic() if now is None else now
+        if not isinstance(current, (int, float)) or isinstance(current, bool):
+            raise TypeError("now must be a monotonic timestamp")
+        expired = tuple(
+            block_hash for block_hash, requested_at in self._requested_at.items()
+            if current - requested_at >= timeout
+        )
+        for block_hash in expired:
+            self._requested_at.pop(block_hash, None)
+            self.pool.cancel(block_hash)
+        return expired
+
+    async def retry_expired_requests(
+        self, peers: Mapping[object, object], timeout: float, *, now: float | None = None
+    ) -> dict[bytes, object]:
+        """Reassign timed-out fork bodies to currently connected peers."""
+        expired = self.expire_requests(timeout, now=now)
+        retried = {}
+        for block_hash in expired:
+            available = [
+                peer_id for peer_id, peer in peers.items()
+                if getattr(peer, "connected", False)
+            ]
+            peer_id = self.pool.assign(block_hash, available)
+            try:
+                await peers[peer_id].send(
+                    "getdata",
+                    encode_inventory([InventoryVector(INV_TYPE_BLOCK, block_hash)]),
+                )
+            except Exception:
+                self.pool.cancel(block_hash)
+                raise
+            self._requested_at[block_hash] = time.monotonic()
+            retried[block_hash] = peer_id
+        return retried
+
     def peer_disconnected(self, peer_id: object) -> tuple[bytes, ...]:
         """Release assignments so another connected peer can be selected."""
-        return self.pool.release_peer(peer_id)
+        released = self.pool.release_peer(peer_id)
+        for block_hash in released:
+            self._requested_at.pop(block_hash, None)
+        return released
