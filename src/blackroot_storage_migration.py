@@ -340,9 +340,10 @@ def import_snapshot_set_to_coordinated_database(
     target: sqlite3.Connection | None = None
     source_dbs: dict[str, sqlite3.Connection] = {}
     try:
-        source_dbs = {
-            kind: _readonly_connection(path) for kind, path in sources.items()
-        }
+        # Open incrementally so an exception opening a later source does
+        # not orphan earlier read-only connections before assignment completes.
+        for kind, source_path in sources.items():
+            source_dbs[kind] = _readonly_connection(source_path)
         target = sqlite3.connect(str(destination), timeout=10.0)
         target.execute("PRAGMA foreign_keys=ON")
         target.execute("PRAGMA busy_timeout=10000")
