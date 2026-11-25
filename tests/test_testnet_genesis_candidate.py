@@ -26,7 +26,7 @@ class TestnetGenesisCandidateVectorTests(unittest.TestCase):
         )
         self.assertEqual(
             coinbase.display_txid,
-            "2ea49004101bc7a1b366021340f31f4d0c6abf24476a46723edd5530af3a9935",
+            "35993aaf3055dd3e72466a4724bf6a0c4d1ff340130266b3a1c71b100490a42e",
         )
 
         header = BlockHeader(
