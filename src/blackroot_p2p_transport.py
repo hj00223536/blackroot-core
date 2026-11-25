@@ -187,10 +187,10 @@ async def connect_peer(
     min_protocol_version: int = 1,
     on_message: MessageHandler | None = None,
 ) -> PeerConnection:
-    """Open one outbound TCP connection and run its peer session to completion.
+    """Open one outbound TCP connection and return its configured peer session.
 
-    The returned connection is closed when this coroutine returns. For a
-    long-lived session, retain the task running this coroutine.
+    The caller must run ``await peer.run()`` (normally in a retained task) to
+    execute the handshake and receive loop. The caller owns the session lifetime.
     """
     if not host or not isinstance(host, str):
         raise ValueError("host must be non-empty text")
