@@ -155,6 +155,59 @@ store.apply(tx)
             [(b"writer-0",)] if results[0] == 0 else [(b"writer-1",)],
         )
 
+    def test_creation_mtp_persists_and_is_restored_by_disconnect_undo(self):
+        from src.blackroot_blocks import Block, COINBASE_INDEX
+        from src.blackroot_chain import BlockHeader
+        from src.blackroot_consensus import block_subsidy
+        from src.blackroot_transactions import merkle_root
+
+        def coinbase(height):
+            return Transaction(
+                1,
+                (TxInput(OutPoint(bytes(32), COINBASE_INDEX), bytes([height + 1, 1])),),
+                (TxOutput(block_subsidy(height), b"miner"),),
+            )
+
+        genesis_tx = coinbase(0)
+        genesis_header = BlockHeader(
+            1, bytes(32), merkle_root((genesis_tx.txid,)), 1, 0x207fffff, 0
+        )
+        genesis = Block(genesis_header, (genesis_tx,))
+        self.store.connect_block(genesis, 0)
+
+        next_tx = coinbase(1)
+        next_header = BlockHeader(
+            1, genesis.header.hash, merkle_root((next_tx.txid,)),
+            2, 0x207fffff, 0,
+        )
+        next_block = Block(next_header, (next_tx,))
+        self.store.connect_block(next_block, 1, median_time_past=1_234)
+
+        created = OutPoint(next_tx.txid, 0)
+        with sqlite3.connect(self.db_path) as db:
+            row = db.execute(
+                "SELECT created_mtp FROM utxos WHERE txid=? AND output_index=?",
+                (created.txid, created.index),
+            ).fetchone()
+        self.assertEqual(row, (1_234,))
+
+        reopened = UTXOStore(self.db_path)
+        with sqlite3.connect(self.db_path) as db:
+            self.assertEqual(
+                db.execute(
+                    "SELECT created_mtp FROM utxos WHERE txid=? AND output_index=?",
+                    (created.txid, created.index),
+                ).fetchone(),
+                (1_234,),
+            )
+        reopened.disconnect_tip(next_block.header.hash)
+        with sqlite3.connect(self.db_path) as db:
+            restored = db.execute(
+                "SELECT created_mtp FROM utxos WHERE txid=? AND output_index=?",
+                (genesis_tx.txid, 0),
+            ).fetchone()
+        self.assertEqual(restored, (0,))
+
     def test_persists_output_across_instances(self):
         reopened = UTXOStore(self.db_path)
         self.assertEqual(reopened.get(self.funding), TxOutput(900, b"funding-script"))
