@@ -57,8 +57,7 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
 
     def test_concurrent_processes_archive_identical_block_body_once(self):
         path = Path(self.temp.name) / "concurrent-body-archive.sqlite"
-        setup = UTXOStore(path)
-        setup.close()
+        UTXOStore(path)  # Initialize schema before worker processes race.
         block = self.side_one
         barrier = Path(self.temp.name) / "release-archive-writers"
         results = [Path(self.temp.name) / ("archive-" + str(i) + ".result") for i in range(4)]
