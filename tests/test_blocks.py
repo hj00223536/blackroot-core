@@ -110,6 +110,21 @@ class BlockValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "script_sig length"):
             validate_block_transactions(make_block([coinbase]), self.parent, 1)
 
+    def test_rejects_block_over_provisional_serialized_size_limit(self):
+        transactions = [make_coinbase(1)]
+        for index in range(1, 110):
+            previous = OutPoint(bytes([index]) * 32, 0)
+            transactions.append(Transaction(
+                index,
+                (TxInput(previous),),
+                (TxOutput(1, b"x" * 9_990),),
+            ))
+        with self.assertRaisesRegex(ValueError, "serialized block exceeds"):
+            Block(
+                BlockHeader(1, bytes(32), bytes(32), 1, 0x207fffff, 0),
+                tuple(transactions),
+            )
+
     def test_rejects_invalid_height(self):
         coinbase = make_coinbase(1)
         with self.assertRaisesRegex(ValueError, "height"):
