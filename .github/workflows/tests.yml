@@ -38,3 +38,5 @@ jobs:
         run: node scripts/verify_genesis_candidate.mjs
       - name: Verify legacy transaction serialization and CompactSize vectors
         run: node scripts/verify_transaction_vectors.mjs
+      - name: Verify P2PKH signature and SIGHASH_ALL vectors
+        run: node scripts/verify_p2pkh_vectors.mjs
