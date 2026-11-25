@@ -43,3 +43,10 @@ The in-memory HeaderChain now stores headers by hash, permits extending any know
 This is header-only scaffolding. It does not validate median-time-past, future-time limits, retarget boundaries, full block bodies, scripts, UTXOs, or persistent side branches. The returned paths are not authorization to mutate the persistent UTXO database. Full consensus validation and atomic block-level reorganization must be implemented before any node can use this for consensus.
 
 The header DAG also enforces the median-time-past rule using up to the 11 timestamps ending at the candidate's parent. It intentionally does not yet implement the network-adjusted future-time bound or difficulty-retarget boundary calculation.
+
+
+## Difficulty enforcement
+
+HeaderChain now requires the parent nBits between retarget boundaries and computes a new compact target at each 2016-block boundary. The measured span is the parent timestamp minus the ancestor timestamp at candidate_height - 2016, clamped by retarget_compact to one quarter through four times the nominal 1,209,600 seconds, then capped at the network proof-of-work limit. Boundary and non-boundary behavior have unit tests.
+
+This remains a reference prototype: network-specific exception rules, future-time bounds, full compact-target canonicality policy, and consensus test vectors still require specification and independent review.
