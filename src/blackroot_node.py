@@ -15,6 +15,25 @@ from .blackroot_node_state import PersistentNodeState
 from .blackroot_p2p_handshake import VersionMessage
 
 
+def parse_connect_endpoint(endpoint: str, config: TestnetConfig) -> tuple[str, int]:
+    """Parse and validate a literal loopback peer endpoint."""
+    if not isinstance(endpoint, str) or not endpoint:
+        raise ValueError("peer endpoint must be non-empty text")
+    if endpoint.startswith("["):
+        closing = endpoint.find("]")
+        if closing < 0 or endpoint[closing + 1:closing + 2] != ":":
+            raise ValueError("IPv6 peer endpoint must use [::1]:PORT")
+        host, port_text = endpoint[1:closing], endpoint[closing + 2:]
+    else:
+        if endpoint.count(":") != 1:
+            raise ValueError("peer endpoint must use IP:PORT")
+        host, port_text = endpoint.rsplit(":", 1)
+    if not port_text.isdigit() or not 1 <= int(port_text) <= 65535:
+        raise ValueError("peer port must be between 1 and 65535")
+    config.validate_bind_host(host)
+    return host, int(port_text)
+
+
 async def run_node(config: TestnetConfig, data_dir: Path, bind_host: str, connect_to: tuple[str, int] | None = None) -> None:
     bind_host = config.validate_bind_host(bind_host)
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -84,22 +103,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         config = TestnetConfig.from_json_file(args.config)
         config.validate_bind_host(args.bind_host)
-        connect_to = None
-        if args.connect:
-            if args.connect.startswith("["):
-                closing = args.connect.find("]")
-                if closing < 0 or args.connect[closing + 1:closing + 2] != ":":
-                    raise ValueError("--connect IPv6 endpoint must use [::1]:PORT")
-                remote_host = args.connect[1:closing]
-                port_text = args.connect[closing + 2:]
-            else:
-                if args.connect.count(":") != 1:
-                    raise ValueError("--connect endpoint must use IP:PORT")
-                remote_host, port_text = args.connect.rsplit(":", 1)
-            if not port_text.isdigit() or not 1 <= int(port_text) <= 65535:
-                raise ValueError("--connect port must be between 1 and 65535")
-            config.validate_bind_host(remote_host)
-            connect_to = (remote_host, int(port_text))
+        connect_to = parse_connect_endpoint(args.connect, config) if args.connect else None
         asyncio.run(run_node(config, Path(args.data_dir), args.bind_host, connect_to))
     except (ValueError, OSError, RuntimeError) as exc:
         parser.exit(2, f"blackroot-node: {exc}\n")
