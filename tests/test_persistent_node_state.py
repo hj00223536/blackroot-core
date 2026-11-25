@@ -488,11 +488,10 @@ class PersistentNodeStateTests(unittest.TestCase):
                 (corrupted, candidate.header.hash),
             )
 
-        reopened = self.state()
         with self.assertRaisesRegex(RuntimeError, "merkle root is corrupt"):
-            reopened.reorganize_best()
+            self.state()
         self.assertEqual(
-            reopened.utxos.tip(),
+            UTXOStore(self.root / "utxos.sqlite").tip(),
             (0, self.genesis_block.header.hash),
         )
 
