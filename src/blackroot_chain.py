@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .blackroot_consensus import (
+    block_work,
     check_proof_of_work,
     decode_compact_target,
     format_hash,
@@ -58,6 +59,7 @@ class HeaderChain:
             raise ValueError("genesis previous hash must be all zeroes")
         self.pow_limit = pow_limit
         self._headers: list[BlockHeader] = []
+        self._chainwork = 0
         self.add(genesis)
 
     @property
@@ -67,6 +69,11 @@ class HeaderChain:
     @property
     def tip(self) -> BlockHeader:
         return self._headers[-1]
+
+    @property
+    def chainwork(self) -> int:
+        \"\"\"Cumulative work for headers accepted by this prototype.\"\"\"
+        return self._chainwork
 
     def get(self, height: int) -> BlockHeader:
         return self._headers[height]
@@ -85,4 +92,5 @@ class HeaderChain:
         if not check_proof_of_work(header.serialize(), header.bits, self.pow_limit):
             raise ValueError("insufficient proof of work")
         self._headers.append(header)
+        self._chainwork += block_work(target)
         return header.display_hash
