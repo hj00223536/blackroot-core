@@ -6,6 +6,7 @@ from pathlib import Path
 
 from src.blackroot_chain import BlockHeader
 from src.blackroot_consensus import block_work, decode_compact_target
+from src.blackroot_node_state import PersistentNodeState
 
 from src.blackroot_storage_migration import (
     create_consistent_sqlite_snapshot,
@@ -13,6 +14,7 @@ from src.blackroot_storage_migration import (
     import_snapshot_set_to_coordinated_database,
     plan_coordinated_schema_merge,
     snapshot_legacy_node_databases,
+    validate_coordinated_staging_database,
 )
 
 
@@ -274,6 +276,22 @@ class SQLiteSnapshotTests(unittest.TestCase):
             self.assertEqual(
                 db.execute("SELECT COUNT(*) FROM block_transactions").fetchone()[0], 0
             )
+
+    def test_coordinated_staging_validator_reopens_real_node_stores(self):
+        genesis = BlockHeader(1, bytes(32), bytes(32), 1, 0x207fffff, 0)
+        pow_limit = decode_compact_target(0x207fffff)
+        database = self.root / "node-reopen.sqlite"
+        state = PersistentNodeState.open_coordinated(database, pow_limit, genesis)
+        state.close()
+        report = validate_coordinated_staging_database(
+            database, pow_limit=pow_limit, genesis=genesis
+        )
+        self.assertEqual(report["status"], "coordinated_node_reopen_passed")
+        self.assertTrue(report["coordinated"])
+        self.assertEqual(report["header_height"], 0)
+        self.assertIsNone(report["utxo_tip"])
+        self.assertEqual(report["recovery_intents_pending"], 0)
+        self.assertFalse(report["production_cutover_performed"])
 
     def test_staged_import_refuses_existing_destination_without_overwrite(self):
         snapshot_dir = self.root / "snapshots-existing"
