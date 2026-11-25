@@ -47,7 +47,7 @@ class ValidatedConnectionTests(unittest.TestCase):
 
     def test_rejects_body_that_does_not_match_selected_header_merkle_root(self):
         malformed = Block(self.genesis.header, (coinbase(0), coinbase(0)))
-        with self.assertRaisesRegex(ValueError, "duplicate transaction ids|merkle root"):
+        with self.assertRaisesRegex(ValueError, "more than one coinbase|duplicate transaction ids|merkle root"):
             self.store.connect_validated_block(malformed, 0, self.headers)
         self.assertIsNone(self.store.tip())
         self.assertEqual(self.store.count(), 0)
