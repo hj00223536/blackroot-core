@@ -230,43 +230,36 @@ class UTXOStore:
         """Atomically spend inputs and create outputs; returns fee in atomic units."""
         if not isinstance(tx, Transaction):
             raise TypeError("tx must be a Transaction")
-        self._require_standalone_transaction("apply")
-        with self._connect() as db:
-            db.execute("BEGIN IMMEDIATE")
-            if db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0]:
-                db.rollback()
-                raise RuntimeError("accounting-only apply is disabled after chain activation")
-            current: dict[OutPoint, TxOutput] = {}
+        with self._write_scope() as db:
+        if db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0]:
+            raise RuntimeError("accounting-only apply is disabled after chain activation")
+        current: dict[OutPoint, TxOutput] = {}
+        for txin in tx.inputs:
+            outpoint = txin.previous_output
+            row = db.execute(
+                "SELECT value, script_pubkey FROM utxos WHERE txid=? AND output_index=?",
+                (outpoint.txid, outpoint.index),
+            ).fetchone()
+            if row is not None:
+                current[outpoint] = TxOutput(row[0], bytes(row[1]))
+        fee = None
+        try:
+            _, output_total = validate_transaction(tx, current)
+            # Validate the complete transaction before mutating persistent state.
+            fee = sum(current[item.previous_output].value for item in tx.inputs) - output_total
             for txin in tx.inputs:
-                outpoint = txin.previous_output
-                row = db.execute(
-                    "SELECT value, script_pubkey FROM utxos WHERE txid=? AND output_index=?",
-                    (outpoint.txid, outpoint.index),
-                ).fetchone()
-                if row is not None:
-                    current[outpoint] = TxOutput(row[0], bytes(row[1]))
-            fee = None
-            try:
-                _, output_total = validate_transaction(tx, current)
-                # Validate the complete transaction before mutating persistent state.
-                fee = sum(current[item.previous_output].value for item in tx.inputs) - output_total
-                for txin in tx.inputs:
-                    cursor = db.execute(
-                        "DELETE FROM utxos WHERE txid=? AND output_index=?",
-                        (txin.previous_output.txid, txin.previous_output.index),
-                    )
-                    if cursor.rowcount != 1:
-                        raise ValueError("input changed during UTXO update")
-                for index, output in enumerate(tx.outputs):
-                    db.execute(
-                        "INSERT INTO utxos(txid, output_index, value, script_pubkey) VALUES(?, ?, ?, ?)",
-                        (tx.txid, index, output.value, output.script_pubkey),
-                    )
-            except Exception:
-                db.rollback()
-                raise
-            db.commit()
-            return fee
+                cursor = db.execute(
+                    "DELETE FROM utxos WHERE txid=? AND output_index=?",
+                    (txin.previous_output.txid, txin.previous_output.index),
+                )
+                if cursor.rowcount != 1:
+                    raise ValueError("input changed during UTXO update")
+            for index, output in enumerate(tx.outputs):
+                db.execute(
+                    "INSERT INTO utxos(txid, output_index, value, script_pubkey) VALUES(?, ?, ?, ?)",
+                    (tx.txid, index, output.value, output.script_pubkey),
+                )
+        return fee
 
     def verify_integrity(self) -> None:
         """Fail closed on SQLite, relational, transaction-record, or body corruption."""
