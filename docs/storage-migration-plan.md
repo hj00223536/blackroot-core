@@ -61,3 +61,18 @@ These names are a source-code inventory, not proof that any particular user's fi
 ## Explicit non-goals
 
 This migration does not validate consensus correctness, create a wallet, upgrade protocol rules, or make BLACKROOT production-ready. It does not authorize mainnet launch or handling funds.
+
+## Read-only coordinated schema merge planning
+
+The migration preflight now exposes a deterministic schema merge plan. It checks
+global SQLite schema-object name collisions, rejects views/triggers and unknown
+object types, verifies that foreign-key parents exist in the same source store,
+and orders tables before their FK dependants. Explicit indexes are listed after
+tables. The planner is read-only: it does not execute DDL, copy rows, publish a
+destination database, or alter snapshots.
+
+This is a planning gate only. The next importer must preserve the original
+CREATE statements and row values, execute in an exclusively-created staging
+database, verify row counts and integrity, reopen through
+`PersistentNodeState.open_coordinated`, and retain all source snapshots. No
+production migration is authorized by the planner result.
