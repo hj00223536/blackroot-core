@@ -321,6 +321,21 @@ def validate_snapshot_set_consistency(
         if not required_header_columns.issubset(header_columns):
             raise RuntimeError("header snapshot lacks columns required for cross-store validation")
 
+        header_metadata = dict(
+            header_db.execute("SELECT key, value FROM header_metadata")
+        )
+        genesis_hex = header_metadata.get("genesis_hash")
+        pow_limit_text = header_metadata.get("pow_limit")
+        if not isinstance(genesis_hex, str) or len(genesis_hex) != 64:
+            raise RuntimeError("header snapshot has a malformed genesis hash")
+        try:
+            genesis_hash = bytes.fromhex(genesis_hex)
+            pow_limit = int(pow_limit_text)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("header snapshot has malformed network metadata") from exc
+        if len(genesis_hash) != 32 or pow_limit <= 0 or str(pow_limit) != pow_limit_text:
+            raise RuntimeError("header snapshot has non-canonical network metadata")
+
         header_rows = header_db.execute(
             "SELECT block_hash, height, version, prev_hash, merkle_root, timestamp, bits, nonce "
             "FROM headers"
@@ -334,6 +349,21 @@ def validate_snapshot_set_consistency(
             if header.hash != bytes(block_hash):
                 raise RuntimeError("header snapshot contains a header hash mismatch")
             headers_by_hash[bytes(block_hash)] = (height, header.serialize())
+
+        genesis_record = headers_by_hash.get(genesis_hash)
+        if genesis_record is None or genesis_record[0] != 0:
+            raise RuntimeError("header snapshot is missing its declared genesis header")
+        genesis_header = BlockHeader(
+            *(
+                header_db.execute(
+                    "SELECT version, prev_hash, merkle_root, timestamp, bits, nonce "
+                    "FROM headers WHERE block_hash=?",
+                    (genesis_hash,),
+                ).fetchone()
+            )
+        )
+        if genesis_header.prev_hash != bytes(32):
+            raise RuntimeError("declared header genesis has a non-zero parent")
 
         block_columns = {
             row[1] for row in utxo_db.execute("PRAGMA table_info(blocks)")
