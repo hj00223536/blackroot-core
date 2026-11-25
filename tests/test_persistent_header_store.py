@@ -6,6 +6,7 @@ from pathlib import Path
 from src.blackroot_chain import BlockHeader, ZERO_HASH
 from src.blackroot_consensus import check_proof_of_work, decode_compact_target
 from src.blackroot_header_store import PersistentHeaderStore
+from src.blackroot_sqlite import SQLiteTransactionCoordinator
 
 BITS = 0x207FFFFF
 POW_LIMIT = decode_compact_target(BITS)
@@ -99,6 +100,38 @@ class PersistentHeaderStoreTests(unittest.TestCase):
         self.assertEqual(store.chain.height, 1)
         with sqlite3.connect(self.path) as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM headers").fetchone()[0], 2)
+
+    def test_coordinator_owned_header_store_publishes_after_commit_and_reload(self):
+        path = Path(self.temp.name) / "shared.sqlite"
+        child = mine(self.genesis.hash, 2)
+        with SQLiteTransactionCoordinator(path) as coordinator:
+            with coordinator.transaction() as connection:
+                store = PersistentHeaderStore(
+                    path, POW_LIMIT, self.genesis, connection=connection
+                )
+            with coordinator.transaction():
+                store.add_to_branch(child)
+                self.assertEqual(store.chain.height, 0)
+            self.assertEqual(store.reload().height, 1)
+            self.assertEqual(store.chain.best_hash, child.hash)
+        reopened = PersistentHeaderStore(path, POW_LIMIT, self.genesis)
+        self.assertEqual(reopened.chain.best_hash, child.hash)
+
+    def test_outer_rollback_does_not_publish_coordinated_header(self):
+        path = Path(self.temp.name) / "rollback-shared.sqlite"
+        child = mine(self.genesis.hash, 2)
+        with SQLiteTransactionCoordinator(path) as coordinator:
+            with coordinator.transaction() as connection:
+                store = PersistentHeaderStore(
+                    path, POW_LIMIT, self.genesis, connection=connection
+                )
+            with self.assertRaisesRegex(RuntimeError, "abort header write"):
+                with coordinator.transaction():
+                    store.add_to_branch(child)
+                    self.assertEqual(store.chain.height, 0)
+                    raise RuntimeError("abort header write")
+            self.assertEqual(store.reload().height, 0)
+            self.assertEqual(store.chain.best_hash, self.genesis.hash)
 
 
 if __name__ == "__main__":
