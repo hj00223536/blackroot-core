@@ -6,6 +6,7 @@ It is a guardrail for a future separately reviewed migration utility.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import sqlite3
 from pathlib import Path
@@ -347,6 +348,7 @@ def import_snapshot_set_to_coordinated_database(
         target = sqlite3.connect(str(destination), timeout=10.0)
         target.execute("PRAGMA foreign_keys=ON")
         target.execute("PRAGMA busy_timeout=10000")
+        target.execute("PRAGMA synchronous=FULL")
         target.execute("BEGIN IMMEDIATE")
 
         for item in plan["objects"]:
@@ -413,6 +415,29 @@ def import_snapshot_set_to_coordinated_database(
         if source_hashes_after != source_hashes:
             raise RuntimeError("source snapshot changed during staged import")
 
+        # Commit the acceptance marker only after all copy and source checks.
+        target.execute("BEGIN IMMEDIATE")
+        target.execute("""
+            CREATE TABLE blackroot_import_manifest (
+                singleton INTEGER PRIMARY KEY CHECK(singleton = 1),
+                format_version INTEGER NOT NULL,
+                status TEXT NOT NULL CHECK(status = 'complete'),
+                header_sha256 TEXT NOT NULL,
+                utxo_sha256 TEXT NOT NULL,
+                journal_sha256 TEXT NOT NULL,
+                row_counts_json TEXT NOT NULL
+            )
+        """)
+        target.execute(
+            "INSERT INTO blackroot_import_manifest VALUES(1, 1, 'complete', ?, ?, ?, ?)",
+            (
+                source_hashes["header"], source_hashes["utxo"],
+                source_hashes["journal"],
+                json.dumps(row_counts, sort_keys=True, separators=(",", ":")),
+            ),
+        )
+        target.commit()
+
         target.close()
         target = None
         return {
@@ -424,6 +449,7 @@ def import_snapshot_set_to_coordinated_database(
             "table_order": plan["table_order"],
             "integrity_check": "ok",
             "foreign_key_check": "ok",
+            "completion_manifest": "complete",
             "snapshot_consistency": consistency["status"],
             "migration_performed": True,
             "production_cutover_performed": False,
@@ -474,6 +500,41 @@ def validate_coordinated_staging_database(
     path = Path(database_path).expanduser().resolve(strict=True)
     if not path.is_file():
         raise ValueError("staging database path is not a regular file")
+
+    if require_import_manifest:
+        manifest_db = _readonly_connection(path)
+        try:
+            exists = manifest_db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' "
+                "AND name='blackroot_import_manifest'"
+            ).fetchone()
+            if not exists:
+                raise RuntimeError("staging database has no completed import manifest")
+            rows = manifest_db.execute(
+                "SELECT format_version, status, header_sha256, utxo_sha256, "
+                "journal_sha256, row_counts_json "
+                "FROM blackroot_import_manifest WHERE singleton=1"
+            ).fetchall()
+            if len(rows) != 1 or rows[0][0] != 1 or rows[0][1] != "complete":
+                raise RuntimeError("staging database import manifest is incomplete or invalid")
+            for digest in rows[0][2:5]:
+                if not isinstance(digest, str) or len(digest) != 64:
+                    raise RuntimeError("staging database import manifest has invalid source hashes")
+                try:
+                    int(digest, 16)
+                except ValueError as exc:
+                    raise RuntimeError("staging database import manifest has invalid source hashes") from exc
+            try:
+                counts = json.loads(rows[0][5])
+            except (TypeError, json.JSONDecodeError) as exc:
+                raise RuntimeError("staging database import manifest has invalid row counts") from exc
+            if not isinstance(counts, dict) or any(
+                not isinstance(name, str) or not isinstance(count, int) or count < 0
+                for name, count in counts.items()
+            ):
+                raise RuntimeError("staging database import manifest has invalid row counts")
+        finally:
+            manifest_db.close()
 
     state = PersistentNodeState.open_coordinated(path, pow_limit, genesis)
     try:
