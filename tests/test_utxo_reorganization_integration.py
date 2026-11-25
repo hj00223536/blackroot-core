@@ -131,7 +131,7 @@ Path(result).write_text(stored.hex())
         block = self.side_one
         original = block.serialize()
         conflicting = original + b"\x00"
-        with store._connection_scope() as db:
+        with _managed_sqlite(store.path) as db:
             db.execute(
                 "INSERT INTO block_bodies(block_hash, raw_block, serialized_size) VALUES(?, ?, ?)",
                 (block.header.hash, conflicting, len(conflicting)),
@@ -152,7 +152,7 @@ Path(result).write_text(stored.hex())
 
     def test_verify_integrity_detects_corrupt_archived_body_metadata(self):
         self.store.store_block_body(self.side_one)
-        with self.store._connection_scope() as db:
+        with _managed_sqlite(self.store.path) as db:
             db.execute(
                 "UPDATE block_bodies SET serialized_size=serialized_size + 1 WHERE block_hash=?",
                 (self.side_one.header.hash,),
@@ -165,7 +165,7 @@ Path(result).write_text(stored.hex())
         store = UTXOStore(path)
         block = self.side_one
         store.store_block_body(block)
-        with store._connection_scope() as db:
+        with _managed_sqlite(store.path) as db:
             db.execute(
                 "UPDATE block_bodies SET serialized_size=serialized_size + 1 WHERE block_hash=?",
                 (block.header.hash,),
