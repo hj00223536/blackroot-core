@@ -110,11 +110,15 @@ async def run_node(config: TestnetConfig, data_dir: Path, bind_host: str, connec
 
         await stop.wait()
     finally:
-        if runtime is not None:
-            await runtime.close()
-        if state is not None:
-            state.close()
-        data_lock.release()
+        try:
+            if runtime is not None:
+                await runtime.close()
+        finally:
+            try:
+                if state is not None:
+                    state.close()
+            finally:
+                data_lock.release()
 
 
 def main(argv: list[str] | None = None) -> int:
