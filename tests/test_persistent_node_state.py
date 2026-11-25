@@ -61,6 +61,14 @@ class PersistentNodeStateTests(unittest.TestCase):
         self.assertEqual(reopened.utxos.tip(), (0, self.genesis_block.header.hash))
         self.assertEqual(reopened.headers.chain.node(self.genesis_block.header.hash).height, 0)
 
+    def test_rejects_invalid_height_before_header_chain_comparison(self):
+        state = self.state()
+        for invalid_height in (True, -1, "0", 0.5):
+            with self.subTest(height=invalid_height):
+                with self.assertRaisesRegex(ValueError, "non-negative integer"):
+                    state.connect_best_block(self.genesis_block, invalid_height)
+        self.assertIsNone(state.utxos.tip())
+
     def test_refuses_body_not_selected_by_persistent_headers(self):
         state = self.state()
         other = make_block(ZERO_HASH, 0, 2)
