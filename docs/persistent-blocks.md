@@ -34,7 +34,7 @@ The implementation remains deliberately fail-closed for unsupported script types
 
 `reorganize(disconnect_hashes, connect_blocks)` is a lower-level transactional storage primitive. Disconnect hashes must be tip-first and replacement blocks fork-first. It validates replacement block bodies, including supported legacy P2PKH authorization and coinbase maturity, but does not independently prove that a replacement branch has greater chainwork or valid headers.
 
-`reorganize_to_best(header_chain, replacement_blocks)` connects the in-memory header DAG's fork-choice result to the UTXO transition. It requires the active database tip to exist at the same height in the supplied header DAG, requires the candidate best tip to have strictly greater cumulative chainwork, derives the disconnect/connect paths, and requires an exact matching body for every connecting header. The final state switch is atomic.
+`reorganize_to_best(header_chain, replacement_blocks)` connects the in-memory header DAG's fork-choice result to the UTXO transition. It requires the active database tip to exist at the same height in the supplied header DAG, requires the candidate best tip to have strictly greater cumulative chainwork, derives the disconnect/connect paths, and obtains each connecting body either from the caller's hash-keyed mapping or from the durable candidate-body archive. Every body must exactly match its header-chain entry and passes the block transaction validator before the atomic state switch.
 
 ## Remaining consensus and operational gaps
 
