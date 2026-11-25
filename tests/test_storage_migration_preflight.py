@@ -438,7 +438,7 @@ class SQLiteSnapshotTests(unittest.TestCase):
         self.assertEqual(imported["status"], "coordinated_staging_database_created")
         reopened = validate_coordinated_staging_database(
             staged, pow_limit=pow_limit, genesis=genesis,
-            require_import_manifest=True,
+            require_import_manifest=True, verify_manifest_counts=True,
         )
         self.assertEqual(reopened["status"], "coordinated_node_reopen_passed")
         self.assertEqual(reopened["utxo_tip"], (expected_tip[0], expected_tip[1].hex()))
@@ -485,7 +485,8 @@ class SQLiteSnapshotTests(unittest.TestCase):
         self.assertEqual(reopened_again["header_best_hash"], resumed_header.hash.hex())
 
         # The marker must agree with the actual imported table inventory and
-        # row counts; editing only the marker cannot bless altered metadata.
+        # row counts at initial acceptance. Later legitimate node writes do not
+        # rewrite this historical import receipt.
         with sqlite3.connect(staged) as db:
             raw_counts = db.execute(
                 "SELECT row_counts_json FROM blackroot_import_manifest WHERE singleton=1"
@@ -501,8 +502,14 @@ class SQLiteSnapshotTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "row counts do not match"):
             validate_coordinated_staging_database(
                 staged, pow_limit=pow_limit, genesis=genesis,
-                require_import_manifest=True,
+                require_import_manifest=True, verify_manifest_counts=True,
             )
+        with sqlite3.connect(staged) as db:
+            db.execute(
+                "UPDATE blackroot_import_manifest SET row_counts_json=? WHERE singleton=1",
+                (raw_counts,),
+            )
+            db.commit()
 
     def test_strict_staging_validation_rejects_missing_import_completion_manifest(self):
         genesis = BlockHeader(1, bytes(32), bytes(32), 1, 0x207fffff, 0)
