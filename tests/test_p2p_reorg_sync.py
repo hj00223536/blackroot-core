@@ -82,6 +82,62 @@ class MultiPeerReorganizationSyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.tip(), second_result)
         self.assertEqual(self.sync.pool.pending_hashes, ())
 
+    async def test_failed_reorg_restores_old_chain_and_utxos_atomically(self):
+        original_tip = self.store.tip()
+        original_count = self.store.count()
+        original_headers = self.store.active_block_headers()
+        with self.store._connect() as db:
+            original_utxos = db.execute(
+                "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
+                "FROM utxos ORDER BY txid, output_index"
+            ).fetchall()
+
+        valid_fork_one = self.fork_one
+        invalid_coinbase = Transaction(
+            1,
+            (TxInput(OutPoint(ZERO_TXID, COINBASE_INDEX), (2).to_bytes(2, "little")),),
+            (TxOutput(block_subsidy(2) + 1, b"invalid-miner"),),
+        )
+        invalid_fork_two = Block(
+            BlockHeader(
+                1, valid_fork_one.header.hash,
+                merkle_root((invalid_coinbase.txid,)), 4, BITS, 0,
+            ),
+            (invalid_coinbase,),
+        )
+        # Mine a valid header PoW while retaining the deliberately invalid body.
+        for nonce in range(10000):
+            candidate_header = BlockHeader(
+                1, valid_fork_one.header.hash,
+                invalid_fork_two.header.merkle_root, 4, BITS, nonce,
+            )
+            if check_proof_of_work(candidate_header.serialize(), BITS, POW_LIMIT):
+                invalid_fork_two = Block(candidate_header, (invalid_coinbase,))
+                break
+        else:
+            self.fail("unable to mine invalid-body fork header")
+
+        self.chain.add_to_branch(invalid_fork_two.header)
+        with self.assertRaisesRegex(ValueError, "coinbase reward exceeds"):
+            self.store.reorganize_to_best(
+                self.chain,
+                {
+                    valid_fork_one.header.hash: valid_fork_one,
+                    invalid_fork_two.header.hash: invalid_fork_two,
+                },
+            )
+
+        self.assertEqual(self.store.tip(), original_tip)
+        self.assertEqual(self.store.count(), original_count)
+        self.assertEqual(self.store.active_block_headers(), original_headers)
+        with self.store._connect() as db:
+            restored_utxos = db.execute(
+                "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
+                "FROM utxos ORDER BY txid, output_index"
+            ).fetchall()
+        self.assertEqual(restored_utxos, original_utxos)
+        self.store.verify_integrity()
+
     async def test_unassigned_peer_cannot_supply_fork_body(self):
         assignments = await self.sync.request_missing_bodies(self.peers)
         block = self.fork_one
