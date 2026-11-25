@@ -306,7 +306,7 @@ def validate_snapshot_set_consistency(
     )
     header_path = Path(header_snapshot_path).expanduser().resolve(strict=True)
     utxo_path = Path(utxo_snapshot_path).expanduser().resolve(strict=True)
-    from .blackroot_chain import BlockHeader
+    from .blackroot_chain import BlockHeader, HeaderChain
 
     header_db = _readonly_connection(header_path)
     utxo_db = _readonly_connection(utxo_path)
@@ -337,18 +337,53 @@ def validate_snapshot_set_consistency(
             raise RuntimeError("header snapshot has non-canonical network metadata")
 
         header_rows = header_db.execute(
-            "SELECT block_hash, height, version, prev_hash, merkle_root, timestamp, bits, nonce "
-            "FROM headers"
+            "SELECT block_hash, height, version, prev_hash, merkle_root, timestamp, bits, nonce, chainwork "
+            "FROM headers ORDER BY height, block_hash"
         ).fetchall()
         headers_by_hash = {}
+        genesis_header = None
         for row in header_rows:
-            block_hash, height, version, prev_hash, merkle_root, timestamp, bits, nonce = row
+            block_hash, height, version, prev_hash, merkle_root, timestamp, bits, nonce, chainwork = row
             header = BlockHeader(
                 version, bytes(prev_hash), bytes(merkle_root), timestamp, bits, nonce
             )
             if header.hash != bytes(block_hash):
                 raise RuntimeError("header snapshot contains a header hash mismatch")
             headers_by_hash[bytes(block_hash)] = (height, header.serialize())
+            if bytes(block_hash) == genesis_hash:
+                genesis_header = header
+        if genesis_header is None:
+            raise RuntimeError("header snapshot is missing its declared genesis header")
+        if genesis_header.prev_hash != bytes(32):
+            raise RuntimeError("declared header genesis has a non-zero parent")
+
+        # Replay every stored branch using the same header-DAG consensus checks
+        # as PersistentHeaderStore, and compare stored height/work metadata.
+        replayed = HeaderChain(pow_limit, genesis_header)
+        genesis_work = replayed.node(genesis_hash).chainwork
+        genesis_rows = 0
+        for row in header_rows:
+            block_hash, height, version, prev_hash, merkle_root, timestamp, bits, nonce, chainwork = row
+            header = BlockHeader(
+                version, bytes(prev_hash), bytes(merkle_root), timestamp, bits, nonce
+            )
+            block_hash = bytes(block_hash)
+            if height == 0:
+                genesis_rows += 1
+                if block_hash != genesis_hash or str(genesis_work) != str(chainwork):
+                    raise RuntimeError("header genesis metadata mismatch during replay")
+                continue
+            try:
+                replayed.add_to_branch(header)
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    f"header snapshot replay rejected {block_hash.hex()}: {exc}"
+                ) from exc
+            node = replayed.node(block_hash)
+            if node is None or node.height != height or str(node.chainwork) != str(chainwork):
+                raise RuntimeError("header snapshot height or chainwork mismatch during replay")
+        if genesis_rows != 1:
+            raise RuntimeError("header snapshot must contain exactly one genesis header")
 
         genesis_record = headers_by_hash.get(genesis_hash)
         if genesis_record is None or genesis_record[0] != 0:
