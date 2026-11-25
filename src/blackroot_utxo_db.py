@@ -167,6 +167,11 @@ class UTXOStore:
                 ) WITHOUT ROWID
             """)
 
+            # Closing an owned sqlite3 connection does not commit its transaction.
+            # The coordinator-owned connection remains under the outer transaction.
+            if self._external_connection is None:
+                db.commit()
+
     def store_block_body(self, block: Block) -> bytes:
         """Persist a candidate block body by header hash for later branch recovery.
 
