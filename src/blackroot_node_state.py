@@ -113,7 +113,7 @@ class PersistentNodeState:
             self._coordinator.__exit__(None, None, None)
 
     def __enter__(self) -> "PersistentNodeState":
-        if self._coordinator is not None and self._coordinator._connection is None:
+        if self._coordinator is not None and not self._coordinator.is_open:
             raise RuntimeError("coordinated node state is closed")
         return self
 
