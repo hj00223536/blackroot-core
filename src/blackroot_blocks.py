@@ -128,6 +128,41 @@ def is_final_transaction(tx: Transaction, height: int, median_time_past: int | N
     return all(txin.sequence == 0xFFFFFFFF for txin in tx.inputs)
 
 
+SEQUENCE_LOCKTIME_DISABLE_FLAG = 1 << 31
+SEQUENCE_LOCKTIME_TYPE_FLAG = 1 << 22
+SEQUENCE_LOCKTIME_MASK = 0x0000FFFF
+
+
+def validate_relative_sequence_locks(
+    tx: Transaction,
+    parent_provenance: dict[OutPoint, UTXOProvenance] | None,
+    candidate_height: int,
+) -> None:
+    """Enforce BIP68 height-based relative locks; reject unsupported time locks.
+
+    BIP68 applies only to version >= 2. Inputs with the disable flag are
+    ignored. Timestamp-based relative locks are rejected until UTXO creation
+    MTP is authenticated and persisted.
+    """
+    if tx.version < 2:
+        return
+    for txin in tx.inputs:
+        sequence = txin.sequence
+        if sequence & SEQUENCE_LOCKTIME_DISABLE_FLAG:
+            continue
+        if sequence & SEQUENCE_LOCKTIME_TYPE_FLAG:
+            raise ValueError("time-based relative sequence locks are not supported")
+        if parent_provenance is None:
+            raise ValueError("authenticated UTXO provenance is required for relative sequence locks")
+        provenance = parent_provenance.get(txin.previous_output)
+        if provenance is None:
+            raise ValueError("missing authenticated UTXO provenance for relative sequence lock")
+        relative_blocks = sequence & SEQUENCE_LOCKTIME_MASK
+        minimum_height = provenance.created_height + relative_blocks
+        if candidate_height < minimum_height:
+            raise ValueError("transaction violates relative height sequence lock")
+
+
 def validate_block_transactions(
     block: Block,
     parent_utxos: dict[OutPoint, TxOutput],
@@ -179,6 +214,7 @@ def validate_block_transactions(
     for tx in block.transactions[1:]:
         if not is_final_transaction(tx, height, median_time_past):
             raise ValueError("transaction is non-final for candidate block height/time")
+        validate_relative_sequence_locks(tx, parent_provenance, height)
         if parent_provenance is not None:
             for txin in tx.inputs:
                 provenance = parent_provenance.get(txin.previous_output)
