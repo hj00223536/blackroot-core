@@ -62,3 +62,11 @@ ordered transactions, update the UTXO snapshot, and expose the stored tip.
 See [persistent block notes](docs/persistent-blocks.md). This supports only
 linear extension; it does not implement proof-of-work validation, script or
 signature checks, undo data, side branches, or reorganizations.
+
+
+## Mainnet launch status
+
+BLACKROOT is **not ready for mainnet or public sale**. The mandatory technical,
+security, operational, and legal launch gates are tracked in
+[Mainnet launch gates](docs/mainnet-launch-gates.md). Passing the current unit
+tests does not satisfy these gates.
