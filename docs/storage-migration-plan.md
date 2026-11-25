@@ -88,7 +88,12 @@ staging database. On failure it removes only the destination file it created;
 source snapshots remain read-only.
 
 The importer currently rejects schema features that the planner cannot safely
-reproduce (including views and triggers). The resulting file is a staging
+reproduce (including views and triggers). The importer opens source snapshots incrementally. If a later source
+cannot be opened, already-open read-only handles are closed and the exclusively
+reserved destination plus its SQLite sidecars are removed. A fault-injection
+test verifies this path and confirms all source snapshot bytes remain unchanged.
+
+The resulting file is a staging
 artifact, not a migrated production database. It must still be reopened using
 the exact network genesis and proof-of-work limit through
 `PersistentNodeState.open_coordinated`, then pass node-level recovery,
