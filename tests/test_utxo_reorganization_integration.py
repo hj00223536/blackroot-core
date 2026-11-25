@@ -84,6 +84,7 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
         switched = self.store.reorganize_to_best(
             self.headers,
             {
+                self.old_one.header.hash: self.old_one,
                 old_two.header.hash: old_two,
                 old_three.header.hash: old_three,
             },
