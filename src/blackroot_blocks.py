@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .blackroot_consensus import block_subsidy, MAX_MONEY
+from .blackroot_maturity import UTXOProvenance, validate_coinbase_maturity
 from .blackroot_chain import BlockHeader
 from .blackroot_script import validate_transaction_scripts
 from .blackroot_transactions import (
@@ -64,10 +65,14 @@ def validate_block_transactions(
     block: Block,
     parent_utxos: dict[OutPoint, TxOutput],
     height: int,
+    parent_provenance: dict[OutPoint, UTXOProvenance] | None = None,
 ) -> tuple[dict[OutPoint, TxOutput], int]:
-    """Validate block transaction accounting against a parent UTXO snapshot.
+    """Validate block transactions against a parent UTXO snapshot.
 
-    Returns (new UTXO snapshot, total_fees). The input mapping is not mutated.
+    When parent_provenance is supplied it must cover every parent UTXO and
+    coinbase maturity is enforced. Callers without authenticated provenance
+    retain the legacy accounting-only behavior and MUST NOT use it for chain
+    state transitions. Returns (new UTXO snapshot, total_fees).
     Coinbase outputs are added only after regular transactions are processed,
     preventing same-block spending of the current block's coinbase.
     """
@@ -92,9 +97,23 @@ def validate_block_transactions(
     if merkle_root(txids) != block.header.merkle_root:
         raise ValueError("block merkle root does not match transactions")
 
+    if parent_provenance is not None:
+        if not isinstance(parent_provenance, dict):
+            raise TypeError("parent_provenance must be a dict")
+        if set(parent_provenance) != set(parent_utxos):
+            raise ValueError("complete authenticated UTXO provenance is required")
+        for provenance in parent_provenance.values():
+            if not isinstance(provenance, UTXOProvenance):
+                raise TypeError("invalid UTXO provenance entry")
+
     working = dict(parent_utxos)
     fees = 0
     for tx in block.transactions[1:]:
+        if parent_provenance is not None:
+            for txin in tx.inputs:
+                provenance = parent_provenance.get(txin.previous_output)
+                if provenance is not None:
+                    validate_coinbase_maturity(provenance, height)
         # Authorization is consensus-critical: reject unsupported or invalid scripts.
         validate_transaction_scripts(tx, working)
         fee = apply_transaction(tx, working)
