@@ -14,9 +14,9 @@ from src.blackroot_transactions import (
 
 class CompactSizeTests(unittest.TestCase):
     def test_boundary_encodings(self):
-        self.assertEqual(compact_size(252), b"\\xfc")
-        self.assertEqual(compact_size(253), b"\\xfd\\xfd\\x00")
-        self.assertEqual(compact_size(65536), b"\\xfe\\x00\\x00\\x01\\x00")
+        self.assertEqual(compact_size(252), b"\xfc")
+        self.assertEqual(compact_size(253), b"\xfd\xfd\x00")
+        self.assertEqual(compact_size(65536), b"\xfe\x00\x00\x01\x00")
 
     def test_rejects_invalid_values(self):
         for value in (-1, 1.2, True, 2**64):
