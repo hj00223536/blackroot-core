@@ -240,6 +240,127 @@ class UTXOStore:
                 db.rollback()
                 raise
 
+    def reorganize(
+        self,
+        disconnect_hashes: tuple[bytes, ...],
+        connect_blocks: tuple[Block, ...],
+    ) -> tuple[int, bytes] | None:
+        """Atomically disconnect an active suffix and connect a replacement.
+
+        disconnect_hashes must be ordered tip-first; connect_blocks must be
+        ordered fork-first. The caller remains responsible for independently
+        validating consensus, scripts, proof of work, and greater chainwork.
+        Any failure rolls the entire reorganization back.
+        """
+        if not isinstance(disconnect_hashes, tuple) or not isinstance(connect_blocks, tuple):
+            raise TypeError("disconnect_hashes and connect_blocks must be tuples")
+        if not disconnect_hashes and not connect_blocks:
+            raise ValueError("reorganization must change at least one block")
+        if any(not isinstance(item, bytes) or len(item) != 32 for item in disconnect_hashes):
+            raise ValueError("every disconnect hash must be exactly 32 bytes")
+        if any(not isinstance(block, Block) for block in connect_blocks):
+            raise TypeError("every replacement entry must be a Block")
+
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                for expected_hash in disconnect_hashes:
+                    tip = db.execute(
+                        "SELECT height, block_hash FROM blocks ORDER BY height DESC LIMIT 1"
+                    ).fetchone()
+                    if tip is None:
+                        raise ValueError("disconnect list extends below empty chain")
+                    height, block_hash = tip[0], bytes(tip[1])
+                    if block_hash != expected_hash:
+                        raise ValueError("disconnect hashes must match active tips in tip-first order")
+
+                    created = db.execute(
+                        "SELECT txid, output_index FROM block_undo_created WHERE height=?",
+                        (height,),
+                    ).fetchall()
+                    for txid, index in created:
+                        db.execute(
+                            "DELETE FROM utxos WHERE txid=? AND output_index=?",
+                            (txid, index),
+                        )
+                    spent = db.execute(
+                        "SELECT txid, output_index, value, script_pubkey "
+                        "FROM block_undo_spent WHERE height=?",
+                        (height,),
+                    ).fetchall()
+                    for txid, index, value, script in spent:
+                        db.execute(
+                            "INSERT INTO utxos(txid, output_index, value, script_pubkey) "
+                            "VALUES(?, ?, ?, ?)",
+                            (txid, index, value, script),
+                        )
+                    db.execute("DELETE FROM blocks WHERE height=?", (height,))
+
+                for block in connect_blocks:
+                    tip = db.execute(
+                        "SELECT height, block_hash FROM blocks ORDER BY height DESC LIMIT 1"
+                    ).fetchone()
+                    if tip is None:
+                        height = 0
+                        if block.header.prev_hash != bytes(32):
+                            raise ValueError("replacement genesis must have a zero parent")
+                    else:
+                        height = tip[0] + 1
+                        if block.header.prev_hash != bytes(tip[1]):
+                            raise ValueError("replacement block does not extend replacement tip")
+
+                    parent: dict[OutPoint, TxOutput] = {}
+                    for txid, index, value, script in db.execute(
+                        "SELECT txid, output_index, value, script_pubkey FROM utxos"
+                    ).fetchall():
+                        parent[OutPoint(bytes(txid), index)] = TxOutput(value, bytes(script))
+                    updated, fees = validate_block_transactions(block, parent, height)
+
+                    db.execute(
+                        "INSERT INTO blocks(height, block_hash, prev_hash, header, tx_count, total_fees) "
+                        "VALUES(?, ?, ?, ?, ?, ?)",
+                        (height, block.header.hash, block.header.prev_hash,
+                         block.header.serialize(), len(block.transactions), fees),
+                    )
+                    for tx in block.transactions[1:]:
+                        for txin in tx.inputs:
+                            previous = txin.previous_output
+                            spent_output = parent.get(previous)
+                            if spent_output is not None:
+                                db.execute(
+                                    "INSERT INTO block_undo_spent(height, txid, output_index, value, script_pubkey) "
+                                    "VALUES(?, ?, ?, ?, ?)",
+                                    (height, previous.txid, previous.index,
+                                     spent_output.value, spent_output.script_pubkey),
+                                )
+                    for tx in block.transactions:
+                        for index, _output in enumerate(tx.outputs):
+                            db.execute(
+                                "INSERT INTO block_undo_created(height, txid, output_index) VALUES(?, ?, ?)",
+                                (height, tx.txid, index),
+                            )
+                    for position, tx in enumerate(block.transactions):
+                        db.execute(
+                            "INSERT INTO block_transactions(height, position, txid, raw_transaction) "
+                            "VALUES(?, ?, ?, ?)",
+                            (height, position, tx.txid, tx.serialize()),
+                        )
+                    db.execute("DELETE FROM utxos")
+                    db.executemany(
+                        "INSERT INTO utxos(txid, output_index, value, script_pubkey) VALUES(?, ?, ?, ?)",
+                        [(op.txid, op.index, output.value, output.script_pubkey)
+                         for op, output in updated.items()],
+                    )
+
+                tip = db.execute(
+                    "SELECT height, block_hash FROM blocks ORDER BY height DESC LIMIT 1"
+                ).fetchone()
+                db.commit()
+                return None if tip is None else (tip[0], bytes(tip[1]))
+            except Exception:
+                db.rollback()
+                raise
+
     def disconnect_tip(self, expected_tip_hash: bytes) -> tuple[int, bytes]:
         """Disconnect exactly the current tip using its recorded UTXO undo data.
 
