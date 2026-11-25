@@ -74,3 +74,14 @@ block-body validation/UTXO connector boundary.
 This is a local integration test using a test genesis and a mocked persistent
 store connector. It is not evidence of public internet interoperability,
 production consensus readiness, or a live mainnet.
+
+
+## Higher-work branch and UTXO reorganization tests
+
+`tests/test_utxo_reorganization_integration.py` builds a validated header DAG
+with an active one-block branch and a competing two-block branch. It checks
+that the UTXO database switches to the strictly higher-work branch, that a
+missing replacement body leaves the active database unchanged, and that
+repeating a completed switch is idempotent. These are local storage/consensus
+integration tests; they do not yet prove automatic fork-body acquisition and
+reorganization orchestration across remote peers.
