@@ -186,6 +186,22 @@ class UTXOStore:
             )
         return block_hash
 
+    def discard_block_bodies(self, block_hashes: tuple[bytes, ...]) -> int:
+        """Remove archived candidate bodies after branch validation fails."""
+        if not isinstance(block_hashes, tuple):
+            raise TypeError("block_hashes must be a tuple")
+        if any(not isinstance(item, bytes) or len(item) != 32 for item in block_hashes):
+            raise ValueError("every block hash must be exactly 32 bytes")
+        if not block_hashes:
+            return 0
+        with self._write_scope() as db:
+            before = db.total_changes
+            db.executemany(
+                "DELETE FROM block_bodies WHERE block_hash=?",
+                ((item,) for item in dict.fromkeys(block_hashes)),
+            )
+            return db.total_changes - before
+
     def load_block_body(self, block_hash: bytes) -> Block | None:
         """Load and integrity-check a previously archived serialized block body."""
         if not isinstance(block_hash, bytes) or len(block_hash) != 32:
