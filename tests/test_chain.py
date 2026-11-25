@@ -107,5 +107,35 @@ class HeaderChainTests(unittest.TestCase):
             chain.add(invalid)
 
 
+    def test_enforces_difficulty_retarget_at_interval_boundary(self):
+        from src.blackroot_consensus import DIFFICULTY_INTERVAL
+
+        genesis = mine_header(ZERO_HASH, 1)
+        chain = HeaderChain(POW_LIMIT, genesis)
+        parent = genesis
+        for height in range(1, DIFFICULTY_INTERVAL):
+            parent = mine_header(parent.hash, 1 + height * 600)
+            chain.add(parent)
+
+        candidate_height = DIFFICULTY_INTERVAL
+        required = chain.expected_bits(parent.hash, candidate_height)
+        self.assertNotEqual(required, BITS)
+        wrong = mine_header(parent.hash, 1 + candidate_height * 600, BITS)
+        with self.assertRaisesRegex(ValueError, "difficulty bits"):
+            chain.add(wrong)
+
+        correct = mine_header(parent.hash, 1 + candidate_height * 600, required)
+        chain.add(correct)
+        self.assertEqual(chain.tip.hash, correct.hash)
+
+    def test_non_boundary_height_requires_parent_bits(self):
+        genesis = mine_header(ZERO_HASH, 1)
+        chain = HeaderChain(POW_LIMIT, genesis)
+        wrong_bits = 0x2070ffff
+        wrong = mine_header(genesis.hash, 2, wrong_bits)
+        with self.assertRaisesRegex(ValueError, "difficulty bits"):
+            chain.add(wrong)
+
+
 if __name__ == "__main__":
     unittest.main()
