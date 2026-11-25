@@ -88,7 +88,9 @@ staging database. On failure it removes only the destination file it created;
 source snapshots remain read-only.
 
 The importer currently rejects schema features that the planner cannot safely
-reproduce (including views and triggers). The importer opens source snapshots incrementally. If a later source
+reproduce (including views and triggers). After copying and closing the read-only source handles, the importer re-hashes every snapshot and compares it with the pre-copy digest. If any source changed during the import, the staging output is rejected and cleaned up; a fault-injection test verifies the destination is removed and source snapshots remain unchanged. This detects ordinary source-file drift during the copy window, but does not replace filesystem-level immutability or protection against an attacker able to modify and restore a file between checks.
+
+The importer opens source snapshots incrementally. If a later source
 cannot be opened, already-open read-only handles are closed and the exclusively
 reserved destination plus its SQLite sidecars are removed. A fault-injection
 test verifies this path and confirms all source snapshot bytes remain unchanged.
