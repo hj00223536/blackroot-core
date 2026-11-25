@@ -79,12 +79,12 @@ class BlockValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "truncated"):
             Block.deserialize(raw[:-1])
         with self.assertRaisesRegex(ValueError, "trailing bytes"):
-            Block.deserialize(raw + b"\\x00")
+            Block.deserialize(raw + b"\x00")
 
     def test_block_deserializer_rejects_noncanonical_transaction_count(self):
         block = make_block([make_coinbase(1)])
         raw = block.serialize()
-        malformed = raw[:80] + b"\\xfd\\x01\\x00" + raw[81:]
+        malformed = raw[:80] + b"\xfd\x01\x00" + raw[81:]
         with self.assertRaisesRegex(ValueError, "non-canonical"):
             Block.deserialize(malformed)
 
