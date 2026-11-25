@@ -87,6 +87,20 @@ class PersistentNodeStateTests(unittest.TestCase):
             )
         self.assertFalse(headers.exists())
 
+    def test_rejects_hard_link_aliases_of_existing_database_files(self):
+        original = self.root / "original.sqlite"
+        alias = self.root / "hard-link.sqlite"
+        original.write_bytes(b"existing database placeholder")
+        alias.hardlink_to(original)
+        with self.assertRaisesRegex(ValueError, "header and UTXO databases"):
+            PersistentNodeState(
+                original,
+                alias,
+                POW_LIMIT,
+                self.genesis_block.header,
+            )
+        self.assertEqual(original.read_bytes(), b"existing database placeholder")
+
     def test_connects_and_recovers_matching_persistent_tip(self):
         state = self.state()
         self.assertEqual(state.connect_best_block(self.genesis_block, 0), 0)
