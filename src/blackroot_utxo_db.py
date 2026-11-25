@@ -85,6 +85,13 @@ class UTXOStore:
                 ) WITHOUT ROWID
             """)
             db.execute("""
+                CREATE TABLE IF NOT EXISTS block_bodies (
+                    block_hash BLOB PRIMARY KEY CHECK(length(block_hash) = 32),
+                    raw_block BLOB NOT NULL,
+                    serialized_size INTEGER NOT NULL CHECK(serialized_size > 0)
+                ) WITHOUT ROWID
+            """)
+            db.execute("""
                 CREATE TABLE IF NOT EXISTS block_undo_spent (
                     height INTEGER NOT NULL REFERENCES blocks(height) ON DELETE CASCADE,
                     txid BLOB NOT NULL CHECK(length(txid) = 32),
@@ -104,6 +111,52 @@ class UTXOStore:
                     PRIMARY KEY(height, txid, output_index)
                 ) WITHOUT ROWID
             """)
+
+    def store_block_body(self, block: Block) -> bytes:
+        """Persist a candidate block body by header hash for later branch recovery.
+
+        The body must have a matching merkle commitment. Header consensus and
+        transaction authorization are checked when the body is connected.
+        """
+        if not isinstance(block, Block):
+            raise TypeError("block must be a Block")
+        raw = block.serialize()
+        block_hash = block.header.hash
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT raw_block FROM block_bodies WHERE block_hash=?", (block_hash,)
+            ).fetchone()
+            if row is not None:
+                if bytes(row[0]) != raw:
+                    raise RuntimeError("conflicting archived body for identical block header")
+                return block_hash
+            db.execute(
+                "INSERT INTO block_bodies(block_hash, raw_block, serialized_size) VALUES(?, ?, ?)",
+                (block_hash, raw, len(raw)),
+            )
+        return block_hash
+
+    def load_block_body(self, block_hash: bytes) -> Block | None:
+        """Load and integrity-check a previously archived serialized block body."""
+        if not isinstance(block_hash, bytes) or len(block_hash) != 32:
+            raise ValueError("block_hash must be exactly 32 bytes")
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT raw_block, serialized_size FROM block_bodies WHERE block_hash=?",
+                (block_hash,),
+            ).fetchone()
+        if row is None:
+            return None
+        raw = bytes(row[0])
+        if len(raw) != row[1]:
+            raise RuntimeError("archived block body size metadata is corrupt")
+        block = Block.deserialize(raw)
+        if block.header.hash != block_hash:
+            raise RuntimeError("archived block body header hash does not match archive key")
+        from .blackroot_transactions import merkle_root
+        if merkle_root(tx.txid for tx in block.transactions) != block.header.merkle_root:
+            raise RuntimeError("archived block body merkle root is corrupt")
+        return block
 
     def add_genesis_output(self, outpoint: OutPoint, output: TxOutput) -> None:
         """Insert a trusted bootstrap output; caller must authenticate its origin."""
@@ -346,7 +399,7 @@ class UTXOStore:
     def reorganize_to_best(
         self,
         header_chain: HeaderChain,
-        replacement_blocks: dict[bytes, Block],
+        replacement_blocks: dict[bytes, Block] | None = None,
     ) -> tuple[int, bytes]:
         """Apply the HeaderChain's strictly-higher-work best branch to this UTXO store.
 
@@ -359,8 +412,9 @@ class UTXOStore:
         """
         if not isinstance(header_chain, HeaderChain):
             raise TypeError("header_chain must be a HeaderChain")
-        if not isinstance(replacement_blocks, dict):
-            raise TypeError("replacement_blocks must be a dict")
+        if replacement_blocks is not None and not isinstance(replacement_blocks, dict):
+            raise TypeError("replacement_blocks must be a dict or None")
+        replacement_blocks = {} if replacement_blocks is None else dict(replacement_blocks)
         active = self.tip()
         if active is None:
             raise ValueError("cannot reorganize an empty UTXO chain")
@@ -383,6 +437,8 @@ class UTXOStore:
         connect_blocks = []
         for header in connect_headers:
             block = replacement_blocks.get(header.hash)
+            if block is None:
+                block = self.load_block_body(header.hash)
             if not isinstance(block, Block):
                 raise ValueError("missing replacement block body for best-chain header")
             if block.header.serialize() != header.serialize():
