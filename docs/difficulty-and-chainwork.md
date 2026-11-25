@@ -14,14 +14,20 @@ as a network consensus rule.
 - Header work: floor(2^256 / (target + 1)).
 - Chainwork: sum of each accepted block's work.
 
-## Important boundary details still to decide
+## Retarget boundary: current implementation record, not a frozen rule
 
 The helper function retarget_compact(previous_bits, actual_timespan, pow_limit)
-only performs the arithmetic. A normative protocol must still define exactly
-which ancestor timestamps are sampled at a retarget boundary, whether the
-timespan covers 2,015 or 2,016 timestamp intervals, median-time-past rules,
-future timestamp limits, genesis behavior, minimum-difficulty exceptions, and
-whether test networks use special rules. These details are consensus-critical.
+only performs the arithmetic. The current HeaderChain implementation samples
+the parent timestamp and the ancestor at candidate_height - 2,016. Therefore,
+for a candidate at height 2,016 it samples block 2,015 and block 0: 2,015
+elapsed timestamp intervals are compared with the nominal 2,016 * 600-second
+target timespan. A regression test pins this exact behavior.
+
+This records what the prototype currently does; it does not approve the rule
+for a network. A normative protocol must explicitly decide whether to preserve
+this boundary formula, and define median-time-past rules, future timestamp
+limits, genesis behavior, minimum-difficulty exceptions, and whether test
+networks use special rules. These details are consensus-critical.
 
 ## Current in-memory HeaderChain behavior
 
