@@ -276,10 +276,10 @@ finally:
                     if __import__("time").monotonic() >= deadline:
                         self.fail("retry process did not attempt reorganization")
                     __import__("time").sleep(0.01)
-                self.assertTrue(ready.exists())
-                # The contender has entered reorganize_best while the first
-                # process still owns its uncommitted SQLite write transaction.
-                release.write_text("crash writer while contender is blocked on SQLite")
+                # The contender has attempted to open coordinated state while
+                # the first process owns its uncommitted SQLite write transaction.
+                # It retries the transient lock and proceeds after rollback.
+                release.write_text("crash writer while contender retries SQLite open")
                 self.assertEqual(first.wait(timeout=20), 79)
                 self.assertEqual(second.wait(timeout=30), 0)
                 self.assertTrue(result.read_text().startswith("accepted:2:"))
