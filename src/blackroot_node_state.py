@@ -1,10 +1,9 @@
 """Fail-closed lifecycle facade for persistent headers and UTXO state.
 
-The header DAG and UTXO database remain separate SQLite databases, so this
-facade does not claim cross-database atomicity. It verifies their relationship
-on startup and requires explicit block bodies for best-chain connection or
-reorganization. A crash can leave headers ahead of UTXO state; callers resume
-by supplying the missing validated bodies.
+The default compatibility mode uses separate SQLite files and a recovery
+journal. An opt-in coordinated mode places all stores on one node-owned
+connection and commits block acceptance/reorganization in one transaction.
+Neither mode is a production-ready consensus node.
 """
 from __future__ import annotations
 
@@ -98,11 +97,28 @@ class PersistentNodeState:
     def coordinated(self) -> bool:
         return self._coordinator is not None
 
+    @classmethod
+    def open_coordinated(
+        cls, database_path: str | Path, pow_limit: int, genesis: BlockHeader
+    ) -> "PersistentNodeState":
+        """Open all persistent stores on one node-owned SQLite connection."""
+        return cls(
+            database_path, database_path, pow_limit, genesis,
+            database_path=database_path,
+        )
+
     def close(self) -> None:
-        """Close the node-owned SQLite connection."""
+        """Close the node-owned SQLite connection; the instance stays closed."""
         if self._coordinator is not None:
             self._coordinator.__exit__(None, None, None)
-            self._coordinator = None
+
+    def __enter__(self) -> "PersistentNodeState":
+        if self._coordinator is not None and self._coordinator._connection is None:
+            raise RuntimeError("coordinated node state is closed")
+        return self
+
+    def __exit__(self, exc_type, exc, traceback) -> None:
+        self.close()
 
     def _require_coordinator(self) -> SQLiteTransactionCoordinator:
         if self._coordinator is None:
