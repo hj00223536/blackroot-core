@@ -34,3 +34,26 @@ The prototype now records two undo tables atomically with each connected block: 
 Tests cover restoring a spent parent output, removing block-created outputs, wrong-hash rejection, empty-chain rejection, and cleanup of genesis undo data.
 
 This is only a **single-tip storage rollback primitive**. It is not full chain reorganization: there is no side-branch index, competing-chain selection, validated cumulative work, or automatic disconnect/connect orchestration. The caller must not use it to accept an unvalidated replacement branch. Script and signature verification, proof-of-work/header validation, coinbase maturity, and other consensus rules remain absent.
+
+
+## Atomic active-chain suffix replacement
+
+The store now exposes `reorganize(disconnect_hashes, connect_blocks)`. The
+disconnect list must name the current active suffix in tip-first order; the
+replacement blocks must be ordered fork-first. In one SQLite write transaction
+the method restores spent parent outputs, removes disconnected outputs and
+records, validates each replacement block's transaction accounting against
+the evolving UTXO set, writes its block/transaction/undo records, and advances
+the stored tip. If any replacement block fails validation or any database
+operation fails, the entire operation—including all disconnects—is rolled
+back.
+
+Tests cover a successful one-block replacement, preservation of the common
+ancestor's UTXO, removal of the old branch output, rejection of incorrect
+disconnect order, and rollback when a replacement overpays its coinbase.
+
+**Critical boundary:** this method is a transactional storage primitive, not
+an autonomous consensus reorganization engine. It does not decide whether the
+replacement has greater chainwork and does not validate header PoW, difficulty,
+timestamps, scripts/signatures, coinbase maturity, or branch-specific full
+consensus. A caller must establish all those conditions before calling it.
