@@ -48,7 +48,7 @@ Do not invent or manually select a genesis hash. Until this gate passes, nodes c
 - [ ] Define peer discovery and bootstrap policy; do not publish seed addresses until operators have agreed to run nodes.
 - [ ] Add adversarial interoperability, fuzz, property, and long-running multi-process tests.
 - [x] Enforce legacy absolute nLockTime finality and BIP68 height-based relative sequence locks using authenticated UTXO creation heights.
-- [x] Reject unsupported BIP68 timestamp-based relative locks until creation-time MTP metadata is persisted and authenticated.
+- [x] Persist authenticated UTXO creation MTP in schema v3 and undo records; enforce BIP68 timestamp-based relative locks at 512-second granularity, with missing metadata rejected. Schema-v2 databases require a verified reindex from genesis.
 - [ ] Document unsupported transaction/script features and reject them deterministically.
 
 ### 5. Release and operate the testnet
