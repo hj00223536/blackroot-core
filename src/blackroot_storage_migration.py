@@ -113,7 +113,7 @@ def _inspect_database(path: Path, kind: str) -> dict:
         elif kind == "utxo":
             metadata = dict(db.execute("SELECT key, value FROM metadata"))
             version = metadata.get("schema_version")
-            if version != "2":
+            if version not in ("2", "3"):
                 raise RuntimeError(f"unsupported UTXO schema version: {version!r}")
             counts = {
                 table: db.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
