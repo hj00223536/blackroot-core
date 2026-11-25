@@ -32,7 +32,7 @@ class LoopbackSyncIntegrationTests(unittest.IsolatedAsyncioTestCase):
             PeerHeaderSync(self.chain, protocol_version=1, adjusted_time=lambda: 1_800_000_000)
         )
         self.client_sync = PeerSyncCoordinator(
-            PeerHeaderSync(self.chain, protocol_version=1)
+            PeerHeaderSync(self.chain, protocol_version=1, adjusted_time=lambda: 1_800_000_000)
         )
         self.headers_received = asyncio.Event()
 
