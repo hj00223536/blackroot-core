@@ -29,6 +29,28 @@ class TransactionTests(unittest.TestCase):
         self.funding = OutPoint(bytes.fromhex("11" * 32), 0)
         self.utxos = {self.funding: TxOutput(5 * 100_000_000, b"previous-script")}
 
+    def test_legacy_transaction_round_trip(self):
+        tx = Transaction(
+            2,
+            (TxInput(self.funding, b"\\x01\\x02", 0xFFFFFFFE),),
+            (TxOutput(123456, b"\\x51\\x21"),),
+            42,
+        )
+        decoded = Transaction.deserialize(tx.serialize())
+        self.assertEqual(decoded, tx)
+        self.assertEqual(decoded.txid, tx.txid)
+
+    def test_deserializer_rejects_trailing_truncated_and_noncanonical_data(self):
+        tx = Transaction(1, (TxInput(self.funding),), (TxOutput(1, b"x"),))
+        raw = tx.serialize()
+        with self.assertRaisesRegex(ValueError, "trailing bytes"):
+            Transaction.deserialize(raw + b"\\x00")
+        with self.assertRaisesRegex(ValueError, "truncated"):
+            Transaction.deserialize(raw[:-1])
+        noncanonical = raw[:4] + b"\\xfd\\x01\\x00" + raw[5:]
+        with self.assertRaisesRegex(ValueError, "non-canonical"):
+            Transaction.deserialize(noncanonical)
+
     def test_serialization_and_txid_are_deterministic(self):
         tx = Transaction(
             1,
