@@ -276,6 +276,12 @@ class SQLiteSnapshotTests(unittest.TestCase):
         self.assertFalse(result["source_files_modified"])
         self.assertEqual(result["integrity_check"], "ok")
         self.assertEqual(result["foreign_key_check"], "ok")
+        self.assertEqual(result["completion_manifest"], "complete")
+        with sqlite3.connect(destination) as db:
+            marker = db.execute(
+                "SELECT format_version, status FROM blackroot_import_manifest WHERE singleton=1"
+            ).fetchone()
+        self.assertEqual(marker, (1, "complete"))
         self.assertEqual(before, {kind: path.read_bytes() for kind, path in snapshots.items()})
         with sqlite3.connect(destination) as db:
             self.assertEqual(
@@ -369,7 +375,8 @@ class SQLiteSnapshotTests(unittest.TestCase):
         )
         self.assertEqual(imported["status"], "coordinated_staging_database_created")
         reopened = validate_coordinated_staging_database(
-            staged, pow_limit=pow_limit, genesis=genesis
+            staged, pow_limit=pow_limit, genesis=genesis,
+            require_import_manifest=True,
         )
         self.assertEqual(reopened["status"], "coordinated_node_reopen_passed")
         self.assertEqual(reopened["utxo_tip"], (expected_tip[0], expected_tip[1].hex()))
@@ -408,11 +415,24 @@ class SQLiteSnapshotTests(unittest.TestCase):
         resumed.close()
 
         reopened_again = validate_coordinated_staging_database(
-            staged, pow_limit=pow_limit, genesis=genesis
+            staged, pow_limit=pow_limit, genesis=genesis,
+            require_import_manifest=True,
         )
         self.assertEqual(reopened_again["status"], "coordinated_node_reopen_passed")
         self.assertEqual(reopened_again["utxo_tip"], (3, resumed_header.hash.hex()))
         self.assertEqual(reopened_again["header_best_hash"], resumed_header.hash.hex())
+
+    def test_strict_staging_validation_rejects_missing_import_completion_manifest(self):
+        genesis = BlockHeader(1, bytes(32), bytes(32), 1, 0x207fffff, 0)
+        pow_limit = decode_compact_target(0x207fffff)
+        database = self.root / "node-without-import-marker.sqlite"
+        state = PersistentNodeState.open_coordinated(database, pow_limit, genesis)
+        state.close()
+        with self.assertRaisesRegex(RuntimeError, "no completed import manifest"):
+            validate_coordinated_staging_database(
+                database, pow_limit=pow_limit, genesis=genesis,
+                require_import_manifest=True,
+            )
 
     def test_coordinated_staging_validator_reopens_real_node_stores(self):
         genesis = BlockHeader(1, bytes(32), bytes(32), 1, 0x207fffff, 0)
