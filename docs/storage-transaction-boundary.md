@@ -38,3 +38,8 @@ The migration tooling still needs long-chain and large-dataset coverage, backup 
 - Complete consensus, script/signature, networking, wallet, mining, fuzzing, independent implementation, and external security-review requirements listed in `docs/mainnet-launch-gates.md`.
 
 **Mainnet status remains NOT READY.** Passing these tests is evidence only for the specific prototype behaviors described above, not production safety or monetary value.
+
+
+## Recovery-journal fail-closed behavior
+
+The recovery journal resolves an intent only when the observed UTXO tip equals either the recorded old tip or the recorded new tip. If the observed tip is a third state, reconciliation raises and leaves the intent pending; it does not guess, discard the journal row, or automatically rewrite either store. Regression tests cover both valid endpoints and verify that a third endpoint preserves the pending intent until an operator or a later recovery attempt can establish a valid endpoint. These tests do not replace independent crash-consistency and storage-device testing.
