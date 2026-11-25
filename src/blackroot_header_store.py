@@ -8,29 +8,59 @@ not a production consensus database.
 from __future__ import annotations
 
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
 from .blackroot_chain import BlockHeader, HeaderChain
+from .blackroot_sqlite import SQLiteTransactionConnection
 
 
 class PersistentHeaderStore:
     SCHEMA_VERSION = 1
 
-    def __init__(self, path: str | Path, pow_limit: int, genesis: BlockHeader):
+    def __init__(
+        self, path: str | Path, pow_limit: int, genesis: BlockHeader, *,
+        connection: SQLiteTransactionConnection | None = None,
+    ):
         if not isinstance(genesis, BlockHeader):
             raise TypeError("genesis must be a BlockHeader")
         if not isinstance(pow_limit, int) or isinstance(pow_limit, bool) or pow_limit <= 0:
             raise ValueError("pow_limit must be a positive integer")
         self.path = str(path)
         self.pow_limit = pow_limit
+        self._external_connection = connection
+        if connection is not None and not isinstance(connection, SQLiteTransactionConnection):
+            raise TypeError("connection must be a SQLiteTransactionConnection")
+        if connection is not None and not connection.in_transaction:
+            raise RuntimeError("coordinator-owned header initialization requires an active outer transaction")
         self._chain: HeaderChain | None = None
         self._initialize(genesis)
 
     def _connect(self):
+        if self._external_connection is not None:
+            return self._external_connection
         db = sqlite3.connect(self.path, timeout=10.0)
         db.execute("PRAGMA foreign_keys = ON")
         db.execute("PRAGMA busy_timeout = 10000")
         return db
+
+    @contextmanager
+    def _write_scope(self) -> Iterator[sqlite3.Connection | SQLiteTransactionConnection]:
+        if self._external_connection is not None:
+            if not self._external_connection.in_transaction:
+                raise RuntimeError("coordinator-owned header writes require an active outer transaction")
+            yield self._external_connection
+            return
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            try:
+                yield db
+                db.commit()
+            except BaseException:
+                if db.in_transaction:
+                    db.rollback()
+                raise
 
     @staticmethod
     def _verify_sqlite_integrity(db: sqlite3.Connection) -> None:
@@ -53,7 +83,8 @@ class PersistentHeaderStore:
 
     def _initialize(self, genesis: BlockHeader) -> None:
         with self._connect() as db:
-            db.execute("PRAGMA journal_mode = WAL")
+            if self._external_connection is None:
+                db.execute("PRAGMA journal_mode = WAL")
             db.execute("""
                 CREATE TABLE IF NOT EXISTS header_metadata (
                     key TEXT PRIMARY KEY,
@@ -157,26 +188,31 @@ class PersistentHeaderStore:
             max_future_seconds=max_future_seconds,
         )
         block_hash = header.hash
-        with self._connect() as db:
-            db.execute("BEGIN IMMEDIATE")
-            try:
-                # Another process may have committed headers after this
-                # instance loaded its in-memory DAG. Never append from stale
-                # state: require an explicit reopen/replay before retrying.
-                persisted_hashes = {
-                    bytes(row[0]) for row in db.execute(
-                        "SELECT block_hash FROM headers"
-                    ).fetchall()
-                }
-                live_hashes = {node.header.hash for node in live_chain.nodes}
-                if persisted_hashes != live_hashes:
-                    raise RuntimeError(
-                        "persistent header store changed concurrently; reopen before retrying"
-                    )
-                self._insert_node(db, candidate, block_hash)
-                db.commit()
-            except Exception:
-                db.rollback()
-                raise
-        self._chain = candidate
+        with self._write_scope() as db:
+            # Another process may have committed headers after this
+            # instance loaded its in-memory DAG. Never append from stale
+            # state: require an explicit replay before retrying.
+            persisted_hashes = {
+                bytes(row[0]) for row in db.execute(
+                    "SELECT block_hash FROM headers"
+                ).fetchall()
+            }
+            live_hashes = {node.header.hash for node in live_chain.nodes}
+            if persisted_hashes != live_hashes:
+                raise RuntimeError(
+                    "persistent header store changed concurrently; reload before retrying"
+                )
+            self._insert_node(db, candidate, block_hash)
+        # With an externally-owned transaction, publish only after the caller
+        # commits and explicitly reloads. A later outer rollback must not leave
+        # this in-memory DAG ahead of durable storage.
+        if self._external_connection is None:
+            self._chain = candidate
         return display_hash
+
+    def reload(self) -> HeaderChain:
+        """Replay persisted headers after an externally-owned transaction commits."""
+        with self._connect() as db:
+            self._verify_sqlite_integrity(db)
+            self._replay(db, self.chain.best_chain()[0])
+        return self.chain
