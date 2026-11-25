@@ -9,7 +9,6 @@ import os
 import sqlite3
 from pathlib import Path
 from urllib.parse import quote
-from urllib.parse import quote
 
 
 _REQUIRED_TABLES = {
