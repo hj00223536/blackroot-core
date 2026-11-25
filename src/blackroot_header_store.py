@@ -23,7 +23,7 @@ class PersistentHeaderStore:
             raise ValueError("pow_limit must be a positive integer")
         self.path = str(path)
         self.pow_limit = pow_limit
-        self._chain = HeaderChain(pow_limit, genesis)
+        self._chain: HeaderChain | None = None
         self._initialize(genesis)
 
     def _connect(self):
@@ -35,6 +35,8 @@ class PersistentHeaderStore:
     @property
     def chain(self) -> HeaderChain:
         """Return the current in-memory validated DAG."""
+        if self._chain is None:
+            raise RuntimeError("persistent header store has not been initialized")
         return self._chain
 
     def _initialize(self, genesis: BlockHeader) -> None:
@@ -66,11 +68,13 @@ class PersistentHeaderStore:
                 "genesis_hash": genesis.hash.hex(),
             }
             if not metadata:
+                initial = HeaderChain(self.pow_limit, genesis)
                 db.executemany(
                     "INSERT INTO header_metadata(key, value) VALUES(?, ?)",
                     expected.items(),
                 )
-                self._insert_node(db, self._chain, genesis.hash)
+                self._insert_node(db, initial, genesis.hash)
+                self._chain = initial
             else:
                 if metadata != expected:
                     raise RuntimeError("persistent header store parameters do not match supplied network genesis")
@@ -94,6 +98,7 @@ class PersistentHeaderStore:
 
     def _replay(self, db: sqlite3.Connection, genesis: BlockHeader) -> None:
         replayed = HeaderChain(self.pow_limit, genesis)
+        genesis_node = replayed.node(genesis.hash)
         rows = db.execute(
             "SELECT block_hash, height, version, prev_hash, merkle_root, timestamp, bits, nonce, chainwork "
             "FROM headers ORDER BY height, block_hash"
@@ -106,8 +111,10 @@ class PersistentHeaderStore:
                 raise RuntimeError("persistent header hash mismatch during replay")
             if height == 0:
                 genesis_rows += 1
-                if actual_hash != genesis.hash:
-                    raise RuntimeError("persistent header store contains a different genesis")
+                if (actual_hash != genesis.hash or height != genesis_node.height
+                        or str(genesis_node.chainwork) != chainwork
+                        or header.serialize() != genesis.serialize()):
+                    raise RuntimeError("persistent genesis metadata mismatch during replay")
                 continue
             try:
                 replayed.add_to_branch(header)
@@ -125,11 +132,12 @@ class PersistentHeaderStore:
         max_future_seconds: int = 7_200,
     ) -> str:
         """Validate on a replayed candidate, persist atomically, then publish it."""
-        candidate = HeaderChain(self.pow_limit, self._chain.best_chain()[0])
+        live_chain = self.chain
+        candidate = HeaderChain(self.pow_limit, live_chain.best_chain()[0])
         # Rebuild all known branches so fork choice and duplicate checks are
         # evaluated against the same DAG without mutating the live instance.
         nodes = sorted(
-            (node for node in self._chain._nodes.values() if node.height > 0),
+            (node for node in live_chain._nodes.values() if node.height > 0),
             key=lambda node: (node.height, node.header.hash),
         )
         for node in nodes:
@@ -139,7 +147,6 @@ class PersistentHeaderStore:
             max_future_seconds=max_future_seconds,
         )
         block_hash = header.hash
-        node = candidate.node(block_hash)
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             try:
