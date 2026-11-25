@@ -97,7 +97,18 @@ class MultiPeerReorganizationSync:
             raise
         self._requested_at.pop(block_hash, None)
         if not self.missing_best_branch_bodies() and not self.pool.pending_hashes:
-            return self.store.reorganize_to_best(self.chain)
+            active = self.store.tip()
+            if active is None:
+                raise ValueError("cannot activate a fork before the UTXO chain is initialized")
+            _disconnect, connect = self.chain.reorganization(active[1])
+            try:
+                return self.store.reorganize_to_best(self.chain)
+            except ValueError:
+                # A merkle-valid body can still fail transaction, script, or
+                # reward validation. Do not leave rejected branch bodies in
+                # the persistent archive where they could be retried forever.
+                self.store.discard_block_bodies(tuple(header.hash for header in connect))
+                raise
         return None
 
     def expire_requests(self, timeout: float, *, now: float | None = None) -> tuple[bytes, ...]:
