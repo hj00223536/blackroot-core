@@ -113,23 +113,23 @@ class PersistentBlockTests(unittest.TestCase):
         point = _mul(1)
         pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
         locking_script = p2pkh_script(_hash160(pubkey))
-        genesis_cb = coinbase(block_subsidy(0), b"\x01\x01", locking_script)
+        funding = OutPoint(bytes.fromhex("55" * 32), 0)
+        previous_output = TxOutput(block_subsidy(0), locking_script)
+        self.store.add_genesis_output(funding, previous_output)
+
+        genesis_cb = coinbase(block_subsidy(0), b"\x01\x01")
         genesis = block_for([genesis_cb])
         self.store.connect_block(genesis, 0)
-        genesis_output = OutPoint(genesis_cb.txid, 0)
-        previous_output = TxOutput(block_subsidy(0), locking_script)
 
-        spend = signed_spend(
-            genesis_output, previous_output, block_subsidy(0) - 100
-        )
+        spend = signed_spend(funding, previous_output, block_subsidy(0) - 100)
         next_cb = coinbase(block_subsidy(1) + 100, b"\x01\x02")
         second = block_for([next_cb, spend], previous=genesis.header.hash, timestamp=2)
         self.store.connect_block(second, 1)
-        self.assertIsNone(self.store.get(genesis_output))
+        self.assertIsNone(self.store.get(funding))
 
         self.assertEqual(self.store.disconnect_tip(second.header.hash), (1, second.header.hash))
         self.assertEqual(self.store.tip(), (0, genesis.header.hash))
-        self.assertEqual(self.store.get(genesis_output), TxOutput(block_subsidy(0), locking_script))
+        self.assertEqual(self.store.get(funding), previous_output)
         self.assertIsNone(self.store.get(OutPoint(next_cb.txid, 0)))
         self.assertIsNone(self.store.get(OutPoint(spend.txid, 0)))
 
