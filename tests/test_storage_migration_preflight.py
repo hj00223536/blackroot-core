@@ -6,6 +6,7 @@ from pathlib import Path
 from src.blackroot_storage_migration import (
     create_consistent_sqlite_snapshot,
     inspect_legacy_node_databases,
+    snapshot_legacy_node_databases,
 )
 
 
