@@ -118,6 +118,16 @@ transaction's recipient output is removed. The test validates the ordinary
 signature path and checks the resulting UTXO database integrity. Crash
 interruption at each write boundary remains a separate launch gate.
 
+### Chained in-block spends across reorganization
+
+The ordinary-output reorganization integration case now includes two
+transactions in the same block where the second spends the first transaction's
+newly-created P2PKH output. After switching to a competing branch, it verifies
+that the original funding output is restored and both disconnected transaction
+outputs are absent. This exercises ordered in-block UTXO updates and undo
+handling for a dependent transaction chain; broader adversarial package and
+mempool policy tests remain outstanding.
+
 ### UTXO creation-height invariant
 
 Authenticated UTXO provenance is now checked against the spending block height for every output type: no output may be spent at a height earlier than the height at which it was created. Coinbase outputs additionally require the configured maturity interval. Regression tests cover both coinbase and ordinary outputs with future creation heights. This closes a temporal-state validation gap in the maturity helper; it does not establish complete consensus readiness.
