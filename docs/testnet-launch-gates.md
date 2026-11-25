@@ -12,7 +12,7 @@ This document is an engineering gate list, not a launch announcement. A testnet 
 - Unit and loopback/multi-node integration tests for selected P2P and storage paths.
 - A node-runtime wrapper that composes persistent state and a peer manager.
 
-These are reusable prototype components. A new `src/blackroot_node_config.py` boundary now requires explicit testnet identity, message magic, protocol version, genesis header/hash, PoW limit, peer cap, and port; it rejects production-like network names, mismatched genesis hashes, invalid PoW, and non-loopback listener hosts. It can construct a peer manager with the matching magic/version. This is in-code configuration plumbing only: no selected network constants, file loader, runnable CLI, or public full node exists.
+These are reusable prototype components. `src/blackroot_node_config.py` now loads strict JSON settings (rejecting missing/unknown fields) and validates explicit testnet identity, message magic, protocol version, genesis header/hash, PoW limit, peer cap, and port. It rejects production-like network names, mismatched genesis hashes, invalid PoW, and non-loopback listener hosts. `python -m src.blackroot_node` opens coordinated SQLite state and starts the P2P listener on a literal loopback address only. This is a local prototype runner: it does not yet provide a complete block-sync/full-consensus node or public networking.
 
 ## Mandatory gates before a public testnet
 
@@ -34,8 +34,8 @@ These are reusable prototype components. A new `src/blackroot_node_config.py` bo
 Do not invent or manually select a genesis hash. Until this gate passes, nodes cannot safely identify the same chain.
 
 ### 3. Build a runnable node application
-- [ ] Add a documented CLI/entry point that constructs the testnet chain, persistent state, peer manager, runtime, and sync services.
-- [ ] Add a versioned configuration-file loader with strict unknown-field rejection and schema migration policy. (An explicit in-code configuration boundary now validates chain identity/genesis/PoW and binds the peer manager to matching magic/version; it is not yet a file loader.)
+- [x] Add a documented local-only CLI/entry point that constructs persistent state, peer manager, runtime, and sync services. Full chain activation remains blocked pending approved genesis/network parameters.
+- [ ] Add schema versioning and migration policy to the strict JSON configuration loader; currently it rejects unknown/missing fields but has no migration framework.
 - [ ] Implement supervised task lifecycle, retry scheduling, graceful shutdown, restart behavior, and useful structured logs.
 - [ ] Provide a local-only status interface; bind administrative/RPC interfaces to loopback by default.
 - [ ] Add data-directory locking, schema/version handling, backup/restore instructions, and safe reset commands.
@@ -61,9 +61,9 @@ Do not invent or manually select a genesis hash. Until this gate passes, nodes c
 
 | Area | Repository evidence | Status |
 |---|---|---|
-| Genesis | `docs/genesis.md` says it has not been generated | BLOCKED |
+| Genesis | Deterministic candidate vector and two repository-level byte/hash checks exist; no approval or external client reproduction | PARTIAL / BLOCKED |
 | Network identity and parameters | Explicit in-code config validator exists; no reviewed constants or file loader | PARTIAL / BLOCKED |
-| Node application/CLI | Runtime building block exists; no runnable application entry point is present in the repository tree | BLOCKED |
+| Node application/CLI | Loopback-only local CLI and strict JSON loader exist; block-body sync/full consensus and supervised retry lifecycle remain incomplete | PARTIAL / BLOCKED |
 | P2P building blocks | TCP transport, peer manager, handshake and sync components exist | PROTOTYPE |
 | Integration coverage | Loopback and multi-node tests exist | PARTIAL |
 | Full consensus | Several rules and script semantics remain explicitly incomplete | BLOCKED |
