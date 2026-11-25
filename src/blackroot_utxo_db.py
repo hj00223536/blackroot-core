@@ -109,8 +109,10 @@ class UTXOStore:
         if not isinstance(outpoint, OutPoint) or not isinstance(output, TxOutput):
             raise TypeError("expected OutPoint and TxOutput")
         with self._connect() as db:
+            if db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0]:
+                raise RuntimeError("bootstrap outputs cannot be added after chain activation")
             db.execute(
-                "INSERT INTO utxos(txid, output_index, value, script_pubkey) VALUES(?, ?, ?, ?)",
+                "INSERT INTO utxos(txid, output_index, value, script_pubkey, created_height, is_coinbase) VALUES(?, ?, ?, ?, 0, 0)",
                 (outpoint.txid, outpoint.index, output.value, output.script_pubkey),
             )
 
@@ -132,6 +134,9 @@ class UTXOStore:
             raise TypeError("tx must be a Transaction")
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
+            if db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0]:
+                db.rollback()
+                raise RuntimeError("accounting-only apply is disabled after chain activation")
             current: dict[OutPoint, TxOutput] = {}
             for txin in tx.inputs:
                 outpoint = txin.previous_output
