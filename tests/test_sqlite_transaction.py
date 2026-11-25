@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import contextmanager
 import subprocess
 import sys
 import tempfile
@@ -8,6 +9,19 @@ from pathlib import Path
 
 from src.blackroot_sqlite import SQLiteTransactionCoordinator
 
+
+
+@contextmanager
+def managed_sqlite(connection):
+    try:
+        yield connection
+        connection.commit()
+    except BaseException:
+        if connection.in_transaction:
+            connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 class SQLiteTransactionCoordinatorTests(unittest.TestCase):
     def setUp(self):
@@ -115,7 +129,7 @@ class SQLiteTransactionCoordinatorTests(unittest.TestCase):
             self.assertEqual(db.execute("SELECT value FROM sample").fetchall(), [(9,)])
 
     def test_multiple_processes_complete_repeated_coordinated_writes_without_loss(self):
-        with sqlite3.connect(self.path) as db:
+        with managed_sqlite(sqlite3.connect(self.path)) as db:
             db.execute(
                 "CREATE TABLE writes (writer INTEGER NOT NULL, sequence INTEGER NOT NULL, "
                 "PRIMARY KEY(writer, sequence))"
@@ -149,7 +163,7 @@ with SQLiteTransactionCoordinator(database, timeout=20) as owner:
                     process.kill()
                     process.wait(timeout=5)
 
-        with sqlite3.connect(self.path) as db:
+        with managed_sqlite(sqlite3.connect(self.path)) as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM writes").fetchone()[0], 48)
             self.assertEqual(
                 db.execute(
@@ -159,7 +173,7 @@ with SQLiteTransactionCoordinator(database, timeout=20) as owner:
             )
 
     def test_independent_process_writers_are_serialized_by_begin_immediate(self):
-        with sqlite3.connect(self.path) as db:
+        with managed_sqlite(sqlite3.connect(self.path)) as db:
             db.execute("CREATE TABLE writes (value INTEGER PRIMARY KEY)")
 
         release = self.root / "release-writer"
@@ -220,7 +234,7 @@ with SQLiteTransactionCoordinator(sys.argv[1], timeout=5) as owner:
                 second.kill()
                 second.wait(timeout=5)
 
-        with sqlite3.connect(self.path) as db:
+        with managed_sqlite(sqlite3.connect(self.path)) as db:
             self.assertEqual(
                 db.execute("SELECT value FROM writes ORDER BY value").fetchall(),
                 [(1,), (2,)],
