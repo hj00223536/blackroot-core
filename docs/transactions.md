@@ -79,3 +79,7 @@ The pure-Python elliptic-curve implementation is an auditable prototype, not
 a hardened constant-time cryptographic library. Production use requires
 independent cryptographic review, differential test vectors, and a vetted
 constant-time implementation.
+
+## Cross-language P2PKH signature regression vector
+
+`scripts/verify_p2pkh_vectors.mjs` reconstructs a fixed legacy SIGHASH_ALL preimage, checks HASH160 for the compressed secp256k1 generator public key, and verifies a deterministic low-S DER ECDSA signature using a separate Node.js BigInt implementation. It also rejects a signature after changing the transaction output and rejects the corresponding high-S encoding. The script is a transparent regression verifier, not constant-time cryptography, a production wallet, a general Script engine, or an independent audit.
