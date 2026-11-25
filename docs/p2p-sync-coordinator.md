@@ -104,3 +104,15 @@ reorganization, rejection of an unassigned source, and release on disconnect.
 This remains an opt-in orchestration component: header discovery, automatic
 peer lifecycle wiring, timeout/retry policy, peer scoring, and production
 consensus hardening remain outstanding.
+
+
+### Timeout and retry policy
+
+The reorganization downloader now records monotonic request timestamps.
+`expire_requests(timeout)` releases assignments that exceed the caller's
+timeout, and `retry_expired_requests(peers, timeout)` reassigns those bodies
+to currently connected peers and sends fresh `getdata` messages. The caller
+must invoke this method from its own timer/event loop; this library component
+does not create background tasks. Disconnected-peer cleanup also clears the
+corresponding timestamps. Tests cover timeout validation and reassignment when
+the original source is no longer connected.
