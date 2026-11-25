@@ -51,7 +51,8 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
             idle_timeout=2,
         )
         self.runtime = BlackrootNodeRuntime(
-            self.state, manager, protocol_version=1, request_timeout=1
+            self.state, manager, protocol_version=1, request_timeout=1,
+            adjusted_time=lambda: 1_800_000_100
         )
 
     async def asyncTearDown(self):
@@ -106,7 +107,8 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
             idle_timeout=2,
         )
         restarted = BlackrootNodeRuntime(
-            reopened_state, manager, protocol_version=1, request_timeout=1
+            reopened_state, manager, protocol_version=1, request_timeout=1,
+            adjusted_time=lambda: 1_800_000_100
         )
         try:
             address = await restarted.listen()
@@ -144,7 +146,8 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
             idle_timeout=5,
         )
         remote = BlackrootNodeRuntime(
-            remote_state, remote_manager, protocol_version=1, request_timeout=1
+            remote_state, remote_manager, protocol_version=1, request_timeout=1,
+            adjusted_time=lambda: 1_800_000_100
         )
         try:
             host, port = await remote.listen("127.0.0.1", 0)
