@@ -149,11 +149,12 @@ Path(result).write_text(outcome)
         outcomes = [result_a.read_text(), result_b.read_text()]
         self.assertCountEqual(outcomes, ["accepted", "rejected"])
         expected_tip = (2, contender.header.hash)
-        self.assertEqual(self.store.tip(), expected_tip)
-        active = self.store.active_block_headers()
+        final_store = UTXOStore(path)
+        self.assertEqual(final_store.tip(), expected_tip)
+        active = final_store.active_block_headers()
         self.assertEqual(len(active), 3)
         self.assertEqual(active[-1], contender.header.hash)
-        self.store.verify_integrity()
+        final_store.verify_integrity()
 
     def test_reorganizes_utxo_store_to_greater_work_branch(self):
         self.assertEqual(self.headers.tip.hash, self.side_two.header.hash)
