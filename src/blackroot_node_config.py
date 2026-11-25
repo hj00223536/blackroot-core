@@ -7,7 +7,9 @@ normative protocol specification or a production node launcher.
 from __future__ import annotations
 
 import ipaddress
+import json
 from dataclasses import dataclass
+from pathlib import Path
 
 from .blackroot_chain import BlockHeader, ZERO_HASH
 from .blackroot_consensus import check_proof_of_work, decode_compact_target
@@ -62,6 +64,58 @@ class TestnetConfig:
             raise ValueError("max_peers must be a positive integer")
         if not isinstance(self.max_payload, int) or isinstance(self.max_payload, bool) or not 1 <= self.max_payload <= 0xFFFFFFFF:
             raise ValueError("max_payload must be between 1 and uint32 max")
+
+    @classmethod
+    def from_json_file(cls, path: str | Path) -> "TestnetConfig":
+        """Load a strict JSON config; unknown/missing fields fail closed."""
+        try:
+            raw = json.loads(Path(path).read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"cannot read testnet config: {exc}") from exc
+        if not isinstance(raw, dict):
+            raise ValueError("testnet config root must be a JSON object")
+        required = {
+            "network_id", "message_magic", "protocol_version",
+            "genesis_header", "genesis_hash", "pow_limit",
+            "p2p_port", "max_peers",
+        }
+        allowed = required | {"max_payload"}
+        missing = required - raw.keys()
+        unknown = raw.keys() - allowed
+        if missing:
+            raise ValueError(f"missing testnet config fields: {', '.join(sorted(missing))}")
+        if unknown:
+            raise ValueError(f"unknown testnet config fields: {', '.join(sorted(unknown))}")
+        header = raw["genesis_header"]
+        if not isinstance(header, dict) or set(header) != {
+            "version", "prev_hash", "merkle_root", "timestamp", "bits", "nonce"
+        }:
+            raise ValueError("genesis_header must contain exactly version, prev_hash, merkle_root, timestamp, bits, nonce")
+        try:
+            genesis_header = BlockHeader(
+                version=header["version"],
+                prev_hash=bytes.fromhex(header["prev_hash"]),
+                merkle_root=bytes.fromhex(header["merkle_root"]),
+                timestamp=header["timestamp"],
+                bits=header["bits"],
+                nonce=header["nonce"],
+            )
+            magic = bytes.fromhex(raw["message_magic"])
+            genesis_hash = bytes.fromhex(raw["genesis_hash"])
+            pow_limit = int(raw["pow_limit"], 16) if isinstance(raw["pow_limit"], str) else raw["pow_limit"]
+        except (TypeError, ValueError, KeyError) as exc:
+            raise ValueError(f"invalid hex or numeric testnet config field: {exc}") from exc
+        return cls(
+            network_id=raw["network_id"],
+            message_magic=magic,
+            protocol_version=raw["protocol_version"],
+            genesis_header=genesis_header,
+            genesis_hash=genesis_hash,
+            pow_limit=pow_limit,
+            p2p_port=raw["p2p_port"],
+            max_peers=raw["max_peers"],
+            max_payload=raw.get("max_payload", DEFAULT_MAX_PAYLOAD),
+        )
 
     def create_peer_manager(
         self,
