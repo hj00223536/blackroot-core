@@ -72,6 +72,24 @@ if mode in ("reorg_during_transaction", "reorg_after_commit"):
             os._exit(77)
         state.recovery_journal.reconcile = crash_after_reorg_writes
         state.reorganize_best(replacements)
+    elif mode == "reorg_crash_with_waiter":
+        # Archive candidate bodies in their own committed operations so the
+        # waiting process can retry the same best-chain switch after rollback.
+        state.archive_block_body(side_one)
+        state.archive_block_body(side_two)
+        marker, release = Path(sys.argv[3]), Path(sys.argv[4])
+        original = state.recovery_journal.reconcile
+        def pause_after_reorg_writes(observed_tip):
+            original(observed_tip)
+            marker.write_text("transaction has applied reorg writes")
+            deadline = __import__("time").monotonic() + 20
+            while not release.exists():
+                if __import__("time").monotonic() >= deadline:
+                    raise RuntimeError("crash coordination timed out")
+                __import__("time").sleep(0.01)
+            os._exit(79)
+        state.recovery_journal.reconcile = pause_after_reorg_writes
+        state.reorganize_best(replacements)
     else:
         state.reorganize_best(replacements)
         os._exit(78)
@@ -174,6 +192,108 @@ class CoordinatedNodeStateProcessCrashTests(unittest.TestCase):
                 self.assertEqual(reopened.headers.chain.best_hash, side_two.header.hash)
                 self.assertIsNone(reopened.utxos.load_block_body(side_one.header.hash))
                 self.assertIsNone(reopened.utxos.load_block_body(side_two.header.hash))
+                reopened.utxos.verify_integrity()
+            finally:
+                reopened.close()
+
+    def test_waiting_process_retries_reorganization_after_writer_crashes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            marker = root / "writer-applied-reorg"
+            release = root / "allow-writer-crash"
+            first = subprocess.Popen(
+                [sys.executable, "-c", CHILD, str(root), "reorg_crash_with_waiter",
+                 str(marker), str(release)],
+                cwd=Path(__file__).resolve().parents[1],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            )
+            second = None
+            try:
+                deadline = __import__("time").monotonic() + 20
+                while not marker.exists():
+                    if first.poll() is not None:
+                        stdout, stderr = first.communicate()
+                        self.fail(f"crashing writer exited early: {stdout!r} {stderr!r}")
+                    if __import__("time").monotonic() >= deadline:
+                        self.fail("first process did not reach the in-transaction crash point")
+                    __import__("time").sleep(0.01)
+
+                ready = root / "retry-process-ready"
+                result = root / "retry-process-result"
+                retry_worker = r"""
+import sys
+import time
+from pathlib import Path
+from src.blackroot_chain import BlockHeader
+from src.blackroot_consensus import decode_compact_target
+from src.blackroot_node_state import PersistentNodeState
+root, ready, release, result = map(Path, sys.argv[1:])
+bits = 0x207FFFFF
+# Reconstruct the deterministic genesis header used by the first process.
+from src.blackroot_blocks import Block, COINBASE_INDEX, ZERO_TXID
+from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput, merkle_root
+from src.blackroot_consensus import block_subsidy, check_proof_of_work
+genesis_tx = Transaction(1, (TxInput(OutPoint(ZERO_TXID, COINBASE_INDEX), bytes([1, 1])),),
+                         (TxOutput(block_subsidy(0), b"miner"),))
+limit = decode_compact_target(bits)
+for nonce in range(10000):
+    genesis_header = BlockHeader(1, bytes(32), merkle_root([genesis_tx.txid]), 1, bits, nonce)
+    if check_proof_of_work(genesis_header.serialize(), bits, limit):
+        break
+else:
+    raise RuntimeError("genesis nonce search exhausted")
+ready.write_text("ready")
+deadline = time.monotonic() + 20
+while not release.exists():
+    if time.monotonic() >= deadline:
+        raise RuntimeError("retry release timed out")
+    time.sleep(0.01)
+state = PersistentNodeState.open_coordinated(root / "node.sqlite", limit, genesis_header)
+try:
+    tip = state.reorganize_best()
+    result.write_text(f"accepted:{tip[0]}:{tip[1].hex()}")
+finally:
+    state.close()
+"""
+                second = subprocess.Popen(
+                    [sys.executable, "-c", retry_worker, str(root), str(ready),
+                     str(release), str(result)],
+                    cwd=Path(__file__).resolve().parents[1],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                )
+                while not ready.exists():
+                    if second.poll() is not None:
+                        stdout, stderr = second.communicate()
+                        self.fail(f"retry process exited early: {stdout!r} {stderr!r}")
+                    if __import__("time").monotonic() >= deadline:
+                        self.fail("retry process did not become ready")
+                    __import__("time").sleep(0.01)
+                release.write_text("crash now; retry process may contend for SQLite lock")
+                self.assertEqual(first.wait(timeout=20), 79)
+                self.assertEqual(second.wait(timeout=30), 0)
+                self.assertTrue(result.read_text().startswith("accepted:2:"))
+            finally:
+                for process in (first, second):
+                    if process is not None and process.poll() is None:
+                        process.kill()
+                        process.wait()
+
+            # A fresh open must observe one complete branch and no pending intent.
+            from src.blackroot_chain import BlockHeader
+            from src.blackroot_consensus import decode_compact_target
+            from src.blackroot_node_state import PersistentNodeState
+            genesis = make_block(ZERO_HASH, 0, 1)
+            reopened = PersistentNodeState.open_coordinated(
+                root / "node.sqlite", POW_LIMIT, genesis.header
+            )
+            try:
+                side_one = make_block(genesis.header.hash, 1, 3)
+                side_two = make_block(side_one.header.hash, 2, 4)
+                self.assertEqual(reopened.utxos.tip(), (2, side_two.header.hash))
+                self.assertEqual(reopened.headers.chain.best_hash, side_two.header.hash)
+                self.assertFalse(reopened.recovery_journal.pending())
+                self.assertIsNotNone(reopened.utxos.load_block_body(side_one.header.hash))
+                self.assertIsNotNone(reopened.utxos.load_block_body(side_two.header.hash))
                 reopened.utxos.verify_integrity()
             finally:
                 reopened.close()
