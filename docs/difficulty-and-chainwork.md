@@ -23,43 +23,32 @@ timespan covers 2,015 or 2,016 timestamp intervals, median-time-past rules,
 future timestamp limits, genesis behavior, minimum-difficulty exceptions, and
 whether test networks use special rules. These details are consensus-critical.
 
-The in-memory HeaderChain prototype now accumulates per-header work, but it
-still accepts only a direct extension of its current tip. It does not maintain
-competing branches, compare branch chainwork, validate retarget boundaries,
-persist headers, or reorganize the active chain. Its chainwork property is
-therefore diagnostic only and must not be treated as production chain selection.
+## Current in-memory HeaderChain behavior
 
-Before a public network exists, publish exact test vectors for every boundary,
-including compact-target overflow/canonical encodings, pow-limit edges,
-retarget clamps, timestamp edge cases, and competing-branch selection. Compare
-the implementation against an independent reference implementation and obtain
-external consensus/security review.
+The in-memory HeaderChain stores headers by hash, permits extending any known
+parent through add_to_branch, accumulates per-header work, and selects the
+branch with greatest cumulative work (with a deterministic raw-hash tie-break).
+best_chain() returns the selected header path, and reorganization(old_tip_hash)
+reports headers to disconnect in tip-first order and headers to connect in
+fork-first order.
 
+It enforces median-time-past using up to the 11 timestamps ending at the
+candidate's parent. At a 2,016-block boundary it samples the ancestor at
+candidate_height - 2,016 and uses the parent timestamp to calculate the
+timespan. The optional future-time bound is enforced only when the caller
+supplies adjusted_time; it is not enabled automatically.
 
-## Header DAG prototype and fork choice
+This is header-only scaffolding. It does not validate full block bodies,
+scripts, UTXOs, or persistent side branches. The reported reorganization paths
+are not authorization to mutate the persistent UTXO database. Atomic,
+fully validated block-level reorganization must be implemented before a node
+can use this as consensus.
 
-The in-memory HeaderChain now stores headers by hash, permits extending any known parent through add_to_branch, accumulates per-header work, and selects the branch with greatest cumulative work (with a deterministic raw-hash tie-break). best_chain() returns the selected header path. reorganization(old_tip_hash) reports headers to disconnect in tip-first order and headers to connect in fork-first order.
+## Required validation before network activation
 
-This is header-only scaffolding. It validates median-time-past and retarget boundaries, and offers an opt-in future-time bound when the caller supplies adjusted time. It does not validate full block bodies, scripts, UTXOs, or persistent side branches. The returned paths are not authorization to mutate the persistent UTXO database. Full consensus validation and atomic block-level reorganization must be implemented before any node can use this for consensus.
-
-The header DAG also enforces the median-time-past rule using up to the 11 timestamps ending at the candidate's parent. The future-time bound is opt-in and requires an explicit adjusted-time input; difficulty-retarget boundary calculation is implemented.
-
-
-## Difficulty enforcement
-
-HeaderChain now requires the parent nBits between retarget boundaries and computes a new compact target at each 2016-block boundary. The measured span is the parent timestamp minus the ancestor timestamp at candidate_height - 2016, clamped by retarget_compact to one quarter through four times the nominal 1,209,600 seconds, then capped at the network proof-of-work limit. Boundary and non-boundary behavior have unit tests.
-
-This remains a reference prototype: network-specific exception rules, future-time bounds, full compact-target canonicality policy, and consensus test vectors still require specification and independent review.
-
-
-## Future timestamp bound
-
-HeaderChain.add_to_branch accepts an explicit `adjusted_time` and
-`max_future_seconds` (default 7,200) and rejects a header timestamp above
-their sum. This is deterministic and does not read the machine clock, so tests
-can supply a fixed reference time. The check is currently opt-in: callers that
-omit `adjusted_time` do not enforce this rule. A production node must derive
-and pass its protocol-defined network-adjusted time for every candidate header;
-the clock-adjustment algorithm and peer-time policy still need a normative
-specification. The default two-hour bound is a proposal, not a finalized
-network parameter.
+Publish exact vectors for every boundary, including compact-target
+overflow/canonical encodings, pow-limit edges, retarget clamps, timestamp edge
+cases, and competing-branch selection. Compare the implementation against an
+independent reference implementation and obtain external consensus/security
+review. Define network-specific exception rules and a normative clock-adjustment
+and future-time policy. Existing unit tests are regression evidence only.
