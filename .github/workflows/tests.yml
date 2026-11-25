@@ -25,3 +25,14 @@ jobs:
         run: |
           set -o pipefail
           python -u scripts/diagnose_sqlite_resource_warnings.py 2>&1 | tee resource-warning.log
+
+  genesis-independent:
+    runs-on: ubuntu-latest
+    name: Independent genesis vector (Node.js 22)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Reproduce genesis transaction, header, hash and proof of work
+        run: node scripts/verify_genesis_candidate.mjs
