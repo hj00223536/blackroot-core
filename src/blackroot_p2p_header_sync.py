@@ -59,8 +59,16 @@ class PeerHeaderSync:
         self.max_future_seconds = max_future_seconds
         self._last_locator: tuple[bytes, ...] = ()
 
-    def _now(self) -> int | None:
-        return self.adjusted_time() if self.adjusted_time is not None else None
+    def _now(self) -> int:
+        """Return the caller-supplied clock value; never silently skip future-time checks."""
+        if self.adjusted_time is None:
+            raise RuntimeError(
+                "header synchronization requires an adjusted-time provider"
+            )
+        now = self.adjusted_time()
+        if not isinstance(now, int) or isinstance(now, bool) or now < 0:
+            raise ValueError("adjusted-time provider must return a non-negative integer")
+        return now
 
     async def request_headers(self, peer) -> bytes:
         """Send a locator request to an established peer and return its payload."""
