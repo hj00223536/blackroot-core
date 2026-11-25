@@ -59,3 +59,18 @@ The scheduler is an opt-in node-level component. The application must supply
 the current connected-peer mapping and invoke `peer_disconnected` from its
 peer lifecycle callback. It does not automatically discover peers, retry on a
 timer, or provide Sybil resistance.
+
+
+## Three-node loopback verification
+
+`tests/test_p2p_three_node_integration.py` starts three real asyncio TCP
+nodes on loopback: one requesting node and two serving peers. It completes
+the version/verack handshake with both peers, routes a block-body request to
+the scheduler-selected source, receives the body over that TCP connection,
+and verifies that the other peer received no request. The receiving node then
+passes the body through the scheduler's assigned-source check and the existing
+block-body validation/UTXO connector boundary.
+
+This is a local integration test using a test genesis and a mocked persistent
+store connector. It is not evidence of public internet interoperability,
+production consensus readiness, or a live mainnet.
