@@ -287,3 +287,9 @@ across process death. They are not a physical power-loss test, do not kill a
 process during arbitrary SQLite or filesystem instructions, and do not certify
 fsync behavior or storage-device durability. The three databases remain
 separate; true cross-database atomicity is not implemented.
+
+### Startup UTXO integrity checks
+
+`UTXOStore.verify_integrity()` runs during `PersistentNodeState` startup before the active tip is reconciled with the recovery journal. It checks SQLite's page-level integrity report, foreign-key constraints, contiguous active block heights and parent links, per-block transaction counts and positions, canonical transaction decoding and txid matches, and every archived block body's serialized size, header hash, and Merkle commitment. Startup fails closed when any of these checks detects corruption.
+
+These checks cover the UTXO database's SQLite and stored-record consistency. They do not independently reconstruct the complete UTXO set by replaying every historical block, prove that the header database and UTXO database were committed atomically, or replace independent consensus and cryptographic review. Header-DAG replay remains the separate header-store validation path.
