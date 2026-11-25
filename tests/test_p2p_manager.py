@@ -50,6 +50,28 @@ class PeerManagerTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(RuntimeError, "maximum peer count"):
             await self.client_manager.connect(host, port)
 
+    async def test_disconnect_callback_runs_for_removed_peer(self):
+        disconnected = []
+        callback_done = asyncio.Event()
+
+        async def on_disconnected(peer):
+            disconnected.append(peer)
+            callback_done.set()
+
+        self.server_manager.on_peer_disconnected = on_disconnected
+        host, port, *_ = await self.server_manager.start_server("127.0.0.1", 0)
+        outbound = await self.client_manager.connect(host, port)
+
+        async def wait_connected():
+            while not (outbound.connected and self.server_manager.peer_count == 1):
+                await asyncio.sleep(0.01)
+
+        await asyncio.wait_for(wait_connected(), timeout=2)
+        await self.client_manager.close()
+        await asyncio.wait_for(callback_done.wait(), timeout=2)
+        self.assertEqual(len(disconnected), 1)
+        self.assertFalse(disconnected[0].connected)
+
     async def test_close_stops_listener_and_removes_peers(self):
         await self.server_manager.start_server("127.0.0.1", 0)
         self.assertTrue(self.server_manager.listening)
