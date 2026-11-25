@@ -83,5 +83,29 @@ class HeaderChainTests(unittest.TestCase):
             chain.add_to_branch(genesis)
 
 
+    def test_median_time_past_allows_time_below_parent_timestamp(self):
+        genesis = mine_header(ZERO_HASH, 1)
+        chain = HeaderChain(POW_LIMIT, genesis)
+        first = mine_header(genesis.hash, 100)
+        chain.add(first)
+        second = mine_header(first.hash, 200)
+        chain.add(second)
+        candidate = mine_header(second.hash, 150)
+        chain.add(candidate)
+        self.assertEqual(chain.tip.hash, candidate.hash)
+        self.assertEqual(chain.median_time_past(candidate.hash), 150)
+
+    def test_rejects_header_not_above_median_time_past(self):
+        genesis = mine_header(ZERO_HASH, 1)
+        chain = HeaderChain(POW_LIMIT, genesis)
+        first = mine_header(genesis.hash, 100)
+        chain.add(first)
+        second = mine_header(first.hash, 200)
+        chain.add(second)
+        invalid = mine_header(second.hash, 100)
+        with self.assertRaisesRegex(ValueError, "median-time-past"):
+            chain.add(invalid)
+
+
 if __name__ == "__main__":
     unittest.main()
