@@ -122,7 +122,7 @@ class PersistentBlockTests(unittest.TestCase):
         wrong_hash = bytes.fromhex("99" * 32)
         self.store.store_block_body(block)
         with self.assertRaisesRegex(RuntimeError, "header hash does not match"):
-            with sqlite3.connect(self.path) as db:
+            with managed_sqlite(self.path) as db:
                 db.execute(
                     "UPDATE block_bodies SET block_hash=? WHERE block_hash=?",
                     (wrong_hash, block.header.hash),
@@ -233,7 +233,7 @@ class PersistentBlockTests(unittest.TestCase):
         self.assertEqual(self.store.connect_block(final_block, 100), 100)
         self.assertIsNone(self.store.get(genesis_point))
         final_point = OutPoint(final_cb.txid, 0)
-        with self.store._connect() as db:
+        with self.store._connection_scope() as db:
             row = db.execute(
                 "SELECT created_height, is_coinbase FROM utxos WHERE txid=? AND output_index=?",
                 (final_point.txid, final_point.index),
@@ -431,7 +431,7 @@ class PersistentBlockTests(unittest.TestCase):
         self.store.disconnect_tip(block.header.hash)
         self.assertIsNone(self.store.tip())
         self.assertEqual(self.store.count(), 0)
-        with self.store._connect() as db:
+        with self.store._connection_scope() as db:
             self.assertEqual(db.execute("SELECT COUNT(*) FROM block_undo_spent").fetchone()[0], 0)
             self.assertEqual(db.execute("SELECT COUNT(*) FROM block_undo_created").fetchone()[0], 0)
 
