@@ -90,8 +90,8 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
         with SQLiteTransactionCoordinator(path) as coordinator:
             with coordinator.transaction() as connection:
                 store = UTXOStore(path, connection=connection)
-                store.connect_validated_block(self.genesis, 0)
-                store.connect_validated_block(self.old_one, 1)
+                store.connect_validated_block(self.genesis, 0, headers)
+                store.connect_validated_block(self.old_one, 1, headers)
             with coordinator.transaction() as connection:
                 store = UTXOStore(path, connection=connection)
                 tip = store.reorganize_to_best(
@@ -112,8 +112,8 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
         with SQLiteTransactionCoordinator(path) as coordinator:
             with coordinator.transaction() as connection:
                 store = UTXOStore(path, connection=connection)
-                store.connect_validated_block(self.genesis, 0)
-                store.connect_validated_block(self.old_one, 1)
+                store.connect_validated_block(self.genesis, 0, headers)
+                store.connect_validated_block(self.old_one, 1, headers)
             with self.assertRaisesRegex(RuntimeError, "abort coordinated reorg"):
                 with coordinator.transaction() as connection:
                     store = UTXOStore(path, connection=connection)
@@ -132,8 +132,8 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
         with SQLiteTransactionCoordinator(path) as coordinator:
             with coordinator.transaction() as connection:
                 store = UTXOStore(path, connection=connection)
-                store.connect_validated_block(self.genesis, 0)
-                store.connect_validated_block(self.old_one, 1)
+                store.connect_validated_block(self.genesis, 0, headers)
+                store.connect_validated_block(self.old_one, 1, headers)
             with coordinator.transaction() as connection:
                 store = UTXOStore(path, connection=connection)
                 self.assertEqual(
