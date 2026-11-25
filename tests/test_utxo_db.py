@@ -1,4 +1,5 @@
 import sqlite3
+from contextlib import contextmanager
 import subprocess
 import sys
 import tempfile
@@ -10,6 +11,19 @@ from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput
 from src.blackroot_utxo_db import UTXOStore
 from src.blackroot_sqlite import SQLiteTransactionCoordinator
 
+
+@contextmanager
+def _managed_sqlite(path):
+    connection = sqlite3.connect(path)
+    try:
+        yield connection
+        connection.commit()
+    except BaseException:
+        if connection.in_transaction:
+            connection.rollback()
+        raise
+    finally:
+        connection.close()
 
 class UTXOStoreTests(unittest.TestCase):
     def setUp(self):
@@ -148,10 +162,10 @@ store.apply(tx)
         outputs = [
             OutPoint(bytes.fromhex("31" * 32), 0),
         ]
+        with _managed_sqlite(self.db_path) as db:
+            scripts = db.execute("SELECT script_pubkey FROM utxos").fetchall()
         self.assertEqual(
-            sqlite3.connect(self.db_path).execute(
-                "SELECT script_pubkey FROM utxos"
-            ).fetchall(),
+            scripts,
             [(b"writer-0",)] if results[0] == 0 else [(b"writer-1",)],
         )
 
@@ -184,7 +198,7 @@ store.apply(tx)
         self.store.connect_block(next_block, 1, median_time_past=1_234)
 
         created = OutPoint(next_tx.txid, 0)
-        with sqlite3.connect(self.db_path) as db:
+        with _managed_sqlite(self.db_path) as db:
             row = db.execute(
                 "SELECT created_mtp FROM utxos WHERE txid=? AND output_index=?",
                 (created.txid, created.index),
@@ -192,7 +206,7 @@ store.apply(tx)
         self.assertEqual(row, (1_234,))
 
         reopened = UTXOStore(self.db_path)
-        with sqlite3.connect(self.db_path) as db:
+        with _managed_sqlite(self.db_path) as db:
             self.assertEqual(
                 db.execute(
                     "SELECT created_mtp FROM utxos WHERE txid=? AND output_index=?",
@@ -201,7 +215,7 @@ store.apply(tx)
                 (1_234,),
             )
         reopened.disconnect_tip(next_block.header.hash)
-        with sqlite3.connect(self.db_path) as db:
+        with _managed_sqlite(self.db_path) as db:
             restored = db.execute(
                 "SELECT created_mtp FROM utxos WHERE txid=? AND output_index=?",
                 (genesis_tx.txid, 0),
@@ -234,7 +248,7 @@ store.apply(tx)
                     store = UTXOStore(shared_path, connection=connection)
                     store.add_genesis_output(funding, TxOutput(701, b"rollback"))
                     raise ValueError("abort coordinated setup")
-        with sqlite3.connect(shared_path) as db:
+        with _managed_sqlite(shared_path) as db:
             tables = db.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name='utxos'"
             ).fetchall()
@@ -310,7 +324,7 @@ store.apply(tx)
 
     def test_refuses_unsafe_schema_v1_database_with_live_utxos(self):
         legacy_path = Path(self.tempdir.name) / "legacy-v1.sqlite"
-        with sqlite3.connect(legacy_path) as db:
+        with _managed_sqlite(legacy_path) as db:
             db.execute("CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
             db.execute("INSERT INTO metadata(key, value) VALUES('schema_version', '1')")
             db.execute("""
@@ -331,7 +345,7 @@ store.apply(tx)
 
 
     def _database_snapshot(self, path):
-        with sqlite3.connect(path) as db:
+        with _managed_sqlite(path) as db:
             tables = [
                 row[0] for row in db.execute(
                     "SELECT name FROM sqlite_master WHERE type='table' "
@@ -346,7 +360,7 @@ store.apply(tx)
             }
 
     def test_schema_v2_rejection_preserves_existing_database_without_migration(self):
-        with sqlite3.connect(self.db_path) as db:
+        with _managed_sqlite(self.db_path) as db:
             db.execute(
                 "UPDATE metadata SET value='2' WHERE key='schema_version'"
             )
@@ -359,7 +373,7 @@ store.apply(tx)
             UTXOStore(self.db_path)
 
         self.assertEqual(self._database_snapshot(self.db_path), before)
-        with sqlite3.connect(self.db_path) as db:
+        with _managed_sqlite(self.db_path) as db:
             self.assertEqual(
                 db.execute(
                     "SELECT value FROM metadata WHERE key='schema_version'"
@@ -372,7 +386,7 @@ store.apply(tx)
             )
 
     def test_unknown_future_schema_rejection_preserves_existing_database(self):
-        with sqlite3.connect(self.db_path) as db:
+        with _managed_sqlite(self.db_path) as db:
             db.execute(
                 "UPDATE metadata SET value='999' WHERE key='schema_version'"
             )
@@ -384,7 +398,7 @@ store.apply(tx)
             UTXOStore(self.db_path)
 
         self.assertEqual(self._database_snapshot(self.db_path), before)
-        with sqlite3.connect(self.db_path) as db:
+        with _managed_sqlite(self.db_path) as db:
             self.assertEqual(
                 db.execute(
                     "SELECT value FROM metadata WHERE key='schema_version'"
