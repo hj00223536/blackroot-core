@@ -51,10 +51,13 @@ class LegacyStoragePreflightTests(unittest.TestCase):
                 height INTEGER PRIMARY KEY, block_hash BLOB, prev_hash BLOB,
                 header BLOB, tx_count INTEGER, total_fees INTEGER)""")
             for table in (
-                "utxos", "block_transactions", "block_bodies",
-                "block_undo_spent", "block_undo_created",
+                "utxos", "block_bodies", "block_undo_spent", "block_undo_created",
             ):
                 db.execute(f'CREATE TABLE "{table}" (id INTEGER PRIMARY KEY)')
+            db.execute(
+                "CREATE TABLE block_transactions (id INTEGER PRIMARY KEY, "
+                "height INTEGER REFERENCES blocks(height) ON DELETE CASCADE)"
+            )
 
         with sqlite3.connect(self.journal) as db:
             db.execute("""
@@ -72,6 +75,23 @@ class LegacyStoragePreflightTests(unittest.TestCase):
         self.assertFalse(result["migration_performed"])
         self.assertFalse(result["source_files_modified"])
         self.assertEqual(before, {p: p.read_bytes() for p in before})
+
+    def test_preflight_exposes_schema_ddl_columns_and_foreign_keys(self):
+        report = inspect_legacy_node_databases(self.header, self.utxo, self.journal)
+        inventory = report["databases"]["utxo"]["schema_inventory"]
+        self.assertIn("block_transactions", inventory["tables"])
+        columns = inventory["tables"]["block_transactions"]["columns"]
+        self.assertEqual([column["name"] for column in columns],
+                         ["id", "height"])
+        foreign_keys = inventory["tables"]["block_transactions"]["foreign_keys"]
+        self.assertEqual(len(foreign_keys), 1)
+        self.assertEqual(foreign_keys[0]["referenced_table"], "blocks")
+        self.assertEqual(foreign_keys[0]["from_column"], "height")
+        self.assertEqual(foreign_keys[0]["on_delete"], "CASCADE")
+        self.assertTrue(any(
+            item["type"] == "table" and item["name"] == "blocks"
+            for item in inventory["objects"]
+        ))
 
     def test_rejects_aliases_before_opening_databases(self):
         with self.assertRaisesRegex(ValueError, "same file"):
@@ -134,9 +154,13 @@ class SQLiteSnapshotTests(unittest.TestCase):
             db.execute("""CREATE TABLE blocks(
                 height INTEGER PRIMARY KEY, block_hash BLOB, prev_hash BLOB,
                 header BLOB, tx_count INTEGER, total_fees INTEGER)""")
-            for table in ("utxos", "block_transactions", "block_bodies",
-                          "block_undo_spent", "block_undo_created"):
+            for table in ("utxos", "block_bodies", "block_undo_spent",
+                          "block_undo_created"):
                 db.execute(f'CREATE TABLE "{table}" (id INTEGER PRIMARY KEY)')
+            db.execute(
+                "CREATE TABLE block_transactions (id INTEGER PRIMARY KEY, "
+                "height INTEGER REFERENCES blocks(height) ON DELETE CASCADE)"
+            )
         with sqlite3.connect(self.journal) as db:
             db.execute("""CREATE TABLE recovery_intent (
                 singleton INTEGER PRIMARY KEY, old_height INTEGER, old_hash BLOB,
