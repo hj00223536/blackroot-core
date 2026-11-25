@@ -53,3 +53,12 @@ value accounting, and aggregate fees against a parent UTXO snapshot. This is
 still an accounting prototype: it does not verify scripts/signatures, enforce
 coinbase maturity, validate proof of work or timestamps, or persist block and
 UTXO state atomically. See [block validation notes](docs/block-validation.md).
+
+
+## Persistent block connection prototype
+
+The SQLite UTXO store can atomically connect a block, persist its header and
+ordered transactions, update the UTXO snapshot, and expose the stored tip.
+See [persistent block notes](docs/persistent-blocks.md). This supports only
+linear extension; it does not implement proof-of-work validation, script or
+signature checks, undo data, side branches, or reorganizations.
