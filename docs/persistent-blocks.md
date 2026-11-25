@@ -6,8 +6,8 @@ write transaction:
 
 1. Enforces a sequential height and exact parent hash (first block is height 0
    with a zero previous hash).
-2. Loads the current UTXO set and runs the existing block transaction-accounting
-   validator.
+2. Loads the current UTXO set and runs block validation, including the current
+   fail-closed legacy P2PKH signature verifier and transaction accounting.
 3. Stores the block header, block hash, transaction count, fees, and serialized
    transactions in order.
 4. Replaces the UTXO snapshot with the validated result.
@@ -33,7 +33,7 @@ The prototype now records two undo tables atomically with each connected block: 
 
 Tests cover restoring a spent parent output, removing block-created outputs, wrong-hash rejection, empty-chain rejection, and cleanup of genesis undo data.
 
-This is only a **single-tip storage rollback primitive**. It is not full chain reorganization: there is no side-branch index, competing-chain selection, validated cumulative work, or automatic disconnect/connect orchestration. The caller must not use it to accept an unvalidated replacement branch. Script and signature verification, proof-of-work/header validation, coinbase maturity, and other consensus rules remain absent.
+This is only a **single-tip storage rollback primitive**. It is not full chain reorganization: there is no side-branch index, competing-chain selection, validated cumulative work, or automatic disconnect/connect orchestration. The caller must not use it to accept an unvalidated replacement branch. Proof-of-work/header validation, coinbase maturity, general Script support, and other consensus rules remain absent. The current block path does require the narrow P2PKH verifier.
 
 
 ## Atomic active-chain suffix replacement
