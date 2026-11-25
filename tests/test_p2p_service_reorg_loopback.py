@@ -61,6 +61,7 @@ class P2PServiceReorganizationLoopbackTests(unittest.IsolatedAsyncioTestCase):
             self.fork_two.header.hash: self.fork_two.serialize(),
         }
         self.served = {"source-a": asyncio.Event(), "source-b": asyncio.Event()}
+        self.served_blocks = set()
         self.remote_managers = []
 
         def remote_factory(source_name):
@@ -71,6 +72,7 @@ class P2PServiceReorganizationLoopbackTests(unittest.IsolatedAsyncioTestCase):
                     for item in decode_inventory(payload):
                         if item.kind == INV_TYPE_BLOCK and item.item_hash in self.blocks:
                             self.served[source_name].set()
+                            self.served_blocks.add(item.item_hash)
                             await peer.send("block", self.blocks[item.item_hash])
                 return handler
             return factory
@@ -183,20 +185,15 @@ class P2PServiceReorganizationLoopbackTests(unittest.IsolatedAsyncioTestCase):
         }
         self.assertEqual(set(assignments), expected)
 
-        async def wait_for_all_fork_bodies_to_be_archived():
-            while not all(
-                self.store.load_block_body(block_hash) is not None
-                for block_hash in expected
-            ):
-                await asyncio.sleep(0.01)
-
-        # Observe the complete downloaded fork before asserting rejection cleanup;
-        # this avoids treating an empty request queue as proof that validation ended.
-        await asyncio.wait_for(
-            wait_for_all_fork_bodies_to_be_archived(), timeout=5
-        )
-
         async def wait_for_invalid_branch_rejection():
+            # The final body is validated and rejected synchronously by
+            # accept_block(), which also removes every body in the candidate
+            # branch before returning. Therefore, observing all bodies archived
+            # at once is impossible for this invalid-fork case. Instead prove
+            # every body was served over TCP, then wait for assignment release
+            # and rejection cleanup to finish.
+            while not expected.issubset(self.served_blocks):
+                await asyncio.sleep(0.01)
             while self.service.reorg.pool.pending_hashes or any(
                 self.store.load_block_body(block_hash) is not None
                 for block_hash in expected
