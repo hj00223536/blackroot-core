@@ -40,7 +40,7 @@ class NodeRecoveryJournal:
             raise RuntimeError(
                 "coordinator-owned recovery-journal initialization requires an active outer transaction"
             )
-        with self._connect() as db:
+        with self._connection_scope() as db:
             if self._external_connection is None:
                 db.execute("PRAGMA journal_mode=WAL")
                 db.execute("PRAGMA synchronous=FULL")
@@ -57,6 +57,18 @@ class NodeRecoveryJournal:
                           (new_height >= 0 AND length(new_hash)=32))
                 )
             """)
+            if self._external_connection is None:
+                db.commit()
+
+    @contextmanager
+    def _connection_scope(self) -> Iterator[sqlite3.Connection | SQLiteTransactionConnection]:
+        """Borrow the coordinator connection or close a locally owned handle."""
+        db = self._connect()
+        try:
+            yield db
+        finally:
+            if self._external_connection is None:
+                db.close()
 
     def _connect(self):
         if self._external_connection is not None:
@@ -74,7 +86,7 @@ class NodeRecoveryJournal:
                 )
             yield self._external_connection
             return
-        with self._connect() as db:
+        with self._connection_scope() as db:
             db.execute("PRAGMA synchronous=FULL")
             db.execute("BEGIN IMMEDIATE")
             try:
@@ -132,7 +144,7 @@ class NodeRecoveryJournal:
             return result
 
     def pending(self) -> bool:
-        with self._connect() as db:
+        with self._connection_scope() as db:
             return db.execute(
                 "SELECT 1 FROM recovery_intent WHERE singleton=1"
             ).fetchone() is not None
