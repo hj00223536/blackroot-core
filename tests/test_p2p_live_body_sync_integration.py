@@ -163,11 +163,24 @@ class ThreeNodeLiveBlockBodySyncTests(unittest.IsolatedAsyncioTestCase):
                     len(served_requests), 2,
                     "source must serve the same block body independently to both peers",
                 )
+                def utxo_snapshot(state):
+                    with state.utxos._connection_scope() as db:
+                        return db.execute(
+                            "SELECT txid, output_index, value, script_pubkey, "
+                            "created_height, is_coinbase, created_mtp "
+                            "FROM utxos ORDER BY txid, output_index"
+                        ).fetchall()
+
+                source_snapshot = utxo_snapshot(source_state)
                 for state in destination_states:
                     self.assertEqual(
                         state.headers.chain.tip.hash, next_block.header.hash
                     )
                     self.assertEqual(state.utxos.tip(), source_state.utxos.tip())
+                    self.assertEqual(
+                        utxo_snapshot(state), source_snapshot,
+                        "all three nodes must converge on identical UTXO state",
+                    )
                     stored = state.utxos.load_block_body(next_block.header.hash)
                     self.assertIsNotNone(stored)
                     self.assertEqual(stored.header.hash, next_block.header.hash)
