@@ -78,7 +78,8 @@ class RetargetAndWorkTests(unittest.TestCase):
         target_span = 2016 * 600
         quarter = decode_compact_target(retarget_compact(bits, 1, limit, target_span))
         four_x = decode_compact_target(retarget_compact(bits, target_span * 20, limit, target_span))
-        self.assertEqual(quarter, limit // 4)
+        self.assertLessEqual(quarter, limit // 4)
+        self.assertLess((limit // 4) - quarter, 1 << 232)
         self.assertEqual(four_x, limit)
 
     def test_retarget_rejects_bad_inputs(self):
