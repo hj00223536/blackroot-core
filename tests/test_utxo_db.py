@@ -1,5 +1,8 @@
 import sqlite3
+import subprocess
+import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -16,6 +19,65 @@ class UTXOStoreTests(unittest.TestCase):
         self.store = UTXOStore(self.db_path)
         self.funding = OutPoint(bytes.fromhex("31" * 32), 0)
         self.store.add_genesis_output(self.funding, TxOutput(900, b"funding-script"))
+
+    def test_concurrent_processes_cannot_spend_same_utxo_twice(self):
+        ready = [Path(self.tempdir.name) / f"ready-{i}" for i in range(2)]
+        release = Path(self.tempdir.name) / "release"
+        worker = """
+import sys, time
+from pathlib import Path
+from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput
+from src.blackroot_utxo_db import UTXOStore
+database, ready, release, writer = sys.argv[1:]
+store = UTXOStore(database)
+Path(ready).write_text("ready")
+deadline = time.monotonic() + 10
+while not Path(release).exists():
+    if time.monotonic() > deadline:
+        raise SystemExit("timed out waiting for concurrent-spend release")
+    time.sleep(0.01)
+funding = OutPoint(bytes.fromhex("31" * 32), 0)
+tx = Transaction(1, (TxInput(funding),), (TxOutput(800, ("writer-" + writer).encode()),))
+store.apply(tx)
+"""
+        workers = [
+            subprocess.Popen(
+                [sys.executable, "-c", worker, str(self.db_path), str(ready[i]),
+                 str(release), str(i)],
+                cwd=Path(__file__).resolve().parents[1],
+            )
+            for i in range(2)
+        ]
+        try:
+            deadline = time.monotonic() + 10
+            while not all(path.exists() for path in ready):
+                if any(process.poll() is not None for process in workers):
+                    self.fail("a concurrent spender exited before the release barrier")
+                if time.monotonic() > deadline:
+                    self.fail("concurrent spenders did not reach the barrier")
+                time.sleep(0.01)
+            release.write_text("go")
+            results = [process.wait(timeout=15) for process in workers]
+        finally:
+            release.touch()
+            for process in workers:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait(timeout=5)
+
+        self.assertEqual(sorted(results), [0, 1])
+        reopened = UTXOStore(self.db_path)
+        self.assertIsNone(reopened.get(self.funding))
+        self.assertEqual(reopened.count(), 1)
+        outputs = [
+            OutPoint(bytes.fromhex("31" * 32), 0),
+        ]
+        self.assertEqual(
+            sqlite3.connect(self.db_path).execute(
+                "SELECT script_pubkey FROM utxos"
+            ).fetchall(),
+            [(b"writer-0",)] if results[0] == 0 else [(b"writer-1",)],
+        )
 
     def test_persists_output_across_instances(self):
         reopened = UTXOStore(self.db_path)
