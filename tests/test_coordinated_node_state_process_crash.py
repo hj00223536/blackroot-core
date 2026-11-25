@@ -219,6 +219,7 @@ class CoordinatedNodeStateProcessCrashTests(unittest.TestCase):
                     __import__("time").sleep(0.01)
 
                 ready = root / "retry-process-ready"
+                attempted = root / "retry-process-attempted"
                 result = root / "retry-process-result"
                 retry_worker = r"""
 import sys
@@ -227,7 +228,7 @@ from pathlib import Path
 from src.blackroot_chain import BlockHeader
 from src.blackroot_consensus import decode_compact_target
 from src.blackroot_node_state import PersistentNodeState
-root, ready, release, result = map(Path, sys.argv[1:])
+root, ready, attempted, result = map(Path, sys.argv[1:])
 bits = 0x207FFFFF
 # Reconstruct the deterministic genesis header used by the first process.
 from src.blackroot_blocks import Block, COINBASE_INDEX, ZERO_TXID
@@ -242,14 +243,12 @@ for nonce in range(10000):
         break
 else:
     raise RuntimeError("genesis nonce search exhausted")
-ready.write_text("ready")
-deadline = time.monotonic() + 20
-while not release.exists():
-    if time.monotonic() >= deadline:
-        raise RuntimeError("retry release timed out")
-    time.sleep(0.01)
 state = PersistentNodeState.open_coordinated(root / "node.sqlite", limit, genesis_header)
 try:
+    # Signal immediately before entering the SQLite write path. The first
+    # process still holds BEGIN IMMEDIATE, so this call must wait for rollback.
+    ready.write_text("connected")
+    attempted.write_text("reorganization call started")
     tip = state.reorganize_best()
     result.write_text(f"accepted:{tip[0]}:{tip[1].hex()}")
 finally:
@@ -257,18 +256,21 @@ finally:
 """
                 second = subprocess.Popen(
                     [sys.executable, "-c", retry_worker, str(root), str(ready),
-                     str(release), str(result)],
+                     str(attempted), str(result)],
                     cwd=Path(__file__).resolve().parents[1],
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                 )
-                while not ready.exists():
+                while not attempted.exists():
                     if second.poll() is not None:
                         stdout, stderr = second.communicate()
-                        self.fail(f"retry process exited early: {stdout!r} {stderr!r}")
+                        self.fail(f"retry process exited before attempting reorganization: {stdout!r} {stderr!r}")
                     if __import__("time").monotonic() >= deadline:
-                        self.fail("retry process did not become ready")
+                        self.fail("retry process did not attempt reorganization")
                     __import__("time").sleep(0.01)
-                release.write_text("crash now; retry process may contend for SQLite lock")
+                self.assertTrue(ready.exists())
+                # The contender has entered reorganize_best while the first
+                # process still owns its uncommitted SQLite write transaction.
+                release.write_text("crash writer while contender is blocked on SQLite")
                 self.assertEqual(first.wait(timeout=20), 79)
                 self.assertEqual(second.wait(timeout=30), 0)
                 self.assertTrue(result.read_text().startswith("accepted:2:"))
