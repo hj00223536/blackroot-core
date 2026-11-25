@@ -209,3 +209,23 @@ These tests validate local callback wiring, source ownership, request release,
 reassignment, and the reorganization path over TCP. They do not test public
 internet peers, malicious network behavior, power-loss atomicity across the
 separate header and UTXO databases, or production consensus interoperability.
+
+## Persistent node runtime wrapper
+
+`BlackrootNodeRuntime` in `src/blackroot_node_runtime.py` is the explicit
+application lifecycle boundary for the current prototype. It accepts an
+already initialized `PersistentNodeState` and configured `PeerManager`,
+constructs `P2PSyncService` against the replay-verified header DAG and
+persistent UTXO store, and exposes listener startup, outbound peer connection,
+header synchronization, timeout retry, and idempotent shutdown. The runtime
+does not select genesis/network parameters, create hidden background timers,
+or automatically connect to public peers. The embedding application remains
+responsible for supervised retry scheduling and for reopening the persistent
+state on the next process start.
+
+`tests/test_node_runtime.py` verifies callback wiring, loopback listener
+startup, the empty-peer synchronization path, and closed-runtime behavior.
+This is lifecycle composition coverage only. Header and UTXO data remain in
+separate SQLite databases; there is no cross-database atomic commit or complete
+crash-recovery protocol. The runtime is not a production node or a public
+mainnet release.
