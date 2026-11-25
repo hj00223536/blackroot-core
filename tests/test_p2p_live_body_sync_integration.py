@@ -57,12 +57,15 @@ class LiveBlockBodySyncTests(unittest.IsolatedAsyncioTestCase):
                 POW_LIMIT,
                 genesis.header,
             )
-            destination_state = PersistentNodeState(
-                root / "destination-headers.sqlite",
-                root / "destination-utxos.sqlite",
-                POW_LIMIT,
-                genesis.header,
-            )
+            destination_states = [
+                PersistentNodeState(
+                    root / f"destination-{index}-headers.sqlite",
+                    root / f"destination-{index}-utxos.sqlite",
+                    POW_LIMIT,
+                    genesis.header,
+                )
+                for index in (1, 2)
+            ]
             source_state.headers.add_to_branch(
                 next_block.header, adjusted_time=now, max_future_seconds=7200
             )
@@ -103,89 +106,97 @@ class LiveBlockBodySyncTests(unittest.IsolatedAsyncioTestCase):
                 idle_timeout=10,
                 on_peer_message_factory=source_handler_factory,
             )
-            destination_manager = PeerManager(
-                magic=MAGIC,
-                local_version=VersionMessage(
-                    1, 0, now, 2002, 0, "/blackroot:body-destination/"
-                ),
-                max_peers=4,
-                handshake_timeout=2,
-                idle_timeout=10,
-            )
+            destination_managers = [
+                PeerManager(
+                    magic=MAGIC,
+                    local_version=VersionMessage(
+                        1, 0, now, 2000 + index, 0,
+                        f"/blackroot:body-destination-{index}/"
+                    ),
+                    max_peers=4,
+                    handshake_timeout=2,
+                    idle_timeout=10,
+                )
+                for index in (1, 2)
+            ]
             source_runtime = BlackrootNodeRuntime(
                 source_state, source_manager, protocol_version=1, request_timeout=2
             )
-            destination_runtime = BlackrootNodeRuntime(
-                destination_state, destination_manager,
-                protocol_version=1, request_timeout=2,
-                adjusted_time=lambda: int(time.time()),
-            )
+            destination_runtimes = [
+                BlackrootNodeRuntime(
+                    state, manager, protocol_version=1, request_timeout=2,
+                    adjusted_time=lambda: int(time.time()),
+                )
+                for state, manager in zip(destination_states, destination_managers)
+            ]
             try:
                 host, port = await source_runtime.listen("127.0.0.1", 0)
-                peer = await destination_runtime.connect(host, port)
+                peers = [
+                    await runtime.connect(host, port)
+                    for runtime in destination_runtimes
+                ]
                 deadline = asyncio.get_running_loop().time() + 3
-                while not peer.connected:
+                while not all(peer.connected for peer in peers):
                     if asyncio.get_running_loop().time() >= deadline:
-                        self.fail("peer handshake did not complete")
+                        self.fail("all three node handshakes did not complete")
                     await asyncio.sleep(0.01)
 
-                await destination_runtime.synchronize()
+                await asyncio.gather(
+                    *(runtime.synchronize() for runtime in destination_runtimes)
+                )
 
-                async def wait_for_active_body():
-                    while destination_state.utxos.tip() != (
-                        1, next_block.header.hash
+                async def wait_for_active_bodies():
+                    while any(
+                        state.utxos.tip() != (1, next_block.header.hash)
+                        for state in destination_states
                     ):
                         if asyncio.get_running_loop().time() >= deadline + 5:
                             self.fail(
-                                "destination did not connect downloaded body; "
-                                f"tip={destination_state.utxos.tip()}"
+                                "one or more destinations did not connect downloaded body; "
+                                f"tips={[state.utxos.tip() for state in destination_states]}"
                             )
                         await asyncio.sleep(0.01)
 
-                await asyncio.wait_for(wait_for_active_body(), timeout=6)
-                self.assertEqual(served_requests, [next_block.header.hash])
+                await asyncio.wait_for(wait_for_active_bodies(), timeout=6)
                 self.assertEqual(
-                    destination_state.headers.chain.tip.hash,
-                    next_block.header.hash,
+                    len(served_requests), 2,
+                    "source must serve the same block body independently to both peers",
                 )
-                self.assertEqual(
-                    destination_state.utxos.tip(),
-                    source_state.utxos.tip(),
-                )
-                stored = destination_state.utxos.load_block_body(
-                    next_block.header.hash
-                )
-                self.assertIsNotNone(stored)
-                self.assertEqual(stored.header.hash, next_block.header.hash)
-                self.assertEqual(len(stored.transactions), 1)
+                for state in destination_states:
+                    self.assertEqual(
+                        state.headers.chain.tip.hash, next_block.header.hash
+                    )
+                    self.assertEqual(state.utxos.tip(), source_state.utxos.tip())
+                    stored = state.utxos.load_block_body(next_block.header.hash)
+                    self.assertIsNotNone(stored)
+                    self.assertEqual(stored.header.hash, next_block.header.hash)
+                    self.assertEqual(len(stored.transactions), 1)
 
-                # Simulate a node restart by reopening both persistent stores
-                # from the same data directory after closing the first state.
-                destination_state.close()
-                destination_state = PersistentNodeState(
-                    root / "destination-headers.sqlite",
-                    root / "destination-utxos.sqlite",
-                    POW_LIMIT,
-                    genesis.header,
-                )
-                self.assertEqual(
-                    destination_state.headers.chain.tip.hash,
-                    next_block.header.hash,
-                )
-                self.assertEqual(
-                    destination_state.utxos.tip(),
-                    (1, next_block.header.hash),
-                )
-                restored = destination_state.utxos.load_block_body(
-                    next_block.header.hash
-                )
-                self.assertIsNotNone(restored)
-                self.assertEqual(restored.serialize(), next_block.serialize())
-                destination_state.utxos.verify_integrity()
+                # Restart both independent destination nodes and verify their
+                # persistent active tips and archived block bodies.
+                for index, state in enumerate(destination_states, start=1):
+                    state.close()
+                    destination_states[index - 1] = PersistentNodeState(
+                        root / f"destination-{index}-headers.sqlite",
+                        root / f"destination-{index}-utxos.sqlite",
+                        POW_LIMIT,
+                        genesis.header,
+                    )
+                    reopened = destination_states[index - 1]
+                    self.assertEqual(
+                        reopened.headers.chain.tip.hash, next_block.header.hash
+                    )
+                    self.assertEqual(reopened.utxos.tip(), (1, next_block.header.hash))
+                    restored = reopened.utxos.load_block_body(next_block.header.hash)
+                    self.assertIsNotNone(restored)
+                    self.assertEqual(restored.serialize(), next_block.serialize())
+                    reopened.utxos.verify_integrity()
             finally:
-                await destination_runtime.close()
+                for runtime in destination_runtimes:
+                    await runtime.close()
                 await source_runtime.close()
-                destination_state.close()
+                for state in destination_states:
+                    state.close()
                 source_state.close()
 
 
