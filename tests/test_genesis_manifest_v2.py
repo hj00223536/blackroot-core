@@ -1,4 +1,5 @@
 import unittest
+from collections.abc import Mapping
 import hashlib
 import json
 
@@ -61,6 +62,28 @@ def validate(value):
     )
 
 
+class MutatingManifest(Mapping):
+    """Expose a changed value if validation re-reads the caller mapping."""
+
+    def __init__(self, values):
+        self.values = dict(values)
+        self.amount_reads = 0
+
+    def __iter__(self):
+        return iter(self.values)
+
+    def __len__(self):
+        return len(self.values)
+
+    def __getitem__(self, key):
+        value = self.values[key]
+        if key == "founder_amount_sats":
+            self.amount_reads += 1
+            if self.amount_reads > 1:
+                return value + 1
+        return value
+
+
 class GenesisManifestV2Tests(unittest.TestCase):
     def test_valid_v2_manifest_decodes_founder_output_without_approval_field(self):
         value = manifest()
@@ -71,6 +94,12 @@ class GenesisManifestV2Tests(unittest.TestCase):
         self.assertEqual(validated.founder_amount_sats, 20_000_000 * COIN)
         self.assertEqual(validated.founder_script_pub_key, FOUNDER_SCRIPT)
         self.assertEqual(validated.approval_record, "")
+
+    def test_validation_uses_one_snapshot_of_caller_mapping(self):
+        supplied = MutatingManifest(manifest())
+        validated = validate(supplied)
+        self.assertEqual(validated.founder_amount_sats, FOUNDER_ALLOCATION)
+        self.assertEqual(supplied.amount_reads, 1)
 
     def test_v1_shape_unknown_fields_and_missing_fields_are_rejected(self):
         old = manifest()
