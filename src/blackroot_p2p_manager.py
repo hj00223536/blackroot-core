@@ -6,6 +6,7 @@ discovery, encryption, cryptographic identity, or production anti-Sybil policy.
 from __future__ import annotations
 
 import asyncio
+import math
 import secrets
 from dataclasses import replace
 from typing import Callable
@@ -38,8 +39,34 @@ class PeerManager:
             raise ValueError("network magic must be exactly four bytes")
         if not isinstance(max_peers, int) or isinstance(max_peers, bool) or max_peers < 1:
             raise ValueError("max_peers must be a positive integer")
-        if connect_timeout <= 0 or handshake_timeout <= 0 or idle_timeout <= 0:
-            raise ValueError("timeouts must be positive")
+        for name, value in (
+            ("connect_timeout", connect_timeout),
+            ("handshake_timeout", handshake_timeout),
+            ("idle_timeout", idle_timeout),
+        ):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value <= 0
+            ):
+                raise ValueError(f"{name} must be a finite positive number")
+        if (
+            not isinstance(max_payload, int)
+            or isinstance(max_payload, bool)
+            or not 0 <= max_payload <= DEFAULT_MAX_PAYLOAD
+        ):
+            raise ValueError("max_payload must be an integer within the protocol limit")
+        if (
+            not isinstance(min_protocol_version, int)
+            or isinstance(min_protocol_version, bool)
+            or min_protocol_version < 1
+        ):
+            raise ValueError("minimum protocol version must be a positive integer")
+        if on_message is not None and not callable(on_message):
+            raise TypeError("on_message must be callable")
+        if on_peer_error is not None and not callable(on_peer_error):
+            raise TypeError("on_peer_error must be callable")
         self.magic = magic
         self.local_version = local_version
         self.max_peers = max_peers
