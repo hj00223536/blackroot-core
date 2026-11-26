@@ -46,3 +46,15 @@ jobs:
         run: node scripts/verify_address_vectors.mjs
       - name: Verify independent compact-target retarget vectors
         run: node scripts/verify_retarget_vectors.mjs
+
+  wallet-static-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    name: Static wallet security guard
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Reject active or remote content in wallet prototype
+        run: python scripts/verify_wallet_static_security.py
