@@ -45,6 +45,12 @@ The record and all genesis UTXO rows must be committed in the same database tran
 
 The manifest is public consensus input, not a wallet backup: it must never contain a private key, seed phrase, password, or signing secret. Its digest is an integrity identifier, not proof of owner identity by itself; owner approval must be recorded through the project's reviewed release/governance process before the manifest is accepted.
 
+## Non-operational initialization-record validator prototype
+
+A pure-Python prototype now exists in `src/blackroot_genesis_initialization_record.py`. It deterministically derives a proposed record from a `ValidatedGenesisManifest` and checks an exact field set and exact typed values against that validated object. The record includes the completion marker, network and genesis identity, manifest digest, canonical coinbase bytes and txid, founder output index/value/script, and total supply cap.
+
+The prototype is intentionally not an initializer: it does not open a database, write UTXOs or metadata, create a capability, verify owner approval, establish trust-anchor provenance, prove atomicity or immutability, or authorize issuance. Its tests exercise field tampering, missing/unknown fields, and strict type matching. A persisted record will require a separately reviewed schema, transactional implementation, startup integrity checks, crash-injection tests, and external security review.
+
 ## Additional accounting-integrity gap
 
 The current `bootstrap_issued_sats` metadata value is a mutable aggregate counter. It is incremented when the trusted storage primitive inserts a bootstrap output, but it is not an append-only issuance ledger and does not by itself prove which canonical genesis outputs were issued. Because ordinary spending can later remove or transform UTXOs, the current live UTXO set cannot reliably reconstruct historical bootstrap issuance.
