@@ -84,6 +84,38 @@ class HeaderChainTests(unittest.TestCase):
         self.assertEqual([item.hash for item in disconnect], [old_branch.hash])
         self.assertEqual([item.hash for item in connect], [side_one.hash, side_two.hash])
 
+    def test_three_independent_nodes_converge_on_greatest_work_branch(self):
+        genesis = mine_header(ZERO_HASH, 1)
+        old_branch = mine_header(genesis.hash, 2)
+        side_one = mine_header(genesis.hash, 3)
+        side_two = mine_header(side_one.hash, 4)
+
+        node_a = HeaderChain(POW_LIMIT, genesis)
+        node_b = HeaderChain(POW_LIMIT, genesis)
+        node_c = HeaderChain(POW_LIMIT, genesis)
+
+        # Simulate three peers receiving the same valid headers in different
+        # delivery orders while preserving parent-before-child per branch.
+        node_a.add(old_branch)
+        node_a.add_to_branch(side_one)
+        node_a.add_to_branch(side_two)
+
+        node_b.add_to_branch(side_one)
+        node_b.add_to_branch(side_two)
+        node_b.add(old_branch)
+
+        node_c.add(old_branch)
+        node_c.add_to_branch(side_one)
+        self.assertEqual(node_c.tip.hash, side_one.hash)
+        node_c.add_to_branch(side_two)
+
+        for node in (node_a, node_b, node_c):
+            self.assertEqual(node.best_hash, side_two.hash)
+            self.assertEqual(node.chainwork, node_a.chainwork)
+            disconnect, connect = node.reorganization(old_branch.hash)
+            self.assertEqual([header.hash for header in disconnect], [old_branch.hash])
+            self.assertEqual([header.hash for header in connect], [side_one.hash, side_two.hash])
+
     def test_rejects_unknown_parent_and_duplicate_header(self):
         genesis = mine_header(ZERO_HASH, 1)
         chain = HeaderChain(POW_LIMIT, genesis)
