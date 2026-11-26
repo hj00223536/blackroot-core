@@ -24,7 +24,8 @@ class MonetaryScheduleTests(unittest.TestCase):
         self.assertEqual(total_supply_cap(), 40_000_000 * COIN)
 
     def test_fixed_subsidy_boundaries(self):
-        self.assertEqual(block_subsidy(FIRST_MINING_HEIGHT - 1), 0)
+        self.assertEqual(block_subsidy(0), FOUNDER_ALLOCATION)
+        self.assertEqual(block_subsidy(FIRST_MINING_HEIGHT - 1), FOUNDER_ALLOCATION)
         self.assertEqual(block_subsidy(FIRST_MINING_HEIGHT), 10 * COIN)
         self.assertEqual(block_subsidy(LAST_MINING_HEIGHT), 10 * COIN)
         self.assertEqual(block_subsidy(LAST_MINING_HEIGHT + 1), 0)
