@@ -32,7 +32,7 @@ The amount above is a proposal-level conversion using 100,000,000 atomic units p
 
 ## 3. Canonical digest
 
-The prototype now implements a restricted RFC 8785-style JSON Canonicalization Scheme (JCS) encoder for the manifest's string/integer-only schema, UTF-8 output, UTF-16 key ordering, duplicate-key rejection in the strict JSON parser, and rejection of floating-point and out-of-safe-range integers. This implementation is provisional until cross-language RFC 8785 test vectors and an independent implementation agree.
+The prototype now implements a restricted RFC 8785-style JSON Canonicalization Scheme (JCS) encoder for the manifest's string/integer-only schema, UTF-8 output, UTF-16 key ordering, duplicate-key rejection in the strict JSON parser, rejection of floating-point and out-of-safe-range integers, and rejection of unpaired UTF-16 surrogates. Python and an independent Node.js 22 verifier include fixtures for non-ASCII text, control-character escaping, UTF-16 property ordering, and invalid surrogates. This implementation is still provisional until a broader cross-language RFC 8785 conformance suite and independent external review agree.
 
 Compute the manifest identifier as:
 
