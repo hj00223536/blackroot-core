@@ -10,7 +10,7 @@ from __future__ import annotations
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
+from typing import Callable, Iterator
 
 from .blackroot_chain import BlockHeader, HeaderChain
 from .blackroot_sqlite import SQLiteTransactionConnection
@@ -22,13 +22,17 @@ class PersistentHeaderStore:
     def __init__(
         self, path: str | Path, pow_limit: int, genesis: BlockHeader, *,
         connection: SQLiteTransactionConnection | None = None,
+        adjusted_time_provider: Callable[[], int] | None = None,
     ):
         if not isinstance(genesis, BlockHeader):
             raise TypeError("genesis must be a BlockHeader")
         if not isinstance(pow_limit, int) or isinstance(pow_limit, bool) or pow_limit <= 0:
             raise ValueError("pow_limit must be a positive integer")
         self.path = str(path)
+        if adjusted_time_provider is not None and not callable(adjusted_time_provider):
+            raise TypeError("adjusted_time_provider must be callable")
         self.pow_limit = pow_limit
+        self.adjusted_time_provider = adjusted_time_provider
         self._external_connection = connection
         if connection is not None and not isinstance(connection, SQLiteTransactionConnection):
             raise TypeError("connection must be a SQLiteTransactionConnection")
@@ -122,7 +126,7 @@ class PersistentHeaderStore:
                 "genesis_hash": genesis.hash.hex(),
             }
             if not metadata:
-                initial = HeaderChain(self.pow_limit, genesis)
+                initial = HeaderChain(self.pow_limit, genesis, adjusted_time_provider=self.adjusted_time_provider)
                 db.executemany(
                     "INSERT INTO header_metadata(key, value) VALUES(?, ?)",
                     expected.items(),
@@ -153,7 +157,7 @@ class PersistentHeaderStore:
         )
 
     def _replay(self, db: sqlite3.Connection, genesis: BlockHeader) -> None:
-        replayed = HeaderChain(self.pow_limit, genesis)
+        replayed = HeaderChain(self.pow_limit, genesis, adjusted_time_provider=self.adjusted_time_provider)
         genesis_node = replayed.node(genesis.hash)
         rows = db.execute(
             "SELECT block_hash, height, version, prev_hash, merkle_root, timestamp, bits, nonce, chainwork "
@@ -189,7 +193,10 @@ class PersistentHeaderStore:
     ) -> str:
         """Validate on a replayed candidate, persist atomically, then publish it."""
         live_chain = self.chain
-        candidate = HeaderChain(self.pow_limit, live_chain.best_chain()[0])
+        candidate = HeaderChain(
+            self.pow_limit, live_chain.best_chain()[0],
+            adjusted_time_provider=self.adjusted_time_provider,
+        )
         # Rebuild all known branches so fork choice and duplicate checks are
         # evaluated against the same DAG without mutating the live instance.
         nodes = (node for node in live_chain.nodes if node.height > 0)
