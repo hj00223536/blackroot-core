@@ -1,7 +1,7 @@
 import hashlib
 import unittest
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 from cryptography.hazmat.primitives import serialization
 
 from src.blackroot_genesis_approval import (approval_message, parse_genesis_approval_record_json, verify_genesis_approval_record)
@@ -11,6 +11,22 @@ from src.blackroot_genesis_approval import (approval_message, parse_genesis_appr
 _SEED = bytes.fromhex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
 _NETWORK = "11" * 32
 _DIGEST = "22" * 32
+
+
+class Ed25519PublishedVectorTests(unittest.TestCase):
+    def test_rfc8032_empty_message_vector(self):
+        public = bytes.fromhex(
+            "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
+        )
+        signature = bytes.fromhex(
+            "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e06522490155"
+            "5fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b"
+        )
+        from cryptography.exceptions import InvalidSignature
+        key = Ed25519PublicKey.from_public_bytes(public)
+        key.verify(signature, b"")
+        with self.assertRaises(InvalidSignature):
+            key.verify(signature, b"changed")
 
 
 class GenesisApprovalTests(unittest.TestCase):
