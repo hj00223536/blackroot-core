@@ -429,6 +429,55 @@ class PersistentBlockTests(unittest.TestCase):
             )
         self.assertEqual(self.store.tip(), (1, active.header.hash))
 
+    def test_cumulative_issued_subsidy_tracks_active_chain_and_disconnect(self):
+        genesis_cb = coinbase(0, b"\\x00\\x00")
+        genesis = block_for([genesis_cb])
+        self.store.connect_block(genesis, 0)
+        self.assertEqual(self.store.issued_subsidy(), 0)
+
+        reward_cb = coinbase(block_subsidy(1), b"\\x01\\x01")
+        reward = block_for([reward_cb], previous=genesis.header.hash, timestamp=2)
+        self.store.connect_block(reward, 1)
+        self.assertEqual(self.store.issued_subsidy(), block_subsidy(1))
+        self.store.verify_integrity()
+
+        self.assertEqual(self.store.disconnect_tip(reward.header.hash), (1, reward.header.hash))
+        self.assertEqual(self.store.issued_subsidy(), 0)
+        self.store.verify_integrity()
+
+    def test_cumulative_issued_subsidy_reorganization_replaces_branch_amount(self):
+        genesis_cb = coinbase(0, b"\\x00\\x00")
+        genesis = block_for([genesis_cb])
+        self.store.connect_block(genesis, 0)
+
+        old_cb = coinbase(block_subsidy(1), b"\\x01\\x01")
+        old_block = block_for([old_cb], previous=genesis.header.hash, timestamp=2)
+        self.store.connect_block(old_block, 1)
+
+        replacement_cb = coinbase(block_subsidy(1) - 123, b"\\x02\\x01")
+        replacement = block_for([replacement_cb], previous=genesis.header.hash, timestamp=3)
+        self.store.reorganize((old_block.header.hash,), (replacement,))
+        self.assertEqual(self.store.issued_subsidy(), block_subsidy(1) - 123)
+        self.store.verify_integrity()
+
+    def test_transaction_fees_are_not_counted_as_new_subsidy(self):
+        point = _mul(1)
+        pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
+        locking_script = p2pkh_script(_hash160(pubkey))
+        funding = OutPoint(bytes.fromhex("55" * 32), 0)
+        previous_output = TxOutput(10_000, locking_script)
+        self.store.add_genesis_output(funding, previous_output)
+
+        genesis_cb = coinbase(0, b"\\x00\\x00")
+        genesis = block_for([genesis_cb])
+        self.store.connect_block(genesis, 0)
+        spend = signed_spend(funding, previous_output, 9_900)
+        next_cb = coinbase(block_subsidy(1) + 100, b"\\x01\\x01")
+        next_block = block_for([next_cb, spend], previous=genesis.header.hash, timestamp=2)
+        self.assertEqual(self.store.connect_block(next_block, 1), 100)
+        self.assertEqual(self.store.issued_subsidy(), block_subsidy(1))
+        self.store.verify_integrity()
+
     def test_disconnect_rejects_empty_chain(self):
         with self.assertRaisesRegex(ValueError, "empty chain"):
             self.store.disconnect_tip(bytes.fromhex("44" * 32))
