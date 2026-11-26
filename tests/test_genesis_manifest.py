@@ -198,6 +198,31 @@ class GenesisManifestStructureTests(unittest.TestCase):
             _jcs_encode(1 << 53)
 
 
+    def test_jcs_unicode_control_characters_and_surrogates(self):
+        from src.blackroot_genesis_manifest import _jcs_encode
+
+        value = {"text": "café 雪 😀"}
+        encoded = _jcs_encode(value).encode("utf-8")
+        self.assertEqual(encoded, '{"text":"café 雪 😀"}'.encode("utf-8"))
+
+        controls = _jcs_encode({"control": "\\u0000\\b\\t\\n\\f\\r"})
+        self.assertEqual(controls, '{"control":"\\\\u0000\\\\b\\\\t\\\\n\\\\f\\\\r"}')
+
+        # JCS sorts property names by UTF-16 code units, not Unicode scalar value.
+        ordered = _jcs_encode({"\\ue000": 1, "😀": 2})
+        self.assertEqual(ordered, '{"😀":2,"\\ue000":1}')
+
+        with self.assertRaisesRegex(ValueError, "surrogates"):
+            _jcs_encode("unpaired-\\ud800")
+        with self.assertRaisesRegex(ValueError, "surrogates"):
+            _jcs_encode({"bad-\\udfff": 1})
+        with self.assertRaisesRegex(ValueError, "surrogates"):
+            canonicalize_genesis_manifest({"manifest_digest": "00" * 32, "value": "x\\ud800"})
+
+        parsed = parse_genesis_manifest_json('{"value":"\\\\ud800"}')
+        with self.assertRaisesRegex(ValueError, "surrogates"):
+            _jcs_encode(parsed)
+
     def test_header_commitment_binds_coinbase_merkle_and_block_hash(self):
         validated = _validate(_manifest())
         header = BlockHeader(
