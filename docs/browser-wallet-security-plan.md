@@ -4,15 +4,15 @@ Status: design only; not a usable wallet and not approved for mainnet funds.
 
 ## User requirement
 
-The founder wants a browser-based wallet that can be opened on a phone without a terminal. The proposed monetary policy allocates 20,000,000 BRT to the founder and 20,000,000 BRT to mining, for a proposed 40,000,000 BRT total. This document does not create coins or change consensus.
+The founder wants a browser-based wallet that can be opened on a phone without a terminal. The owner-approved monetary design is 20,000,000 BRT for the founder and 20,000,000 BRT for mining, with a proposed 40,000,000 BRT maximum supply. The reference subsidy helper now represents the 20,000,000 BRT founder issuance allowance at genesis height 0 and 10 BRT mining rewards at heights 1–2,000,000. CI validation is pending.
 
 ## Current blockers verified in the repository
 
-- The repository is a Python consensus/reference implementation; it has no browser wallet application or wallet build pipeline.
-- `docs/genesis.md` leaves the network address encoding unresolved.
-- The current Genesis candidate has a zero-value OP_RETURN output and cannot pay a founder allocation.
-- The current consensus implementation still follows the older 21,000,000-coin limit and 50-coin / 210,000-block prototype subsidy schedule.
-- The existing `src/blackroot_script.py` contains custom secp256k1 arithmetic. It is not an independently audited wallet cryptography library.
+- The repository has an Arabic HTML wallet shell, but no browser wallet application, secure key manager, encrypted vault, transaction signer, or production wallet build pipeline.
+- The current testnet genesis candidate still has a zero-value OP_RETURN output. It does not create the founder allocation and cannot pay the founder.
+- Address version 0x26 is provisional and must not be used to receive real funds.
+- The current custom secp256k1 implementation is experimental and is not an independently audited wallet cryptography library.
+- No production node RPC, public testnet, or mainnet exists.
 
 ## Security requirements for the browser wallet
 
@@ -30,7 +30,8 @@ The founder wants a browser-based wallet that can be opened on a phone without a
 ## Implementation sequence
 
 - [ ] Freeze chain identity and address encoding (network magic, address prefix/version, checksum, public-key format, ports, protocol version).
-- [ ] Approve a normative 40,000,000 BRT monetary policy and a mathematically exact 20,000,000 BRT mining emission schedule.
+- [x] Record the owner-approved 40,000,000 BRT monetary ceiling and exact 20,000,000 BRT mining emission schedule in the reference implementation; CI and full integration review remain pending.
+- [ ] Implement and test founder genesis output construction and spendability. The current genesis candidate remains zero-value OP_RETURN.
 - [ ] Implement and test address encode/decode with independent test vectors.
 - [ ] Add a browser app with pinned, bundled cryptographic dependencies and no secret-bearing network requests.
 - [ ] Add local key creation, receive-address display, encrypted backup, and restore tests.
@@ -41,4 +42,4 @@ The founder wants a browser-based wallet that can be opened on a phone without a
 
 ## Explicit non-claims
 
-This plan does not mean a founder wallet exists, that 20,000,000 BRT have been minted or allocated, that a balance exists, or that BLACKROOT mainnet is live. It does not provide market liquidity or a market price.
+This plan does not mean a founder wallet exists, that 20,000,000 BRT have been minted or credited, that a balance exists, or that BLACKROOT mainnet is live. It does not provide market liquidity or a market price.
