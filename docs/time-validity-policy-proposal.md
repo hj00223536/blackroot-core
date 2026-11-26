@@ -9,7 +9,7 @@ This document records the current header-chain behavior and the decisions requir
 - A candidate header timestamp must be strictly greater than the median timestamp of up to the 11 headers ending at its parent (MTP).
 - Network-mode header admission now fails closed when `adjusted_time` is omitted for a non-genesis header; the explicit `allow_unchecked_time_for_tests=True` constructor option exists only for offline fixtures.
 - The current helper default for `max_future_seconds` is 7,200 seconds (two hours).
-- `HeaderChain` now accepts an injected `adjusted_time_provider` callable. When configured, normal non-genesis admission obtains its reference time from that provider. The chain still cannot authenticate the provider or decide how peer time is sampled; production clock sourcing and peer-time adjustment remain unresolved. Explicit `adjusted_time` remains available for deterministic validation and batch admission.
+- `HeaderChain` now accepts an injected `adjusted_time_provider` callable. When configured, normal non-genesis admission obtains its reference time from that provider. `PersistentHeaderStore` and `PersistentNodeState` now accept and pass the provider through initialization, replay, and candidate-chain rebuilding. The chain still cannot authenticate the provider or decide how peer time is sampled; production clock sourcing and peer-time adjustment remain unresolved. Explicit `adjusted_time` remains available for deterministic validation and batch admission.
 - The in-memory header DAG does not establish a peer-time sampling or clock-synchronization policy.
 
 These are prototype facts, not a complete network time policy.
@@ -26,6 +26,15 @@ These are prototype facts, not a complete network time policy.
 | Peer-time adjustment | Define sampling, outlier rejection, maximum adjustment and behavior with too few peers | OPEN |
 | Local clock failure | Define startup, drift, rollback and loss-of-connectivity behavior | OPEN |
 | Historical validation | Specify deterministic handling of future-time checks during initial sync and reindex | OPEN |
+
+## Integration status
+
+- [x] Injected adjusted-time provider supported by the in-memory header DAG.
+- [x] Provider wired through persistent header-store replay and candidate reconstruction.
+- [x] Provider parameter exposed by persistent node-state constructors.
+- [x] P2P header-sync path requires a provider and validates the returned value.
+- [ ] Production peer-time sampling, outlier policy, trust model and lifecycle wiring.
+- [ ] Full node ingress audit proving no alternate path bypasses the clock provider.
 
 ## Required implementation properties
 
