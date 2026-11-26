@@ -101,6 +101,35 @@ class MultiPeerBlockSchedulerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.scheduler.pool.assigned_peer(self.block.header.hash), retry_peer)
         self.assertEqual(self.scheduler.tracker.pending_hashes, (self.block.header.hash,))
 
+    async def test_expiring_multiple_requests_releases_all_peer_loads(self):
+        now = [200.0]
+        self.scheduler.tracker = BlockBodyRequestTracker(clock=lambda: now[0])
+        child = None
+        for nonce in range(10000):
+            candidate = BlockHeader(
+                1, self.block.header.hash, self.block.header.merkle_root,
+                2, BITS, nonce,
+            )
+            if check_proof_of_work(candidate.serialize(), BITS, POW_LIMIT):
+                child = candidate
+                break
+        self.assertIsNotNone(child)
+        self.chain.add(child)
+
+        first_peer = await self.scheduler.request_block(self.block.header.hash, self.peers)
+        second_peer = await self.scheduler.request_block(child.hash, self.peers)
+        self.assertNotEqual(first_peer, second_peer)
+        self.assertEqual(self.scheduler.pool.peer_load(first_peer), 1)
+        self.assertEqual(self.scheduler.pool.peer_load(second_peer), 1)
+
+        now[0] = 211.0
+        expired = self.scheduler.expire_requests(10.0)
+        self.assertEqual(set(expired), {self.block.header.hash, child.hash})
+        self.assertEqual(self.scheduler.pool.pending_hashes, ())
+        self.assertEqual(self.scheduler.tracker.pending_hashes, ())
+        self.assertEqual(self.scheduler.pool.peer_load(first_peer), 0)
+        self.assertEqual(self.scheduler.pool.peer_load(second_peer), 0)
+
     async def test_rejects_when_no_peer_is_connected(self):
         self.peer_a.connected = False
         self.peer_b.connected = False
