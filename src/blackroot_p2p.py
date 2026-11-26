@@ -110,7 +110,14 @@ class MessageStreamParser:
                     break
                 frame = bytes(self._buffer[:frame_length])
                 del self._buffer[:frame_length]
-                messages.append(decode_message(frame, self.magic, max_payload=self.max_payload))
+                try:
+                    messages.append(decode_message(frame, self.magic, max_payload=self.max_payload))
+                except Exception:
+                    # A malformed frame invalidates the peer's current stream.
+                    # Drop any buffered trailing bytes so they cannot be reused
+                    # if the caller catches the error or reconnects this parser.
+                    self._buffer.clear()
+                    raise
 
         while offset < len(data):
             room = maximum_buffer - len(self._buffer)
