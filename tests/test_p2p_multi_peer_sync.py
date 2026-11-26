@@ -47,6 +47,21 @@ class MultiPeerBlockSchedulerTests(unittest.IsolatedAsyncioTestCase):
         self.peer_b = FakePeer()
         self.peers = {"a": self.peer_a, "b": self.peer_b}
 
+    def test_strict_lifecycle_mode_rejects_unmarked_store(self):
+        with self.assertRaisesRegex(ValueError, "lifecycle adapter"):
+            MultiPeerBlockScheduler(
+                self.chain, self.store, require_node_state_lifecycle=True
+            )
+
+    def test_strict_lifecycle_mode_accepts_marked_adapter(self):
+        adapter = Mock()
+        adapter._blackroot_node_state_lifecycle = True
+        adapter.connect_validated_block.return_value = 0
+        scheduler = MultiPeerBlockScheduler(
+            self.chain, adapter, require_node_state_lifecycle=True
+        )
+        self.assertIs(scheduler.store, adapter)
+
     async def test_request_is_sent_to_selected_peer_and_response_validated(self):
         chosen = await self.scheduler.request_block(self.block.header.hash, self.peers)
         selected = self.peers[chosen]
