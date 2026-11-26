@@ -52,9 +52,7 @@ def make_block(previous, height, timestamp):
     return Block(mine(previous, merkle_root([tx.txid]), timestamp), (tx,))
 
 genesis = make_block(bytes(32), 0, 1)
-state = PersistentNodeState(
-    root / "headers.sqlite", root / "utxos.sqlite", limit, genesis.header
-)
+state = PersistentNodeState(root / "headers.sqlite", root / "utxos.sqlite", limit, genesis.header, adjusted_time_provider=lambda: 1_000_000)
 candidate = make_block(genesis.header.hash, 1, 2)
 state.add_header(candidate.header, adjusted_time=2)
 state.utxos.store_block_body(candidate)
@@ -96,10 +94,8 @@ class RecoveryJournalProcessCrashTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             genesis = make_genesis()
-            initial = PersistentNodeState(
-                root / "headers.sqlite", root / "utxos.sqlite",
-                POW_LIMIT, genesis.header,
-            )
+            initial = PersistentNodeState(root / "headers.sqlite", root / "utxos.sqlite",
+                POW_LIMIT, genesis.header, adjusted_time_provider=lambda: 1_000_000)
             initial.connect_best_block(genesis, 0)
 
             completed = subprocess.run(
@@ -115,10 +111,8 @@ class RecoveryJournalProcessCrashTests(unittest.TestCase):
                 msg=f"child stdout={completed.stdout!r} stderr={completed.stderr!r}",
             )
 
-            reopened = PersistentNodeState(
-                root / "headers.sqlite", root / "utxos.sqlite",
-                POW_LIMIT, genesis.header,
-            )
+            reopened = PersistentNodeState(root / "headers.sqlite", root / "utxos.sqlite",
+                POW_LIMIT, genesis.header, adjusted_time_provider=lambda: 1_000_000)
             self.assertFalse(reopened.recovery_journal.pending())
             return reopened.utxos.tip(), reopened.headers.chain.best_hash
 
