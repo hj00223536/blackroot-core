@@ -14,7 +14,8 @@ from src.blackroot_genesis_manifest import (
     calculate_genesis_manifest_digest,
     canonicalize_genesis_manifest,
     parse_genesis_manifest_json,
-    validate_genesis_header_commitment,\n    validate_genesis_manifest_structure,
+    validate_genesis_header_commitment,
+    validate_genesis_manifest_structure,
 )
 
 NETWORK_ID = "11" * 32
