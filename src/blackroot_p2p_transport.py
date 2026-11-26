@@ -20,6 +20,26 @@ from .blackroot_p2p_state import PeerHandshake, encode_local_version
 
 MessageHandler = Callable[[str, bytes], object | Awaitable[object]]
 
+# Reject fixed/small control-message lengths from the header before reading
+# attacker-controlled payload bytes from the TCP stream.
+_VERSION_MAX_PAYLOAD = 32 + 2 + 256
+_CONTROL_PAYLOAD_LENGTHS = {
+    b"verack" + bytes(6): 0,
+    b"ping" + bytes(8): 8,
+    b"pong" + bytes(8): 8,
+}
+
+
+def _validate_control_payload_length(command_field: bytes, length: int) -> None:
+    if command_field == b"version" + bytes(5):
+        if length > _VERSION_MAX_PAYLOAD:
+            raise PeerProtocolError("version payload exceeds configured byte limit")
+        return
+    expected = _CONTROL_PAYLOAD_LENGTHS.get(command_field)
+    if expected is not None and length != expected:
+        command = command_field.split(b"\\x00", 1)[0].decode("ascii")
+        raise PeerProtocolError(f"{command} payload must be exactly {expected} bytes")
+
 
 def _validate_timeout(name: str, value: float) -> None:
     if (
@@ -109,6 +129,7 @@ class PeerConnection:
         length = struct.unpack_from("<I", header, 16)[0]
         if length > self.max_payload:
             raise PeerProtocolError("message payload exceeds configured limit")
+        _validate_control_payload_length(header[4:16], length)
         payload = await self.reader.readexactly(length)
         try:
             return decode_message(header + payload, self.magic, max_payload=self.max_payload)
