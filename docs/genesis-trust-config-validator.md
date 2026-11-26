@@ -26,6 +26,10 @@ The validator requires the caller to supply all of the following from a separate
 
 The package cannot choose these values. A valid digest without an independently supplied pin is not trusted. A later configuration must match the exact expected sequence and predecessor digest; older or substituted configurations fail closed.
 
+## Approval-verification binding prototype
+
+`verify_approval_with_validated_trust()` now accepts a structurally validated manifest and a validated trust configuration, rejects cross-network use, and passes only active keys with the exact founder-allocation scope to the detached Ed25519 approval verifier. Revoked keys are explicitly rejected. The validated key mapping is exposed read-only. Regression tests cover successful binding, revoked-key rejection, and cross-network substitution. This is still only a library-level prototype: it does not load or authenticate the external pins, persist anti-rollback state, or authorize issuance.
+
 ## Prototype boundary
 
 `src/blackroot_genesis_trust.py` performs strict JSON parsing, exact-field checks, key identifier checks, scope/status checks, canonical digest verification, and comparison against caller-supplied pins. It returns validated public-key records but does not load pins from a secure source, establish owner identity, verify governance decisions, manage time-based activation, persist monotonic state, or integrate with the approval verifier or node startup. A caller could still supply malicious pins; the external pinning and review process is not implemented.
