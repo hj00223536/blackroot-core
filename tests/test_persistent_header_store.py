@@ -36,6 +36,15 @@ def managed_sqlite(connection):
         connection.close()
 
 class PersistentHeaderStoreTests(unittest.TestCase):
+    def open_store(self, path=None, *, connection=None):
+        return PersistentHeaderStore(
+            self.path if path is None else path,
+            POW_LIMIT,
+            self.genesis,
+            connection=connection,
+            adjusted_time_provider=lambda: 1_000_000,
+        )
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.path = Path(self.temp.name) / "headers.sqlite"
@@ -45,7 +54,7 @@ class PersistentHeaderStoreTests(unittest.TestCase):
         self.temp.cleanup()
 
     def test_reopens_and_replays_best_chain_and_side_branches(self):
-        store = PersistentHeaderStore(self.path, POW_LIMIT, self.genesis)
+        store = self.open_store()
         main_one = mine(self.genesis.hash, 2)
         store.add_to_branch(main_one)
         side_one = mine(self.genesis.hash, 3)
@@ -120,15 +129,13 @@ class PersistentHeaderStoreTests(unittest.TestCase):
         child = mine(self.genesis.hash, 2)
         with SQLiteTransactionCoordinator(path) as coordinator:
             with coordinator.transaction() as connection:
-                store = PersistentHeaderStore(
-                    path, POW_LIMIT, self.genesis, connection=connection
-                )
+                store = self.open_store(path, connection=connection)
             with coordinator.transaction():
                 store.add_to_branch(child)
                 self.assertEqual(store.chain.height, 0)
             self.assertEqual(store.reload().height, 1)
             self.assertEqual(store.chain.best_hash, child.hash)
-        reopened = PersistentHeaderStore(path, POW_LIMIT, self.genesis)
+        reopened = self.open_store(path)
         self.assertEqual(reopened.chain.best_hash, child.hash)
 
     def test_outer_rollback_does_not_publish_coordinated_header(self):
