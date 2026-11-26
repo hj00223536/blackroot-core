@@ -80,8 +80,12 @@ def check_proof_of_work(header: bytes, bits: int, pow_limit: int) -> bool:
     """Check SHA-256d(header) <= target, with an explicit network pow_limit."""
     if not isinstance(header, bytes) or len(header) != 80:
         raise ValueError("header must be exactly 80 bytes")
-    if not isinstance(pow_limit, int) or isinstance(pow_limit, bool) or pow_limit <= 0:
-        raise ValueError("pow_limit must be a positive integer")
+    if (
+        not isinstance(pow_limit, int)
+        or isinstance(pow_limit, bool)
+        or not 0 < pow_limit < 1 << 256
+    ):
+        raise ValueError("pow_limit must be a positive uint256")
     target = decode_compact_target(bits)
     if target > pow_limit:
         return False
