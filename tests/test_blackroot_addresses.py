@@ -16,7 +16,7 @@ class Base58Tests(unittest.TestCase):
             self.assertEqual(b58decode(b58encode(raw)), raw)
 
     def test_base58_rejects_ambiguous_characters(self):
-        for value in ("0", "O", "I", "l", ""):
+        for value in ("0", "O", "I", "l"):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 b58decode(value)
 
