@@ -50,6 +50,10 @@ def parse_genesis_manifest_json(raw: str) -> dict[str, object]:
 
 
 def _jcs_string(value: str) -> str:
+    if not isinstance(value, str):
+        raise TypeError("JCS string values must be text")
+    if any(0xD800 <= ord(char) <= 0xDFFF for char in value):
+        raise ValueError("JCS strings must not contain unpaired UTF-16 surrogates")
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
@@ -74,6 +78,8 @@ def _jcs_encode(value: object) -> str:
     if isinstance(value, dict):
         if not all(isinstance(key, str) for key in value):
             raise ValueError("manifest object keys must be strings")
+        for key in value:
+            _jcs_string(key)
         keys = sorted(value, key=lambda item: item.encode("utf-16-be"))
         return "{" + ",".join(_jcs_string(key) + ":" + _jcs_encode(value[key]) for key in keys) + "}"
     raise ValueError(f"unsupported manifest JSON value type: {type(value).__name__}")
