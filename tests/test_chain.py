@@ -60,7 +60,7 @@ class HeaderChainTests(unittest.TestCase):
         strict_bits = 0x201FFFFF
         strict_limit = decode_compact_target(strict_bits)
         genesis = mine_header(ZERO_HASH, 1, strict_bits, strict_limit)
-        chain = HeaderChain(strict_limit, genesis)
+        chain = HeaderChain(strict_limit, genesis, allow_unchecked_time_for_tests=True)
         with self.assertRaisesRegex(ValueError, "exceeds"):
             chain.add(mine_header(genesis.hash, 2, BITS, POW_LIMIT))
 
