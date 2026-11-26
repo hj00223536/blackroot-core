@@ -262,5 +262,78 @@ class HeaderChainTests(unittest.TestCase):
         )
 
 
+    def test_retarget_boundaries_and_competing_branches_use_branch_local_ancestors(self):
+        from src.blackroot_consensus import (
+            DIFFICULTY_INTERVAL,
+            retarget_compact,
+        )
+
+        genesis = mine_header(ZERO_HASH, 1)
+        chain = HeaderChain(POW_LIMIT, genesis)
+        main_parent = genesis
+        side_parent = genesis
+
+        # Build two valid branches from the same genesis. Their timestamp
+        # histories intentionally differ, while their parent difficulty is
+        # identical. Every header is checked by the normal DAG validator.
+        for height in range(1, DIFFICULTY_INTERVAL):
+            main_parent = mine_header(
+                main_parent.hash, 1 + height * 600, BITS
+            )
+            chain.add_to_branch(main_parent)
+
+            side_parent = mine_header(
+                side_parent.hash, 1 + height * 300, BITS
+            )
+            chain.add_to_branch(side_parent)
+
+            if height == DIFFICULTY_INTERVAL - 1:
+                # Candidate 2015 is not a retarget boundary.
+                self.assertEqual(
+                    chain.expected_bits(main_parent.hash, DIFFICULTY_INTERVAL - 1),
+                    BITS,
+                )
+
+        target_span = DIFFICULTY_INTERVAL * 600
+        main_elapsed = main_parent.timestamp - genesis.timestamp
+        side_elapsed = side_parent.timestamp - genesis.timestamp
+
+        main_required = chain.expected_bits(
+            main_parent.hash, DIFFICULTY_INTERVAL
+        )
+        side_required = chain.expected_bits(
+            side_parent.hash, DIFFICULTY_INTERVAL
+        )
+        self.assertEqual(
+            main_required,
+            retarget_compact(BITS, main_elapsed, POW_LIMIT, target_span),
+        )
+        self.assertEqual(
+            side_required,
+            retarget_compact(BITS, side_elapsed, POW_LIMIT, target_span),
+        )
+        self.assertNotEqual(main_required, side_required)
+
+        # Candidate 2016 must accept the branch-specific result. Candidate
+        # 2017 then inherits that branch's parent bits without another retarget.
+        main_2016 = mine_header(
+            main_parent.hash, main_parent.timestamp + 600, main_required
+        )
+        side_2016 = mine_header(
+            side_parent.hash, side_parent.timestamp + 600, side_required
+        )
+        chain.add_to_branch(main_2016)
+        chain.add_to_branch(side_2016)
+
+        self.assertEqual(
+            chain.expected_bits(main_2016.hash, DIFFICULTY_INTERVAL + 1),
+            main_required,
+        )
+        self.assertEqual(
+            chain.expected_bits(side_2016.hash, DIFFICULTY_INTERVAL + 1),
+            side_required,
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
