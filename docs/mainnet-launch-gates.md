@@ -40,7 +40,7 @@ customer funds.
 
 ## Genesis issuance authorization gate
 
-Use the [genesis activation package checklist](genesis-activation-package-checklist.md) and [trust-anchor governance proposal](genesis-trust-anchor-governance-proposal.md) as review aids. They are proposals only and do not satisfy any approval, trust-anchor, or issuance gate.
+Use the [genesis activation package checklist](genesis-activation-package-checklist.md), [trust-anchor governance proposal](genesis-trust-anchor-governance-proposal.md), and [Genesis package semantic verification plan](genesis-package-semantic-verification-plan.md) as review aids. They are proposals/plans only and do not satisfy any approval, trust-anchor, semantic-verification, or issuance gate.
 
 
 - [ ] Review and freeze the public manifest format in [genesis-manifest-spec.md](genesis-manifest-spec.md), including canonicalization and digest test vectors.
