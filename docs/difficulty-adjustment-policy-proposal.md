@@ -1,6 +1,6 @@
 # BLACKROOT difficulty-adjustment policy proposal
 
-**Status: PROPOSAL ONLY — owner approval and independent review required. Do not treat this file as frozen consensus.**
+**Status: OWNER-APPROVED PARAMETERS — independent review and protocol freeze still required. This is not an activated network consensus configuration.**
 
 This proposal records the current reference implementation's behavior in a normative, reviewable form so it can be accepted, amended, or rejected before testnet identity is frozen.
 
@@ -48,7 +48,7 @@ The Node.js vectors cover quarter/nominal/double/four-times clamping and the 2,0
 
 ## Required additional review before acceptance
 
-- [ ] Owner explicitly approves or rejects the first-boundary convention.
+- [x] Owner explicitly approved the proposed first-boundary convention and the stated difficulty parameters in ChatGPT on 2026-11-26; this records the owner's decision but is not a cryptographic signature or release authorization.
 - [x] Add header-chain boundary coverage at heights 2,015, 2,016 and 2,017.
 - [x] Add competing-branch vectors proving retarget calculations use branch-local ancestors.
 - [x] Add integer-floor rounding and zero-target fail-closed regression vectors in Python and independent Node.js.
