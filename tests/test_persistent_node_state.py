@@ -576,6 +576,24 @@ class PersistentNodeStateTests(unittest.TestCase):
             (0, self.genesis_block.header.hash),
         )
 
+    def test_refuses_to_archive_body_with_merkle_root_mismatch(self):
+        state = self.state()
+        candidate = make_block(self.genesis_block.header.hash, 1, 2)
+        state.add_header(candidate.header, adjusted_time=2)
+        wrong_tx = Transaction(
+            1,
+            (TxInput(
+                OutPoint(ZERO_TXID, COINBASE_INDEX),
+                script_sig=bytes([2, 1]),
+            ),),
+            (TxOutput(block_subsidy(1), b"wrong-body"),),
+        )
+        mismatched = Block(candidate.header, (wrong_tx,))
+
+        with self.assertRaisesRegex(ValueError, "transactions do not match"):
+            state.archive_block_body(mismatched)
+        self.assertIsNone(state.utxos.load_block_body(candidate.header.hash))
+
     def test_refuses_to_archive_body_for_unknown_header(self):
         state = self.state()
         unknown = make_block(ZERO_HASH, 0, 2)
