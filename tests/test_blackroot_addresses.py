@@ -1,6 +1,6 @@
 import unittest
 
-from blackroot_addresses import (
+from src.blackroot_addresses import (
     b58decode,
     b58encode,
     decode_base58check,
