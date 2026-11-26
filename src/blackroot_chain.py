@@ -251,7 +251,7 @@ class HeaderChain:
                 ))
             if on_commit is not None:
                 on_commit(self)
-        except Exception:
+        except BaseException:
             self._nodes = original_nodes
             self._best_hash = original_best_hash
             raise
