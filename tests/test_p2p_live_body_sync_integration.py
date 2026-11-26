@@ -69,7 +69,7 @@ class ThreeNodeLiveBlockBodySyncTests(unittest.IsolatedAsyncioTestCase):
                 for index in (1, 2)
             ]
             source_state.headers.add_to_branch(
-                next_block.header, adjusted_time=now, max_future_seconds=7200
+                next_block.header, max_future_seconds=7200
             )
             source_state.connect_best_block(genesis, 0)
             source_state.connect_best_block(next_block, 1)
@@ -80,7 +80,6 @@ class ThreeNodeLiveBlockBodySyncTests(unittest.IsolatedAsyncioTestCase):
             source_header_sync = PeerHeaderSync(
                 source_state.headers.chain,
                 protocol_version=1,
-                adjusted_time=source_state.headers.adjusted_time_provider,
             )
 
             def source_handler_factory(peer):
@@ -128,7 +127,6 @@ class ThreeNodeLiveBlockBodySyncTests(unittest.IsolatedAsyncioTestCase):
             destination_runtimes = [
                 BlackrootNodeRuntime(
                     state, manager, protocol_version=1, request_timeout=2,
-                    adjusted_time=state.headers.adjusted_time_provider,
                 )
                 for state, manager in zip(destination_states, destination_managers)
             ]
