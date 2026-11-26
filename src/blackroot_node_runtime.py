@@ -43,6 +43,7 @@ class BlackrootNodeRuntime:
         )
         self._closed = False
         self._retry_task: asyncio.Task | None = None
+        self._retry_last_error: Exception | None = None
 
     @property
     def peer_count(self) -> int:
@@ -74,6 +75,11 @@ class BlackrootNodeRuntime:
         self._ensure_open()
         return await self.sync.retry_expired(now=now)
 
+    @property
+    def retry_last_error(self) -> Exception | None:
+        """Most recent retry error, cleared after a successful retry."""
+        return self._retry_last_error
+
     async def start_retry_loop(self, *, interval: float = 1.0) -> None:
         """Start one supervised periodic retry loop for expired block requests."""
         self._ensure_open()
@@ -92,7 +98,14 @@ class BlackrootNodeRuntime:
             while not self._closed:
                 await asyncio.sleep(interval)
                 if not self._closed:
-                    await self.sync.retry_expired()
+                    try:
+                        await self.sync.retry_expired()
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as exc:
+                        self._retry_last_error = exc
+                    else:
+                        self._retry_last_error = None
         except asyncio.CancelledError:
             raise
 
