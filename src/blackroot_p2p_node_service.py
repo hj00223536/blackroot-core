@@ -1,8 +1,11 @@
-"""Node-level dispatcher wiring managed peers to the shared block scheduler.
+"""Standalone dispatcher wiring managed peers to a shared block scheduler.
 
 The service handles only already-validated best-chain headers. Header discovery,
 fork-body reorganization, transaction relay, peer scoring, and background task
 scheduling remain explicit responsibilities of the embedding application.
+For persistent-node production wiring, construct the scheduler with a lifecycle
+adapter that delegates block activation to PersistentNodeState; passing a raw
+UTXOStore bypasses the node-state recovery-journal coordinator.
 """
 from __future__ import annotations
 
