@@ -1,8 +1,8 @@
 """Explicit lifecycle wrapper joining persistent node state and P2P sync.
 
-The runtime owns a PeerManager and the synchronization adapter, but does not
-create background retry timers or choose network/genesis parameters. The caller
-must invoke retry_expired from its own supervised event loop.
+The runtime owns a PeerManager and synchronization adapter, and can supervise
+periodic retries for expired fork-body requests. Network/genesis parameters
+remain the caller's responsibility.
 """
 from __future__ import annotations
 
@@ -70,7 +70,7 @@ class BlackrootNodeRuntime:
         return await self.sync.start_peer_sync()
 
     async def retry_expired(self, *, now: float | None = None) -> dict[bytes, object]:
-        """Retry timed-out fork-body requests; caller owns timer scheduling."""
+        """Retry timed-out fork-body requests immediately."""
         self._ensure_open()
         return await self.sync.retry_expired(now=now)
 
