@@ -48,6 +48,12 @@ class TrustConfigurationTests(unittest.TestCase):
         args.update(overrides)
         return validate_trust_configuration(config, **args)
 
+    def test_published_trust_configuration_digest_vector(self):
+        self.assertEqual(
+            make_config()["config_digest"],
+            "157f3c321befaaaf8f9180c90fdb0ed3164ff9e71c070a664e14a7fbad1456ab",
+        )
+
     def test_valid_config_and_key_material(self):
         config = make_config()
         validated = self.validate(config)
