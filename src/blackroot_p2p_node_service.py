@@ -21,9 +21,16 @@ from .blackroot_p2p_multi_peer_sync import MultiPeerBlockScheduler
 class NodePeerSyncService:
     """Route block inventory and responses through one shared scheduler."""
 
-    def __init__(self, scheduler: MultiPeerBlockScheduler) -> None:
+    def __init__(
+        self, scheduler: MultiPeerBlockScheduler, *,
+        require_node_state_lifecycle: bool = False,
+    ) -> None:
+        if not isinstance(require_node_state_lifecycle, bool):
+            raise TypeError("require_node_state_lifecycle must be a bool")
         if not isinstance(scheduler, MultiPeerBlockScheduler):
             raise TypeError("scheduler must be a MultiPeerBlockScheduler")
+        if require_node_state_lifecycle and getattr(scheduler.store, "_blackroot_node_state_lifecycle", False) is not True:
+            raise ValueError("persistent-node P2P sync requires a node-state lifecycle adapter")
         self.scheduler = scheduler
         self._peers: dict[object, object] = {}
 
