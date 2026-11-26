@@ -55,6 +55,9 @@ class MultiPeerBlockSchedulerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(decode_inventory(selected.sent[0][1])[0].item_hash, self.block.header.hash)
         with self.assertRaisesRegex(ValueError, "unassigned peer"):
             self.scheduler.accept_block("not-" + chosen, self.block.serialize())
+        self.assertEqual(self.scheduler.tracker.pending_hashes, (self.block.header.hash,))
+        self.assertEqual(self.scheduler.pool.assigned_peer(self.block.header.hash), chosen)
+        self.store.connect_validated_block.assert_not_called()
         result = self.scheduler.accept_block(chosen, self.block.serialize())
         self.assertEqual(result, (0, 0))
         self.store.connect_validated_block.assert_called_once()
