@@ -8,6 +8,7 @@ Neither mode is a production-ready consensus node.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
 from .blackroot_blocks import Block
 from .blackroot_chain import BlockHeader
@@ -59,6 +60,7 @@ class PersistentNodeState:
         recovery_journal_path: str | Path | None = None,
         *,
         database_path: str | Path | None = None,
+        adjusted_time_provider: Callable[[], int] | None = None,
     ) -> None:
         self._coordinator: SQLiteTransactionCoordinator | None = None
         if database_path is not None:
@@ -68,7 +70,8 @@ class PersistentNodeState:
             try:
                 with coordinator.transaction() as connection:
                     self.headers = PersistentHeaderStore(
-                        database_path, pow_limit, genesis, connection=connection
+                        database_path, pow_limit, genesis, connection=connection,
+                        adjusted_time_provider=adjusted_time_provider
                     )
                     self.utxos = UTXOStore(database_path, connection=connection)
                     self.recovery_journal = NodeRecoveryJournal(
@@ -86,7 +89,10 @@ class PersistentNodeState:
         journal_path = (Path(str(utxo_path) + ".recovery.sqlite")
                         if recovery_journal_path is None else recovery_journal_path)
         _validate_distinct_database_paths(header_path, utxo_path, journal_path)
-        self.headers = PersistentHeaderStore(header_path, pow_limit, genesis)
+        self.headers = PersistentHeaderStore(
+            header_path, pow_limit, genesis,
+            adjusted_time_provider=adjusted_time_provider,
+        )
         self.utxos = UTXOStore(utxo_path)
         self.recovery_journal = NodeRecoveryJournal(journal_path)
         self.utxos.verify_integrity()
@@ -99,12 +105,14 @@ class PersistentNodeState:
 
     @classmethod
     def open_coordinated(
-        cls, database_path: str | Path, pow_limit: int, genesis: BlockHeader
+        cls, database_path: str | Path, pow_limit: int, genesis: BlockHeader, *,
+        adjusted_time_provider: Callable[[], int] | None = None,
     ) -> "PersistentNodeState":
         """Open all persistent stores on one node-owned SQLite connection."""
         return cls(
             database_path, database_path, pow_limit, genesis,
             database_path=database_path,
+            adjusted_time_provider=adjusted_time_provider,
         )
 
     def close(self) -> None:
