@@ -4,7 +4,7 @@ Status: design only; not a usable wallet and not approved for mainnet funds.
 
 ## User requirement
 
-The founder wants a browser-based wallet that can be opened on a phone without a terminal. The owner-approved monetary design is 20,000,000 BRT for the founder and 20,000,000 BRT for mining, with a proposed 40,000,000 BRT maximum supply. The reference subsidy helper now represents the 20,000,000 BRT founder issuance allowance at genesis height 0 and 10 BRT mining rewards at heights 1–2,000,000. CI validation is pending.
+The founder wants a browser-based wallet that can be opened on a phone without a terminal. The owner-approved monetary design is 20,000,000 BRT for the founder and 20,000,000 BRT for mining, with a proposed 40,000,000 BRT maximum supply. The reference subsidy helper now represents the 20,000,000 BRT founder issuance allowance at genesis height 0 and 10 BRT mining rewards at heights 1–2,000,000. The repository CI run 45731576058 completed successfully: Python 3.12, Python 3.13, and the independent Node.js 22 genesis/vector job all passed. This validates those test suites only; it does not establish launch readiness or validate the founder output, which is still absent.
 
 ## Current blockers verified in the repository
 
