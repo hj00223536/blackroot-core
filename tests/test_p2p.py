@@ -61,6 +61,18 @@ class MessageFramingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "checksum mismatch"):
             decode_message(bytes(frame), MAGIC)
 
+    def test_parser_clears_buffer_after_malformed_frame(self):
+        malformed = bytearray(encode_message(MAGIC, "ping", b"bad"))
+        malformed[-1] ^= 1
+        valid = encode_message(MAGIC, "pong", b"ok")
+        parser = MessageStreamParser(MAGIC)
+
+        with self.assertRaisesRegex(ValueError, "checksum mismatch"):
+            parser.feed(bytes(malformed) + valid)
+
+        self.assertEqual(parser.buffered_bytes, 0)
+        self.assertEqual(parser.feed(valid), [("pong", b"ok")])
+
     def test_rejects_oversized_payload_before_waiting_for_body(self):
         frame = MAGIC + b"ping" + bytes(8) + (9).to_bytes(4, "little") + bytes(4)
         with self.assertRaisesRegex(ValueError, "exceeds configured limit"):
