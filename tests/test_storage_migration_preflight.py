@@ -411,10 +411,8 @@ class SQLiteSnapshotTests(unittest.TestCase):
         genesis = BlockHeader(1, bytes(32), bytes(32), 1, 0x207fffff, 0)
         pow_limit = decode_compact_target(0x207fffff)
         with self.assertRaisesRegex(RuntimeError, "no completed import manifest"):
-            validate_coordinated_staging_database(
-                destination, pow_limit=pow_limit, genesis=genesis,
-                require_import_manifest=True,
-            )
+            validate_coordinated_staging_database(destination, pow_limit=pow_limit, genesis=genesis,
+                require_import_manifest=True, adjusted_time_provider=lambda: 1_000_000)
 
     def test_real_legacy_stores_snapshot_import_and_reopen_with_active_genesis(self):
         pow_limit = decode_compact_target(0x207fffff)
@@ -436,10 +434,8 @@ class SQLiteSnapshotTests(unittest.TestCase):
         header_path = self.root / "legacy-header.sqlite"
         utxo_path = self.root / "legacy-utxo.sqlite"
         journal_path = self.root / "legacy-journal.sqlite"
-        state = PersistentNodeState(
-            header_path, utxo_path, pow_limit, genesis,
-            recovery_journal_path=journal_path,
-        )
+        state = PersistentNodeState(header_path, utxo_path, pow_limit, genesis,
+            recovery_journal_path=journal_path, adjusted_time_provider=lambda: 1_000_000)
         self.assertEqual(state.connect_best_block(block, 0), 0)
 
         # Build and activate two descendants so the snapshot/import/reopen
@@ -497,10 +493,8 @@ class SQLiteSnapshotTests(unittest.TestCase):
         artifact = inspect_staged_import_artifact(staged)
         self.assertEqual(artifact["status"], "complete_import_manifest_present")
         self.assertFalse(artifact["production_validated"])
-        reopened = validate_coordinated_staging_database(
-            staged, pow_limit=pow_limit, genesis=genesis,
-            require_import_manifest=True, verify_manifest_counts=True,
-        )
+        reopened = validate_coordinated_staging_database(staged, pow_limit=pow_limit, genesis=genesis,
+            require_import_manifest=True, verify_manifest_counts=True, adjusted_time_provider=lambda: 1_000_000)
         self.assertEqual(reopened["status"], "coordinated_node_reopen_passed")
         self.assertEqual(reopened["utxo_tip"], (expected_tip[0], expected_tip[1].hex()))
         self.assertEqual(reopened["header_height"], 2)
@@ -509,7 +503,7 @@ class SQLiteSnapshotTests(unittest.TestCase):
 
         # Prove the imported staging database is operational, not merely
         # readable: connect one further valid block, close, and reopen again.
-        resumed = PersistentNodeState.open_coordinated(staged, pow_limit, genesis)
+        resumed = PersistentNodeState.open_coordinated(staged, pow_limit, genesis, adjusted_time_provider=lambda: 1_000_000)
         height = 3
         resumed_coinbase = Transaction(
             1,
@@ -537,10 +531,8 @@ class SQLiteSnapshotTests(unittest.TestCase):
         self.assertEqual(resumed.utxos.tip(), (3, resumed_header.hash))
         resumed.close()
 
-        reopened_again = validate_coordinated_staging_database(
-            staged, pow_limit=pow_limit, genesis=genesis,
-            require_import_manifest=True,
-        )
+        reopened_again = validate_coordinated_staging_database(staged, pow_limit=pow_limit, genesis=genesis,
+            require_import_manifest=True, adjusted_time_provider=lambda: 1_000_000)
         self.assertEqual(reopened_again["status"], "coordinated_node_reopen_passed")
         self.assertEqual(reopened_again["utxo_tip"], (3, resumed_header.hash.hex()))
         self.assertEqual(reopened_again["header_best_hash"], resumed_header.hash.hex())
@@ -561,10 +553,8 @@ class SQLiteSnapshotTests(unittest.TestCase):
             )
             db.commit()
         with self.assertRaisesRegex(RuntimeError, "row counts do not match"):
-            validate_coordinated_staging_database(
-                staged, pow_limit=pow_limit, genesis=genesis,
-                require_import_manifest=True, verify_manifest_counts=True,
-            )
+            validate_coordinated_staging_database(staged, pow_limit=pow_limit, genesis=genesis,
+                require_import_manifest=True, verify_manifest_counts=True, adjusted_time_provider=lambda: 1_000_000)
         with _managed_sqlite(staged) as db:
             db.execute(
                 "UPDATE blackroot_import_manifest SET row_counts_json=? WHERE singleton=1",
@@ -576,19 +566,17 @@ class SQLiteSnapshotTests(unittest.TestCase):
         genesis = BlockHeader(1, bytes(32), bytes(32), 1, 0x207fffff, 0)
         pow_limit = decode_compact_target(0x207fffff)
         database = self.root / "node-without-import-marker.sqlite"
-        state = PersistentNodeState.open_coordinated(database, pow_limit, genesis)
+        state = PersistentNodeState.open_coordinated(database, pow_limit, genesis, adjusted_time_provider=lambda: 1_000_000)
         state.close()
         with self.assertRaisesRegex(RuntimeError, "no completed import manifest"):
-            validate_coordinated_staging_database(
-                database, pow_limit=pow_limit, genesis=genesis,
-                require_import_manifest=True,
-            )
+            validate_coordinated_staging_database(database, pow_limit=pow_limit, genesis=genesis,
+                require_import_manifest=True, adjusted_time_provider=lambda: 1_000_000)
 
     def test_schema_v2_coordinated_reopen_refuses_without_mutating_staging_database(self):
         genesis = BlockHeader(1, bytes(32), bytes(32), 1, 0x207fffff, 0)
         pow_limit = decode_compact_target(0x207fffff)
         database = self.root / "schema-v2-staging.sqlite"
-        state = PersistentNodeState.open_coordinated(database, pow_limit, genesis)
+        state = PersistentNodeState.open_coordinated(database, pow_limit, genesis, adjusted_time_provider=lambda: 1_000_000)
         state.close()
 
         with _managed_sqlite(database) as db:
@@ -614,9 +602,7 @@ class SQLiteSnapshotTests(unittest.TestCase):
             RuntimeError,
             "schema-v2 migration requires a verified reindex from genesis",
         ):
-            validate_coordinated_staging_database(
-                database, pow_limit=pow_limit, genesis=genesis
-            )
+            validate_coordinated_staging_database(database, pow_limit=pow_limit, genesis=genesis, adjusted_time_provider=lambda: 1_000_000)
 
         self.assertEqual(snapshot(), before)
         with _managed_sqlite(database) as db:
@@ -631,11 +617,9 @@ class SQLiteSnapshotTests(unittest.TestCase):
         genesis = BlockHeader(1, bytes(32), bytes(32), 1, 0x207fffff, 0)
         pow_limit = decode_compact_target(0x207fffff)
         database = self.root / "node-reopen.sqlite"
-        state = PersistentNodeState.open_coordinated(database, pow_limit, genesis)
+        state = PersistentNodeState.open_coordinated(database, pow_limit, genesis, adjusted_time_provider=lambda: 1_000_000)
         state.close()
-        report = validate_coordinated_staging_database(
-            database, pow_limit=pow_limit, genesis=genesis
-        )
+        report = validate_coordinated_staging_database(database, pow_limit=pow_limit, genesis=genesis, adjusted_time_provider=lambda: 1_000_000)
         self.assertEqual(report["status"], "coordinated_node_reopen_passed")
         self.assertTrue(report["coordinated"])
         self.assertEqual(report["header_height"], 0)
