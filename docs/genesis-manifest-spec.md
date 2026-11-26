@@ -17,6 +17,7 @@ A future version-1 manifest should contain these fields, with no unknown fields 
 | Field | Type | Rule |
 |---|---|---|
 | `manifest_version` | integer | Exactly `1` |
+| `manifest_digest` | 64-char lowercase hex | Digest of every other manifest field under the frozen canonicalization rule below |
 | `network_id` | lowercase hex string | Frozen, unique network identifier; must not be a display label |
 | `genesis_block_hash` | 64-char lowercase hex | Exact frozen genesis hash in documented display byte order |
 | `genesis_coinbase_tx` | lowercase hex | Complete canonical serialized coinbase transaction |
