@@ -1,6 +1,7 @@
 import hashlib
 import json
 import unittest
+from collections.abc import Mapping
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives import serialization
@@ -37,6 +38,26 @@ def make_config(sequence=1, previous=None):
     return config
 
 
+class MutatingTrustMapping(Mapping):
+    def __init__(self, values):
+        self.values = dict(values)
+        self.version_reads = 0
+
+    def __iter__(self):
+        return iter(self.values)
+
+    def __len__(self):
+        return len(self.values)
+
+    def __getitem__(self, key):
+        value = self.values[key]
+        if key == "config_version":
+            self.version_reads += 1
+            if self.version_reads > 1:
+                return 2
+        return value
+
+
 class TrustConfigurationTests(unittest.TestCase):
     def validate(self, config, **overrides):
         args = {
@@ -53,6 +74,12 @@ class TrustConfigurationTests(unittest.TestCase):
             make_config()["config_digest"],
             "157f3c321befaaaf8f9180c90fdb0ed3164ff9e71c070a664e14a7fbad1456ab",
         )
+
+    def test_validation_uses_one_snapshot_of_caller_mapping(self):
+        supplied = MutatingTrustMapping(make_config())
+        validated = self.validate(supplied)
+        self.assertEqual(validated.config_digest, make_config()["config_digest"])
+        self.assertEqual(supplied.version_reads, 1)
 
     def test_valid_config_and_key_material(self):
         config = make_config()
