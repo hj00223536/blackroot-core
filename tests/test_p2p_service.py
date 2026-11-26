@@ -80,6 +80,7 @@ class P2PSyncServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.peer_b.sent[0][0], "getdata")
 
     async def test_best_chain_inventory_and_notfound_are_routed_to_alternate_peer(self):
+        self.store.tip.return_value = None
         genesis_hash = self.chain.best_hash
         handler = self.manager.on_peer_message_factory(self.peer_a)
         inventory = encode_inventory([InventoryVector(2, genesis_hash)])
@@ -95,6 +96,29 @@ class P2PSyncServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNot(replacement, original)
         self.assertEqual(self.service.blocks.tracker.pending_hashes, (genesis_hash,))
         self.assertEqual(replacement.sent[-1][0], "getdata")
+
+    async def test_initialized_node_routes_inventory_to_ordered_fork_sync(self):
+        genesis_hash = self.chain.best_hash
+        template = genesis_block()
+        candidate = None
+        for nonce in range(10000):
+            header = BlockHeader(
+                1, genesis_hash, template.header.merkle_root, 2,
+                MAGIC_BITS, nonce,
+            )
+            if check_proof_of_work(header.serialize(), MAGIC_BITS, POW_LIMIT):
+                candidate = Block(header, template.transactions)
+                break
+        self.assertIsNotNone(candidate)
+        self.chain.add(candidate.header)
+        self.store.tip.return_value = (0, genesis_hash)
+        handler = self.manager.on_peer_message_factory(self.peer_a)
+
+        await handler("inv", encode_inventory([InventoryVector(2, candidate.header.hash)]))
+
+        self.assertIsNotNone(self.service.reorg.pool.assigned_peer(candidate.header.hash))
+        self.assertEqual(self.service.blocks.pool.pending_hashes, ())
+        self.assertEqual(self.service.blocks.tracker.pending_hashes, ())
 
     async def test_header_sync_does_not_start_body_sync_before_genesis_bootstrap(self):
         self.store.tip.return_value = None
