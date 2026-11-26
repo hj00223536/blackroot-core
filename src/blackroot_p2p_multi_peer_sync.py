@@ -68,6 +68,17 @@ class MultiPeerBlockScheduler:
             raise RuntimeError("request assignment disappeared during acceptance")
         return result
 
+    def expire_requests(self, timeout: float, *, now: float | None = None) -> tuple[bytes, ...]:
+        """Expire timed-out downloads and release their peer assignments.
+
+        Returned hashes are eligible for a caller-managed retry with the
+        currently connected peer set. This method does not schedule timers.
+        """
+        expired = self.tracker.expire(timeout, now=now)
+        for block_hash in expired:
+            self.pool.cancel(block_hash)
+        return expired
+
     def peer_disconnected(self, peer_id: object) -> tuple[bytes, ...]:
         """Release a disconnected peer's assignments and tracker entries."""
         hashes = self.pool.release_peer(peer_id)
