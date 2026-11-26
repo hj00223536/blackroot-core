@@ -11,6 +11,7 @@ from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput
 from src.blackroot_genesis_approval import approval_message, verify_validated_genesis_manifest_approval
 from src.blackroot_genesis_manifest_v2 import (
     calculate_genesis_manifest_v2_digest,
+    parse_genesis_manifest_v2_json,
     validate_genesis_manifest_v2,
 )
 
@@ -165,6 +166,20 @@ class GenesisManifestV2Tests(unittest.TestCase):
                 validated,
                 json.dumps(altered),
                 trusted_public_keys={key_id: public},
+            )
+
+    def test_v2_json_parser_rejects_duplicate_keys_floats_and_wrong_schema(self):
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            parse_genesis_manifest_v2_json('{"manifest_version":2,"manifest_version":2}')
+        with self.assertRaisesRegex(ValueError, "floating-point"):
+            parse_genesis_manifest_v2_json('{"manifest_version":2.0}')
+        with self.assertRaisesRegex(ValueError, "fields mismatch"):
+            parse_genesis_manifest_v2_json('{"manifest_version":2}')
+        with self.assertRaisesRegex(ValueError, "unsupported"):
+            parse_genesis_manifest_v2_json(
+                __import__("json").dumps(dict(manifest(), manifest_version=1,
+                    manifest_digest=calculate_genesis_manifest_v2_digest(
+                        dict(manifest(), manifest_version=1))))
             )
 
     def test_published_cross_language_v2_digest_vector(self):
