@@ -120,6 +120,24 @@ class PersistentNodeStateTests(unittest.TestCase):
         finally:
             reopened.close()
 
+    def test_persistent_node_state_rejects_manual_clock_without_provider(self):
+        state = PersistentNodeState(
+            self.root / "clockless-headers.sqlite",
+            self.root / "clockless-utxos.sqlite",
+            POW_LIMIT,
+            self.genesis_block.header,
+        )
+        candidate = make_block(self.genesis_block.header.hash, 1, 2)
+        try:
+            with self.assertRaisesRegex(
+                RuntimeError, "requires its configured adjusted-time provider"
+            ):
+                state.add_header(candidate.header, adjusted_time=1_000_000)
+            self.assertEqual(state.headers.chain.height, 0)
+            self.assertIsNone(state.headers.chain.node(candidate.header.hash))
+        finally:
+            state.close()
+
     def test_coordinated_header_addition_is_published_after_commit(self):
         state = self.coordinated_state()
         try:
