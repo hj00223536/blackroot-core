@@ -549,5 +549,26 @@ store.apply(tx)
         self.assertNotIn("genesis_manifest_digest", metadata)
 
 
+    def test_verify_integrity_rejects_corrupted_bootstrap_issuance_metadata(self):
+        cases = (
+            ("not-an-integer", "persisted bootstrap issuance metadata is malformed"),
+            ("-1", "persisted cumulative issuance exceeds total supply cap"),
+            (str(TOTAL_SUPPLY_CAP + 1), "persisted cumulative issuance exceeds total supply cap"),
+        )
+        for value, expected_error in cases:
+            with self.subTest(value=value):
+                with _managed_sqlite(self.db_path) as db:
+                    db.execute(
+                        "UPDATE metadata SET value=? WHERE key='bootstrap_issued_sats'",
+                        (value,),
+                    )
+                with self.assertRaisesRegex(RuntimeError, expected_error):
+                    self.store.verify_integrity()
+                with _managed_sqlite(self.db_path) as db:
+                    db.execute(
+                        "UPDATE metadata SET value='900' WHERE key='bootstrap_issued_sats'"
+                    )
+
+
 if __name__ == "__main__":
     unittest.main()
