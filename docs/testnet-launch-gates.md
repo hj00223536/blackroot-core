@@ -26,6 +26,7 @@ The current monetary unit tests establish the arithmetic schedule:
 - The tests check height 0, first mining height, final mining height, the first height after mining ends, partial issuance, and invalid height inputs.
 
 Important distinction: these are tested constants and arithmetic only. The current candidate genesis vector in `tests/test_testnet_genesis_candidate.py` serializes a **zero-value OP_RETURN output**. It does not create the founder's 20,000,000 BRT output, does not create a spendable founder balance, and must not be represented as the final Mainnet genesis. The independent Node.js/Python stdlib vector confirms the candidate bytes and hash only; it does not prove a founder allocation or production genesis.
+The candidate regression test also asserts that its output value is not the configured founder allocation and that height-zero block subsidy is zero. This is a negative guard against accidentally treating the current test vector as a founder mint; it does not implement the future founder output.
 
 Before any real genesis is frozen, the owner must provide/approve the exact founder locking script derived from a public key generated and held securely outside GitHub. Then the project must define deterministic genesis transaction bytes, independently reproduce the resulting txid/Merkle root/header/hash/PoW, and test that the founder output is created exactly once and is included in the same 40,000,000 BRT cap. No private key or recovery phrase belongs in the repository.
 
