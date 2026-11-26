@@ -4,6 +4,7 @@ from dataclasses import replace
 
 from src.blackroot_blocks import COINBASE_INDEX
 from src.blackroot_chain import BlockHeader
+from src.blackroot_consensus import decode_compact_target
 from src.blackroot_monetary import (
     COIN,
     FOUNDER_ALLOCATION,
@@ -16,6 +17,7 @@ from src.blackroot_genesis_manifest import (
     canonicalize_genesis_manifest,
     parse_genesis_manifest_json,
     validate_genesis_header_commitment,
+    validate_genesis_header_proof_of_work,
     validate_genesis_manifest_structure,
 )
 
@@ -249,6 +251,31 @@ class GenesisManifestStructureTests(unittest.TestCase):
         parsed = parse_genesis_manifest_json('{"value":"\\ud800"}')
         with self.assertRaisesRegex(ValueError, "surrogates"):
             _jcs_encode(parsed)
+
+    def test_genesis_header_proof_of_work_uses_explicit_network_limit(self):
+        validated = _validate(_manifest())
+        target_bits = 0x207FFFFF
+        target = decode_compact_target(target_bits)
+        header = None
+        for nonce in range(10_000):
+            candidate = BlockHeader(
+                1, bytes(32), merkle_root([validated.coinbase.txid]),
+                1_764_000_000, target_bits, nonce,
+            )
+            value = int.from_bytes(candidate.hash, "little")
+            if target // 2 < value <= target:
+                header = candidate
+                break
+        self.assertIsNotNone(header)
+        bound = replace(validated, genesis_block_hash=header.display_hash)
+        checked = validate_genesis_header_proof_of_work(
+            bound, header.serialize().hex(), pow_limit=target
+        )
+        self.assertEqual(checked, header)
+        with self.assertRaisesRegex(ValueError, "proof of work"):
+            validate_genesis_header_proof_of_work(
+                bound, header.serialize().hex(), pow_limit=target // 2
+            )
 
     def test_header_commitment_binds_coinbase_merkle_and_block_hash(self):
         validated = _validate(_manifest())
