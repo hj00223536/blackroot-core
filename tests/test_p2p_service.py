@@ -58,6 +58,15 @@ class P2PSyncServiceTests(unittest.IsolatedAsyncioTestCase):
             adjusted_time=lambda: 100_000,
         )
 
+    def test_request_timeout_rejects_non_finite_and_invalid_values(self):
+        for invalid in (float("nan"), float("inf"), float("-inf"), True, 0, -1, "30"):
+            with self.subTest(request_timeout=invalid):
+                with self.assertRaisesRegex(ValueError, "request_timeout"):
+                    P2PSyncService(
+                        self.manager, self.chain, self.store,
+                        protocol_version=1, request_timeout=invalid,
+                    )
+
     async def test_notfound_is_routed_and_reassigned_through_service(self):
         block_hash = bytes.fromhex("11" * 32)
         self.service.reorg.pool.assign(block_hash, [self.peer_a])
