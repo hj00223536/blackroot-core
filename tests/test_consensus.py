@@ -108,15 +108,19 @@ class RetargetAndWorkTests(unittest.TestCase):
         previous_target = decode_compact_target(bits)
         target_span = 2016 * 600
         quarter_bits = retarget_compact(bits, 1, limit, target_span)
+        exact_quarter_bits = retarget_compact(bits, target_span // 4, limit, target_span)
         nominal_bits = retarget_compact(bits, target_span, limit, target_span)
         double_bits = retarget_compact(bits, target_span * 2, limit, target_span)
+        exact_four_x_bits = retarget_compact(bits, target_span * 4, limit, target_span)
         four_x_bits = retarget_compact(bits, target_span * 20, limit, target_span)
         # Fixed expected encodings independently derived from the specified
         # integer formula and compact-target truncation.
         self.assertEqual(quarter_bits, 0x1F0FFFFF)
+        self.assertEqual(exact_quarter_bits, quarter_bits)
         self.assertEqual(nominal_bits, 0x1F3FFFFF)
         self.assertEqual(double_bits, 0x1F7FFFFE)
-        self.assertEqual(four_x_bits, 0x2000FFFF)
+        self.assertEqual(exact_four_x_bits, 0x2000FFFF)
+        self.assertEqual(four_x_bits, exact_four_x_bits)
         quarter_target = decode_compact_target(quarter_bits)
         self.assertLessEqual(quarter_target, previous_target // 4)
         self.assertLess((previous_target // 4) - quarter_target, 1 << 224)
@@ -131,6 +135,11 @@ class RetargetAndWorkTests(unittest.TestCase):
         for actual in (0, -1, True):
             with self.assertRaises(ValueError):
                 retarget_compact(bits, actual, limit)
+        for target_span in (0, -1, True):
+            with self.assertRaises(ValueError):
+                retarget_compact(bits, 600, limit, target_span)
+        with self.assertRaises(ValueError):
+            retarget_compact(bits, 600, decode_compact_target(0x207FFFFF) - 1)
 
 
 if __name__ == "__main__":
