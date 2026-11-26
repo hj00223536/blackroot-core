@@ -32,8 +32,13 @@ class FakePeer:
 class PeerHeaderSyncTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.genesis = mine(ZERO_HASH, 1)
-        self.chain = HeaderChain(POW_LIMIT, self.genesis, adjusted_time_provider=lambda: 100_000)
-        self.sync = PeerHeaderSync(self.chain, protocol_version=70001, adjusted_time=lambda: 100_000)
+        self.clock = lambda: 100_000
+        self.chain = HeaderChain(
+            POW_LIMIT, self.genesis, adjusted_time_provider=self.clock
+        )
+        self.sync = PeerHeaderSync(
+            self.chain, protocol_version=70001, adjusted_time=self.clock
+        )
 
     def test_locator_starts_at_tip_and_ends_at_genesis(self):
         parent = self.genesis
@@ -72,6 +77,16 @@ class PeerHeaderSyncTests(unittest.IsolatedAsyncioTestCase):
         peer.connected = False
         with self.assertRaisesRegex(ConnectionError, "handshake"):
             await self.sync.handle_message(peer, "headers", encode_headers([]))
+
+    def test_header_sync_defaults_to_the_chain_clock_provider(self):
+        sync = PeerHeaderSync(self.chain, protocol_version=70001)
+        self.assertIs(sync.adjusted_time, self.clock)
+
+    def test_header_sync_rejects_a_different_clock_from_the_chain_provider(self):
+        with self.assertRaisesRegex(ValueError, "must match the header chain provider"):
+            PeerHeaderSync(
+                self.chain, protocol_version=70001, adjusted_time=lambda: 100_000
+            )
 
     async def test_header_sync_fails_closed_without_clock_provider(self):
         sync = PeerHeaderSync(self.chain, protocol_version=70001)
