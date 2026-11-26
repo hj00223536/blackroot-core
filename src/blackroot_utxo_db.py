@@ -132,6 +132,8 @@ class UTXOStore:
                     raise RuntimeError("schema-v3 migration requires a verified reindex from genesis to distinguish unknown creation MTP")
                 else:
                     raise RuntimeError("unsupported UTXO database schema version")
+            # Accounting only: this counter is not a genesis-initialization
+            # marker and must never authorize or imply founder issuance.
             bootstrap_row = db.execute(
                 "SELECT value FROM metadata WHERE key='bootstrap_issued_sats'"
             ).fetchone()
