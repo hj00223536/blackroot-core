@@ -33,7 +33,9 @@ These are prototype facts, not a complete network time policy.
 - [x] Provider wired through persistent header-store replay and candidate reconstruction.
 - [x] Provider parameter exposed by persistent node-state constructors.
 - [x] P2P header-sync path requires a provider and validates the returned value.
-- [ ] Production peer-time sampling, outlier policy, trust model and lifecycle wiring.
+- [x] Loopback node runner passes one provisional local UTC clock to both persistent header replay and live P2P header admission.
+- [x] Coordinated persistent-state test covers provider-based admission and replay of a non-genesis header.
+- [ ] Production peer-time sampling, outlier policy, trust model and lifecycle wiring. The local node's `time.time()` provider is only a provisional testnet clock, not a network-adjusted production source.
 - [ ] Full node ingress audit proving no alternate path bypasses the clock provider.
 
 ## Required implementation properties
