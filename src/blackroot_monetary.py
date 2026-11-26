@@ -1,8 +1,9 @@
 """BLACKROOT BRT monetary rules selected by the project owner.
 
-The fixed mining schedule is now the reference subsidy schedule used by
-blackroot_consensus.block_subsidy. Founder genesis issuance remains a separate
-genesis-construction task and is not minted by this module.
+The founder allocation is the one-time issuance allowance at genesis height 0.
+The mining schedule applies only to heights 1 through 2,000,000. The founder
+output still must be embedded in the fixed genesis transaction and independently
+verified before any network launch.
 """
 from __future__ import annotations
 
@@ -18,9 +19,11 @@ LAST_MINING_HEIGHT = 2_000_000
 
 
 def block_subsidy(height: int) -> int:
-    """Return the consensus-selected subsidy for a non-negative block height."""
+    """Return genesis founder issuance at height 0, or mining subsidy thereafter."""
     if not isinstance(height, int) or isinstance(height, bool) or height < 0:
         raise ValueError("height must be a non-negative integer")
+    if height == 0:
+        return FOUNDER_ALLOCATION
     if FIRST_MINING_HEIGHT <= height <= LAST_MINING_HEIGHT:
         return BLOCK_SUBSIDY
     return 0
