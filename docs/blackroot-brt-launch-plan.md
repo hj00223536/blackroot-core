@@ -28,7 +28,7 @@ This plan records the owner's selected direction: an independent blockchain name
 - [ ] Document known limitations and threat model.
 
 ### Stage 1 — Protocol freeze
-- [x] Add standalone Node.js 22 retarget arithmetic regression vectors and run them in CI; first-boundary behavior remains provisional and still requires protocol approval and an external independent client.
+- [x] Add standalone Node.js 22 retarget arithmetic regression vectors and run them in CI. [Run 45827374549](https://github.com/hj00223536/blackroot-core/actions/runs/45827374549) passed 428 tests on Python 3.12 and 3.13, all Node.js vector steps, and SQLite resource-warning checks. First-boundary behavior remains provisional and still requires protocol approval and an external independent client.
 
 The detailed open decisions and required evidence are tracked in [Protocol-freeze gap register](protocol-freeze-gap-register.md). All listed protocol decisions remain open until normative rules and independent vectors are approved.
 - [ ] Normative specification covering serialization, transaction/script rules, signatures, block validation, retargeting, time rules, fees, upgrades, network magic, address encoding, and limits.
