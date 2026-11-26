@@ -977,7 +977,9 @@ def validate_snapshot_set_consistency(
                     raise RuntimeError("header genesis metadata mismatch during replay")
                 continue
             try:
-                replayed.add_to_branch(header, adjusted_time=replay_adjusted_time)
+                replayed._add_to_branch_with_time(
+                    header, adjusted_time=replay_adjusted_time
+                )
             except (TypeError, ValueError) as exc:
                 raise RuntimeError(
                     f"header snapshot replay rejected {block_hash.hex()}: {exc}"
