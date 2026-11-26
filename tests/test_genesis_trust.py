@@ -54,6 +54,8 @@ class TrustConfigurationTests(unittest.TestCase):
         self.assertEqual(validated.config_digest, config["config_digest"])
         self.assertEqual(validated.keys[_KEY_ID].public_key, _PUBLIC)
         self.assertEqual(validated.keys[_KEY_ID].status, "active")
+        with self.assertRaises(TypeError):
+            validated.keys[_KEY_ID] = validated.keys[_KEY_ID]
 
     def test_external_digest_pin_and_network_are_required(self):
         config = make_config()
