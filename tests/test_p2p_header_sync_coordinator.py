@@ -85,6 +85,16 @@ class PeerHeaderSyncTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ValueError, "non-negative integer"):
             await sync.handle_message(FakePeer(), "headers", encode_headers([]))
 
+    async def test_header_at_exact_future_time_boundary_is_accepted(self):
+        boundary = mine(self.genesis.hash, 107_200)
+
+        await self.sync.handle_message(
+            FakePeer(), "headers", encode_headers([boundary])
+        )
+
+        self.assertIsNotNone(self.chain.node(boundary.hash))
+        self.assertEqual(self.chain.best_hash, boundary.hash)
+
     async def test_future_header_is_rejected_without_mutating_chain(self):
         too_far = mine(self.genesis.hash, 107_201)
         before_nodes = self.chain.nodes
