@@ -296,11 +296,14 @@ Path(result).write_text(outcome)
         self.store.store_block_body(self.old_one)
 
         candidates = []
-        for timestamp in range(10, 30):
+        for timestamp in range(10, 1010):
             candidate = mined_block(1, self.genesis.header.hash, timestamp)
-            headers.add_to_branch(candidate.header)
-            self.store.store_block_body(candidate)
-            candidates.append(candidate)
+            if candidate.header.hash < self.old_one.header.hash:
+                headers.add_to_branch(candidate.header)
+                self.store.store_block_body(candidate)
+                candidates.append(candidate)
+                break
+        self.assertTrue(candidates, "failed to construct a lower-hash equal-work fork")
 
         selected_hash = headers.best_hash
         self.assertNotEqual(selected_hash, self.old_one.header.hash)
