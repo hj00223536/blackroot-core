@@ -35,7 +35,7 @@ class ValidatedConnectionTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.store = UTXOStore(Path(self.tmp.name) / "chain.sqlite")
         self.genesis = mined_block([coinbase(0)], bytes(32), 1)
-        self.headers = HeaderChain(POW_LIMIT, self.genesis.header)
+        self.headers = HeaderChain(POW_LIMIT, self.genesis.header, adjusted_time_provider=lambda: 1_000_000)
 
     def test_connects_only_header_selected_by_validated_best_chain(self):
         self.assertEqual(
@@ -53,7 +53,7 @@ class ValidatedConnectionTests(unittest.TestCase):
             (TxOutput(block_subsidy(0) + 1, b"miner"),),
         )
         invalid_genesis = mined_block([overpay], bytes(32), 1)
-        invalid_headers = HeaderChain(POW_LIMIT, invalid_genesis.header)
+        invalid_headers = HeaderChain(POW_LIMIT, invalid_genesis.header, adjusted_time_provider=lambda: 1_000_000)
 
         with self.assertRaisesRegex(ValueError, "coinbase reward exceeds subsidy"):
             self.store.connect_validated_block(invalid_genesis, 0, invalid_headers)
