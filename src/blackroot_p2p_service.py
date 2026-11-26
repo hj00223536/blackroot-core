@@ -30,7 +30,12 @@ class P2PSyncService:
         request_timeout: float = 30.0,
         adjusted_time=None,
         persist_headers=None,
+        require_node_state_lifecycle: bool = False,
     ) -> None:
+        if not isinstance(require_node_state_lifecycle, bool):
+            raise TypeError("require_node_state_lifecycle must be a bool")
+        if require_node_state_lifecycle and getattr(store, "_blackroot_node_state_lifecycle", False) is not True:
+            raise ValueError("persistent-node P2P sync requires a node-state lifecycle adapter")
         if not isinstance(chain, HeaderChain):
             raise TypeError("chain must be a HeaderChain")
         if (not isinstance(request_timeout, (int, float)) or isinstance(request_timeout, bool)
