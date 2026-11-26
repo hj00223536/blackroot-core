@@ -13,10 +13,10 @@ This plan records the owner's selected direction: an independent blockchain name
 - Target block interval: 10 minutes (provisional)
 - Proposed total supply: 40,000,000 BRT
 - Proposed founder allocation: 20,000,000 BRT (50%), intended to be spendable and not time-locked
-- Proposed mining allocation: 20,000,000 BRT (50%), to be emitted under a yet-to-be-specified reward schedule
+- Owner-approved mining allocation: 20,000,000 BRT (50%), scheduled at 10 BRT per block for heights 1 through 2,000,000 inclusive
 - No cash liquidity pool is funded or promised at this stage.
-- The previous 21,000,000 BRT supply and 50 BRT / 210,000-block subsidy model are superseded as the owner's selected design direction, but remain the current prototype constants until a reviewed consensus change is implemented.
-- The allocation proposal is recorded in [docs/blackroot-brt-monetary-policy-proposal.md](blackroot-brt-monetary-policy-proposal.md). It is not yet active in consensus, genesis, or any wallet.
+- The previous 21,000,000 BRT supply and 50 BRT / 210,000-block subsidy model have been replaced in the reference consensus subsidy helper by the owner-approved 40,000,000 BRT schedule.
+- CI is still validating the integration. The 20,000,000 BRT founder output is not yet present in genesis, and no wallet balance has been created.
 - These monetary and consensus parameters are not frozen; do not rely on them until the normative specification and test vectors are reviewed and approved.
 
 ## Release stages
@@ -29,7 +29,8 @@ This plan records the owner's selected direction: an independent blockchain name
 
 ### Stage 1 — Protocol freeze
 - [ ] Normative specification covering serialization, transaction/script rules, signatures, block validation, retargeting, time rules, fees, upgrades, network magic, address encoding, and limits.
-- [ ] Normative monetary specification for the 40,000,000 BRT proposal, including founder genesis allocation, mining reward curve, exact cumulative cap, rounding, and coinbase/genesis spend rules.
+- [x] Owner-approved monetary schedule specified: 20,000,000 BRT founder allocation plus 20,000,000 BRT mining allocation at 10 BRT per block for heights 1–2,000,000.
+- [ ] Founder genesis output, spendability, exact serialization, and independent vectors implemented and reviewed.
 - [ ] Testnet identity and genesis generated deterministically from reviewed inputs.
 - [ ] Genesis/header/transaction vectors reproduced by an independent implementation.
 - [ ] Freeze testnet parameters; resets must create a new network identity.
