@@ -222,6 +222,14 @@ store.apply(tx)
             ).fetchone()
         self.assertEqual(restored, (None,))
 
+    def test_bootstrap_output_keeps_unknown_creation_mtp_null(self):
+        with _managed_sqlite(self.db_path) as db:
+            row = db.execute(
+                "SELECT created_mtp FROM utxos WHERE txid=? AND output_index=?",
+                (self.funding.txid, self.funding.index),
+            ).fetchone()
+        self.assertEqual(row, (None,))
+
     def test_persists_output_across_instances(self):
         reopened = UTXOStore(self.db_path)
         self.assertEqual(reopened.get(self.funding), TxOutput(900, b"funding-script"))
