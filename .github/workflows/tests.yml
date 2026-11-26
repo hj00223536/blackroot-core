@@ -9,6 +9,7 @@ on:
 jobs:
   unit-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -28,6 +29,7 @@ jobs:
 
   genesis-independent:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     name: Independent genesis vector (Node.js 22)
     steps:
       - uses: actions/checkout@v4
