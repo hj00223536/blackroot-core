@@ -19,7 +19,11 @@ from .blackroot_transactions import merkle_root
 
 
 class MultiPeerReorganizationSync:
-    def __init__(self, chain: HeaderChain, store, *, request_pool=None) -> None:
+    def __init__(self, chain: HeaderChain, store, *, request_pool=None, require_node_state_lifecycle: bool = False) -> None:
+        if not isinstance(require_node_state_lifecycle, bool):
+            raise TypeError("require_node_state_lifecycle must be a bool")
+        if require_node_state_lifecycle and getattr(store, "_blackroot_node_state_lifecycle", False) is not True:
+            raise ValueError("persistent-node fork sync requires a node-state lifecycle adapter")
         if not isinstance(chain, HeaderChain):
             raise TypeError("chain must be a HeaderChain")
         if not callable(getattr(store, "tip", None)):
