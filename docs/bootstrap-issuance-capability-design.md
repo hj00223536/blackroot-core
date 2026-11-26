@@ -45,6 +45,12 @@ The record and all genesis UTXO rows must be committed in the same database tran
 
 The manifest is public consensus input, not a wallet backup: it must never contain a private key, seed phrase, password, or signing secret. Its digest is an integrity identifier, not proof of owner identity by itself; owner approval must be recorded through the project's reviewed release/governance process before the manifest is accepted.
 
+## Additional accounting-integrity gap
+
+The current `bootstrap_issued_sats` metadata value is a mutable aggregate counter. It is incremented when the trusted storage primitive inserts a bootstrap output, but it is not an append-only issuance ledger and does not by itself prove which canonical genesis outputs were issued. Because ordinary spending can later remove or transform UTXOs, the current live UTXO set cannot reliably reconstruct historical bootstrap issuance.
+
+A production initializer must therefore derive issuance from the exact approved genesis transaction and persist an immutable initialization record (and, where required by the chosen accounting model, an auditable issuance record) in the same transaction as the genesis UTXOs. Startup integrity checks must compare the stored record with the frozen network identity and canonical genesis bytes, not merely trust the aggregate counter. The current schema-v5 counter is insufficient for this purpose and must not be promoted to an authorization or audit source.
+
 ## Acceptance tests required before implementation is considered complete
 
 - A network-facing test harness cannot call or obtain the initializer capability.
