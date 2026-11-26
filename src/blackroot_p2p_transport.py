@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import math
 import secrets
 import struct
 from collections.abc import Awaitable, Callable
@@ -18,6 +19,16 @@ from .blackroot_p2p_handshake import VersionMessage
 from .blackroot_p2p_state import PeerHandshake, encode_local_version
 
 MessageHandler = Callable[[str, bytes], object | Awaitable[object]]
+
+
+def _validate_timeout(name: str, value: float) -> None:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+        or value <= 0
+    ):
+        raise ValueError(f"{name} must be a finite positive number")
 
 
 class PeerProtocolError(ValueError):
@@ -44,10 +55,14 @@ class PeerConnection:
             raise ValueError("network magic must be exactly four bytes")
         if not isinstance(max_payload, int) or isinstance(max_payload, bool) or not 0 <= max_payload <= 0xFFFFFFFF:
             raise ValueError("max_payload must fit uint32")
-        if handshake_timeout <= 0 or idle_timeout <= 0:
-            raise ValueError("timeouts must be positive")
-        if not isinstance(min_protocol_version, int) or min_protocol_version < 1:
-            raise ValueError("minimum protocol version must be positive")
+        _validate_timeout("handshake_timeout", handshake_timeout)
+        _validate_timeout("idle_timeout", idle_timeout)
+        if (
+            not isinstance(min_protocol_version, int)
+            or isinstance(min_protocol_version, bool)
+            or min_protocol_version < 1
+        ):
+            raise ValueError("minimum protocol version must be a positive integer")
         self.reader = reader
         self.writer = writer
         self.magic = magic
@@ -196,6 +211,15 @@ async def connect_peer(
         raise ValueError("host must be non-empty text")
     if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535:
         raise ValueError("port must be between 1 and 65535")
+    _validate_timeout("connect_timeout", connect_timeout)
+    _validate_timeout("handshake_timeout", handshake_timeout)
+    _validate_timeout("idle_timeout", idle_timeout)
+    if (
+        not isinstance(min_protocol_version, int)
+        or isinstance(min_protocol_version, bool)
+        or min_protocol_version < 1
+    ):
+        raise ValueError("minimum protocol version must be a positive integer")
     reader, writer = await asyncio.wait_for(
         asyncio.open_connection(host, port), timeout=connect_timeout
     )
