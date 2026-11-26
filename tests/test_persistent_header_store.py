@@ -131,6 +131,24 @@ class PersistentHeaderStoreTests(unittest.TestCase):
         self.assertEqual(store.chain.best_hash, before_tip)
         self.assertEqual(store.chain.node(before_tip).chainwork, before_work)
 
+    def test_persist_chain_rejects_different_proof_of_work_limit(self):
+        from src.blackroot_chain import HeaderChain
+
+        store = self.open_store()
+        foreign_chain = HeaderChain(POW_LIMIT + 1, self.genesis)
+        with self.assertRaisesRegex(ValueError, "different proof-of-work limit"):
+            store.persist_chain(foreign_chain)
+
+    def test_persist_chain_rejects_test_only_unchecked_time_chain(self):
+        from src.blackroot_chain import HeaderChain
+
+        store = self.open_store()
+        unchecked_chain = HeaderChain(
+            POW_LIMIT, self.genesis, allow_unchecked_time_for_tests=True
+        )
+        with self.assertRaisesRegex(ValueError, "test-only unchecked-time"):
+            store.persist_chain(unchecked_chain)
+
     def test_rejects_network_parameter_mismatch(self):
         self.open_store()
         with self.assertRaisesRegex(RuntimeError, "parameters do not match"):
