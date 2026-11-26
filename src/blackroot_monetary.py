@@ -1,9 +1,8 @@
 """BLACKROOT BRT monetary rules selected by the project owner.
 
-The founder allocation is the one-time issuance allowance at genesis height 0.
-The mining schedule applies only to heights 1 through 2,000,000. The founder
-output still must be embedded in the fixed genesis transaction and independently
-verified before any network launch.
+The founder allocation is a separate, one-time genesis output. It is not a
+block subsidy. The mining schedule applies only to heights 1 through 2,000,000.
+A founder output is not implemented in the current genesis candidate.
 """
 from __future__ import annotations
 
