@@ -1,18 +1,20 @@
 import unittest
+from dataclasses import replace
 
 from src.blackroot_blocks import COINBASE_INDEX
+from src.blackroot_chain import BlockHeader
 from src.blackroot_monetary import (
     COIN,
     FOUNDER_ALLOCATION,
     MINING_ALLOCATION,
     TOTAL_SUPPLY_CAP,
 )
-from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput
+from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput, merkle_root
 from src.blackroot_genesis_manifest import (
     calculate_genesis_manifest_digest,
     canonicalize_genesis_manifest,
     parse_genesis_manifest_json,
-    validate_genesis_manifest_structure,
+    validate_genesis_header_commitment,\n    validate_genesis_manifest_structure,
 )
 
 NETWORK_ID = "11" * 32
@@ -193,6 +195,50 @@ class GenesisManifestStructureTests(unittest.TestCase):
         self.assertEqual(_jcs_encode({"😀": 1, "\ue000": 2}), '{"😀":1,"\ue000":2}')
         with self.assertRaisesRegex(ValueError, "safe range"):
             _jcs_encode(1 << 53)
+
+
+    def test_header_commitment_binds_coinbase_merkle_and_block_hash(self):
+        validated = _validate(_manifest())
+        header = BlockHeader(
+            1,
+            bytes(32),
+            merkle_root([validated.coinbase.txid]),
+            1_764_000_000,
+            0x207FFFFF,
+            7,
+        )
+        bound = replace(validated, genesis_block_hash=header.display_hash)
+        parsed = validate_genesis_header_commitment(bound, header.serialize().hex())
+        self.assertEqual(parsed, header)
+
+        wrong_merkle = BlockHeader(
+            header.version,
+            header.prev_hash,
+            bytes.fromhex("11" * 32),
+            header.timestamp,
+            header.bits,
+            header.nonce,
+        )
+        with self.assertRaisesRegex(ValueError, "merkle root"):
+            validate_genesis_header_commitment(bound, wrong_merkle.serialize().hex())
+
+        wrong_hash = replace(validated, genesis_block_hash="aa" * 32)
+        with self.assertRaisesRegex(ValueError, "header hash"):
+            validate_genesis_header_commitment(wrong_hash, header.serialize().hex())
+
+        non_genesis = BlockHeader(
+            header.version,
+            bytes.fromhex("22" * 32),
+            header.merkle_root,
+            header.timestamp,
+            header.bits,
+            header.nonce,
+        )
+        with self.assertRaisesRegex(ValueError, "previous hash"):
+            validate_genesis_header_commitment(
+                replace(validated, genesis_block_hash=non_genesis.display_hash),
+                non_genesis.serialize().hex(),
+            )
 
 
 if __name__ == "__main__":
