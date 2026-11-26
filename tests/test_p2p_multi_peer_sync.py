@@ -5,6 +5,7 @@ from src.blackroot_blocks import Block, COINBASE_INDEX, ZERO_TXID
 from src.blackroot_chain import BlockHeader, HeaderChain, ZERO_HASH
 from src.blackroot_consensus import decode_compact_target, check_proof_of_work
 from src.blackroot_p2p_multi_peer_sync import MultiPeerBlockScheduler
+from src.blackroot_p2p_block_sync import BlockBodyRequestTracker
 from src.blackroot_p2p_inventory import decode_inventory
 
 BITS = 0x207FFFFF
@@ -80,6 +81,25 @@ class MultiPeerBlockSchedulerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.scheduler.pool.assigned_peer(self.block.header.hash), second)
         self.assertEqual(self.scheduler.tracker.pending_hashes, (self.block.header.hash,))
         self.assertEqual(len(self.peers[second].sent), 1)
+
+    async def test_expired_request_releases_assignment_for_retry(self):
+        now = [100.0]
+        self.scheduler.tracker = BlockBodyRequestTracker(clock=lambda: now[0])
+        chosen = await self.scheduler.request_block(self.block.header.hash, self.peers)
+        self.assertEqual(self.scheduler.pool.assigned_peer(self.block.header.hash), chosen)
+        self.assertEqual(self.scheduler.tracker.pending_hashes, (self.block.header.hash,))
+
+        now[0] = 110.0
+        expired = self.scheduler.expire_requests(10.0)
+        self.assertEqual(expired, (self.block.header.hash,))
+        self.assertEqual(self.scheduler.pool.pending_hashes, ())
+        self.assertEqual(self.scheduler.tracker.pending_hashes, ())
+        self.assertIsNone(self.scheduler.pool.assigned_peer(self.block.header.hash))
+
+        retry_peer = await self.scheduler.request_block(self.block.header.hash, self.peers)
+        self.assertIn(retry_peer, self.peers)
+        self.assertEqual(self.scheduler.pool.assigned_peer(self.block.header.hash), retry_peer)
+        self.assertEqual(self.scheduler.tracker.pending_hashes, (self.block.header.hash,))
 
     async def test_rejects_when_no_peer_is_connected(self):
         self.peer_a.connected = False
