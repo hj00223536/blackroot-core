@@ -17,6 +17,10 @@ from collections.abc import Awaitable, Callable
 from .blackroot_p2p import DEFAULT_MAX_PAYLOAD, HEADER_SIZE, decode_message, encode_message
 from .blackroot_p2p_handshake import VersionMessage
 from .blackroot_p2p_state import PeerHandshake, encode_local_version
+from .blackroot_blocks import MAX_BLOCK_SIZE
+from .blackroot_p2p_headers import MAX_HEADERS_PER_MESSAGE
+from .blackroot_p2p_inventory import MAX_INVENTORY_ITEMS
+from .blackroot_p2p_getheaders import MAX_BLOCK_LOCATOR_HASHES
 
 MessageHandler = Callable[[str, bytes], object | Awaitable[object]]
 
@@ -29,6 +33,17 @@ _CONTROL_PAYLOAD_LENGTHS = {
     b"pong" + bytes(8): 8,
 }
 
+# Derive per-command receive ceilings from the corresponding bounded codecs.
+# These are prototype wire/resource limits, not frozen consensus parameters.
+_COMMAND_MAX_PAYLOADS = {
+    b"block" + bytes(7): MAX_BLOCK_SIZE,
+    b"headers" + bytes(5): 3 + MAX_HEADERS_PER_MESSAGE * 81,
+    b"getheaders" + bytes(2): 4 + 1 + MAX_BLOCK_LOCATOR_HASHES * 32 + 32,
+}
+_INVENTORY_MAX_PAYLOAD = 5 + MAX_INVENTORY_ITEMS * 36
+for _command in ("inv", "getdata", "notfound"):
+    _COMMAND_MAX_PAYLOADS[_command.encode("ascii").ljust(12, b"\\x00")] = _INVENTORY_MAX_PAYLOAD
+
 
 def _validate_control_payload_length(command_field: bytes, length: int) -> None:
     if command_field == b"version" + bytes(5):
@@ -39,6 +54,10 @@ def _validate_control_payload_length(command_field: bytes, length: int) -> None:
     if expected is not None and length != expected:
         command = command_field.split(b"\\x00", 1)[0].decode("ascii")
         raise PeerProtocolError(f"{command} payload must be exactly {expected} bytes")
+    maximum = _COMMAND_MAX_PAYLOADS.get(command_field)
+    if maximum is not None and length > maximum:
+        command = command_field.split(b"\\x00", 1)[0].decode("ascii")
+        raise PeerProtocolError(f"{command} payload exceeds its command-specific limit")
 
 
 def _validate_timeout(name: str, value: float) -> None:
