@@ -357,7 +357,7 @@ class PersistentBlockTests(unittest.TestCase):
         active = mined_block_for([active_cb], previous=genesis.header.hash, timestamp=2)
         self.store.connect_block(active, 1)
 
-        headers = HeaderChain(decode_compact_target(0x207fffff), genesis.header)
+        headers = HeaderChain(decode_compact_target(0x207fffff), genesis.header, adjusted_time_provider=lambda: 1_000_000)
         headers.add(active.header)
 
         fork_one_cb = coinbase(block_subsidy(1), b"\x02\x02")
@@ -387,7 +387,7 @@ class PersistentBlockTests(unittest.TestCase):
         active = mined_block_for([active_cb], previous=genesis.header.hash, timestamp=2)
         self.store.connect_block(active, 1)
 
-        headers = HeaderChain(decode_compact_target(0x207fffff), genesis.header)
+        headers = HeaderChain(decode_compact_target(0x207fffff), genesis.header, adjusted_time_provider=lambda: 1_000_000)
         headers.add(active.header)
         fork_one_cb = coinbase(block_subsidy(1), b"\x02\x02")
         fork_one = mined_block_for([fork_one_cb], previous=genesis.header.hash, timestamp=3)
@@ -410,7 +410,7 @@ class PersistentBlockTests(unittest.TestCase):
         active = mined_block_for([active_cb], previous=genesis.header.hash, timestamp=2)
         self.store.connect_block(active, 1)
 
-        headers = HeaderChain(decode_compact_target(0x207fffff), genesis.header)
+        headers = HeaderChain(decode_compact_target(0x207fffff), genesis.header, adjusted_time_provider=lambda: 1_000_000)
         headers.add(active.header)
         fork_cb = coinbase(block_subsidy(1), b"\x02\x02")
         fork = mined_block_for([fork_cb], previous=genesis.header.hash, timestamp=3)
