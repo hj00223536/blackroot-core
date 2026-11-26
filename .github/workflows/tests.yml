@@ -38,6 +38,8 @@ jobs:
           node-version: "22"
       - name: Reproduce genesis transaction, header, hash and proof of work
         run: node scripts/verify_genesis_candidate.mjs
+      - name: Verify independent genesis manifest JCS digest vector
+        run: node scripts/verify_genesis_manifest_jcs.mjs
       - name: Verify legacy transaction serialization and CompactSize vectors
         run: node scripts/verify_transaction_vectors.mjs
       - name: Verify P2PKH signature and SIGHASH_ALL vectors
