@@ -179,6 +179,15 @@ class PersistentNodeState:
         max_future_seconds: int = 7_200,
     ) -> str:
         """Validate and persist a header; block body is deliberately separate."""
+        if not callable(self.headers.adjusted_time_provider):
+            raise RuntimeError(
+                "persistent node state requires its configured adjusted-time provider; "
+                "caller-supplied timestamps are not accepted"
+            )
+        if adjusted_time is not None:
+            raise ValueError(
+                "persistent node state must use its configured adjusted-time provider"
+            )
         if not self.coordinated:
             return self.headers.add_to_branch(
                 header,
