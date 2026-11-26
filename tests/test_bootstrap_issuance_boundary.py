@@ -81,6 +81,13 @@ class BootstrapIssuanceBoundaryTests(unittest.TestCase):
                 _definitions, references = find_bootstrap_issuer_references(source)
                 self.assertTrue(references)
 
+    def test_scanner_does_not_claim_to_resolve_dynamic_name_construction(self):
+        # Dynamic expressions require runtime analysis; this regression guard
+        # intentionally reports only statically knowable references.
+        source = 'getattr(store, "".join(["add_", "genesis_output"]))'
+        _definitions, references = find_bootstrap_issuer_references(source)
+        self.assertEqual(references, [])
+
     def test_no_production_source_references_bootstrap_issuer(self):
         source_root = Path(__file__).resolve().parents[1] / "src"
         definitions = []
