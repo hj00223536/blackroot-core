@@ -167,6 +167,23 @@ class GenesisManifestV2Tests(unittest.TestCase):
                 trusted_public_keys={key_id: public},
             )
 
+    def test_published_cross_language_v2_digest_vector(self):
+        vector = {
+            "manifest_version": 2,
+            "network_id": "11" * 32,
+            "genesis_block_hash": "22" * 32,
+            "genesis_coinbase_tx": "00",
+            "founder_output_index": 1,
+            "founder_amount_sats": 2000000000000000,
+            "founder_script_pub_key": "51",
+            "total_supply_cap_sats": 4000000000000000,
+            "mining_schedule_id": "33" * 32,
+        }
+        self.assertEqual(
+            calculate_genesis_manifest_v2_digest(vector),
+            "d5d7ee8495437bc233533966de69a8cb59583dc15f311fea8819a6bff6f604dd",
+        )
+
     def test_json_parser_is_strict(self):
         from src.blackroot_genesis_manifest import parse_genesis_manifest_json
         with self.assertRaisesRegex(ValueError, "duplicate"):
