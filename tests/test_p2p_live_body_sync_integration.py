@@ -64,6 +64,7 @@ class ThreeNodeLiveBlockBodySyncTests(unittest.IsolatedAsyncioTestCase):
                     root / f"destination-{index}-utxos.sqlite",
                     POW_LIMIT,
                     genesis.header,
+                    adjusted_time_provider=lambda: int(time.time()),
                 )
                 for index in (1, 2)
             ]
@@ -127,7 +128,7 @@ class ThreeNodeLiveBlockBodySyncTests(unittest.IsolatedAsyncioTestCase):
             destination_runtimes = [
                 BlackrootNodeRuntime(
                     state, manager, protocol_version=1, request_timeout=2,
-                    adjusted_time=lambda: int(time.time()),
+                    adjusted_time=state.headers.adjusted_time_provider,
                 )
                 for state, manager in zip(destination_states, destination_managers)
             ]
