@@ -103,6 +103,34 @@ class PersistentHeaderStoreTests(unittest.TestCase):
         self.assertEqual(reopened.chain.height, 1)
         self.assertEqual(len(clock_calls), 3)
 
+    def test_clock_provider_failure_during_reload_preserves_live_chain(self):
+        clock_state = {"broken": False}
+
+        def clock():
+            if clock_state["broken"]:
+                raise RuntimeError("clock unavailable during replay")
+            return 1_000_000
+
+        store = PersistentHeaderStore(
+            self.path, POW_LIMIT, self.genesis,
+            adjusted_time_provider=clock,
+        )
+        child = mine(self.genesis.hash, 2)
+        store.add_to_branch(child)
+        before_chain = store.chain
+        before_nodes = tuple(store.chain.nodes)
+        before_tip = store.chain.best_hash
+        before_work = store.chain.node(before_tip).chainwork
+
+        clock_state["broken"] = True
+        with self.assertRaisesRegex(RuntimeError, "clock unavailable during replay"):
+            store.reload()
+
+        self.assertIs(store.chain, before_chain)
+        self.assertEqual(tuple(store.chain.nodes), before_nodes)
+        self.assertEqual(store.chain.best_hash, before_tip)
+        self.assertEqual(store.chain.node(before_tip).chainwork, before_work)
+
     def test_rejects_network_parameter_mismatch(self):
         self.open_store()
         with self.assertRaisesRegex(RuntimeError, "parameters do not match"):
