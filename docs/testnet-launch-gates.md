@@ -16,6 +16,19 @@ This document is an engineering gate list, not a launch announcement. A testnet 
 
 These are reusable prototype components. The CLI now waits for the outbound peer's version/verack handshake before requesting headers, avoiding a startup race. CI exercises both two independent runtime/state instances in one process and a separate-process CLI smoke test: two OS processes start with isolated data directories, connect over loopback TCP, complete the handshake, and report the same genesis and best-chain tip. This is narrowly scoped integration evidence, including a SIGTERM/clean-exit assertion for both CLI processes, not proof of full consensus correctness or public-network readiness. `src/blackroot_node_config.py` now loads strict JSON settings (rejecting missing/unknown fields) and validates explicit testnet identity, message magic, protocol version, genesis header/hash, PoW limit, peer cap, and port. It rejects production-like network names, mismatched genesis hashes, invalid PoW, and non-loopback listener hosts. `python -m src.blackroot_node` opens coordinated SQLite state and starts the P2P listener on a literal loopback address only. This is a local prototype runner: it does not yet provide a complete block-sync/full-consensus node or public networking.
 
+## Monetary schedule and genesis-output verification (2026-11-26)
+
+The current monetary unit tests establish the arithmetic schedule:
+
+- Founder allocation constant: 20,000,000 BRT.
+- Maximum scheduled mining issuance: 10 BRT at each height 1 through 2,000,000 inclusive, exactly 20,000,000 BRT.
+- Combined supply ceiling: 40,000,000 BRT.
+- The tests check height 0, first mining height, final mining height, the first height after mining ends, partial issuance, and invalid height inputs.
+
+Important distinction: these are tested constants and arithmetic only. The current candidate genesis vector in `tests/test_testnet_genesis_candidate.py` serializes a **zero-value OP_RETURN output**. It does not create the founder's 20,000,000 BRT output, does not create a spendable founder balance, and must not be represented as the final Mainnet genesis. The independent Node.js/Python stdlib vector confirms the candidate bytes and hash only; it does not prove a founder allocation or production genesis.
+
+Before any real genesis is frozen, the owner must provide/approve the exact founder locking script derived from a public key generated and held securely outside GitHub. Then the project must define deterministic genesis transaction bytes, independently reproduce the resulting txid/Merkle root/header/hash/PoW, and test that the founder output is created exactly once and is included in the same 40,000,000 BRT cap. No private key or recovery phrase belongs in the repository.
+
 ## Ingress, bootstrap, and recovery-boundary audit (2026-11-26)
 
 A source-level review of the current Python call paths found:
