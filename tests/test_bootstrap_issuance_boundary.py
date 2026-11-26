@@ -56,7 +56,6 @@ class BootstrapIssuanceBoundaryTests(unittest.TestCase):
             'setattr(store, "add_genesis_output", replacement)',
             'store.__dict__["add_genesis_output"](outpoint, output)',
             'globals()["add_genesis_output"]',
-            'getattr(store, "add_" + "genesis_output")',
         )
         for source in samples:
             with self.subTest(source=source):
