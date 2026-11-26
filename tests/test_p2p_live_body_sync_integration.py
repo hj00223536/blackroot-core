@@ -56,6 +56,7 @@ class ThreeNodeLiveBlockBodySyncTests(unittest.IsolatedAsyncioTestCase):
                 root / "source-utxos.sqlite",
                 POW_LIMIT,
                 genesis.header,
+                adjusted_time_provider=lambda: now,
             )
             destination_states = [
                 PersistentNodeState(
@@ -195,6 +196,7 @@ class ThreeNodeLiveBlockBodySyncTests(unittest.IsolatedAsyncioTestCase):
                         root / f"destination-{index}-utxos.sqlite",
                         POW_LIMIT,
                         genesis.header,
+                        adjusted_time_provider=lambda: now,
                     )
                     reopened = destination_states[index - 1]
                     self.assertEqual(
