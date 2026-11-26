@@ -68,3 +68,6 @@ Difficulty adjustment has a separate [policy proposal](difficulty-adjustment-pol
 - [Mainnet launch gates](mainnet-launch-gates.md)
 - [Monetary policy](monetary-policy.md)
 - [Browser wallet security plan](browser-wallet-security-plan.md)
+
+
+- [Time-validity policy proposal](time-validity-policy-proposal.md)
