@@ -12,6 +12,7 @@ from typing import Callable
 
 from .blackroot_blocks import Block
 from .blackroot_chain import BlockHeader
+from .blackroot_transactions import merkle_root
 from .blackroot_header_store import PersistentHeaderStore
 from .blackroot_utxo_db import UTXOStore
 from .blackroot_recovery_journal import NodeRecoveryJournal
@@ -238,6 +239,8 @@ class PersistentNodeState:
             raise TypeError("block must be a Block")
         if self.headers.chain.node(block.header.hash) is None:
             raise ValueError("cannot archive a body for an unknown header")
+        if merkle_root(tx.txid for tx in block.transactions) != block.header.merkle_root:
+            raise ValueError("cannot archive a body whose transactions do not match the known header merkle root")
         if self.coordinated:
             with self._require_coordinator().transaction():
                 return self.utxos.store_block_body(block)
