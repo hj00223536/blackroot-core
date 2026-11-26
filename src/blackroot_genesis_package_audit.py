@@ -45,6 +45,8 @@ def audit_genesis_package_inventory(
         data = artifacts[name]
         if not isinstance(data, bytes):
             raise TypeError(f"{name} must be supplied as bytes")
+        if not data:
+            raise ValueError(f"{name} must not be empty")
         if len(data) > _MAX_FILE_BYTES:
             raise ValueError(f"{name} exceeds per-file size limit")
         total += len(data)
