@@ -128,6 +128,29 @@ class RetargetAndWorkTests(unittest.TestCase):
         self.assertLessEqual(decode_compact_target(double_bits), previous_target * 2)
         self.assertLessEqual(decode_compact_target(four_x_bits), min(previous_target * 4, limit))
 
+
+    def test_retarget_caps_new_target_at_pow_limit(self):
+        from src.blackroot_consensus import retarget_compact
+
+        limit_bits = 0x207FFFFF
+        limit = decode_compact_target(limit_bits)
+        harder_bits = 0x1F3FFFFF
+
+        # A four-times-slower period would exceed the configured limit when
+        # starting from an already-easy target; the result must be capped.
+        self.assertEqual(
+            retarget_compact(limit_bits, 2016 * 600 * 4, limit),
+            limit_bits,
+        )
+        # A previous target outside this network's limit is invalid input.
+        with self.assertRaisesRegex(ValueError, "previous target exceeds"):
+            retarget_compact(limit_bits, 2016 * 600, limit - 1)
+
+        # A valid harder target may retarget upward, but never above the cap.
+        result = retarget_compact(harder_bits, 2016 * 600 * 4, limit)
+        self.assertLessEqual(decode_compact_target(result), limit)
+
+
     def test_retarget_rejects_bad_inputs(self):
         from src.blackroot_consensus import retarget_compact
         bits = 0x207FFFFF
