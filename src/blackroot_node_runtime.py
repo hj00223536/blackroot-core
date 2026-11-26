@@ -14,6 +14,38 @@ from .blackroot_p2p_manager import PeerManager
 from .blackroot_p2p_service import P2PSyncService
 
 
+class _NodeStateSyncStore:
+    """Adapt P2P storage while routing activation through persistent node state."""
+
+    def __init__(self, state: PersistentNodeState) -> None:
+        if not isinstance(state, PersistentNodeState):
+            raise TypeError("state must be a PersistentNodeState")
+        self._state = state
+        self._utxos = state.utxos
+
+    def tip(self):
+        return self._utxos.tip()
+
+    def store_block_body(self, block):
+        return self._state.archive_block_body(block)
+
+    def load_block_body(self, block_hash):
+        return self._utxos.load_block_body(block_hash)
+
+    def discard_block_bodies(self, block_hashes):
+        return self._utxos.discard_block_bodies(block_hashes)
+
+    def connect_validated_block(self, block, height, chain):
+        if chain is not self._state.headers.chain:
+            raise ValueError("P2P header chain is not the node state's validated chain")
+        return self._state.connect_best_block(block, height)
+
+    def reorganize_to_best(self, chain):
+        if chain is not self._state.headers.chain:
+            raise ValueError("P2P header chain is not the node state's validated chain")
+        return self._state.reorganize_best()
+
+
 class BlackrootNodeRuntime:
     """Bind validated persistent state to one managed P2P network lifecycle."""
 
@@ -32,10 +64,11 @@ class BlackrootNodeRuntime:
             raise TypeError("manager must be a PeerManager")
         self.state = state
         self.manager = manager
+        self._sync_store = _NodeStateSyncStore(state)
         self.sync = P2PSyncService(
             manager,
             state.headers.chain,
-            state.utxos,
+            self._sync_store,
             protocol_version=protocol_version,
             request_timeout=request_timeout,
             adjusted_time=adjusted_time,
