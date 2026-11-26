@@ -64,6 +64,15 @@ class BlackrootNodeRuntime:
             raise TypeError("state must be a PersistentNodeState")
         if not isinstance(manager, PeerManager):
             raise TypeError("manager must be a PeerManager")
+        state_adjusted_time = state.headers.adjusted_time_provider
+        if not callable(state_adjusted_time):
+            raise ValueError(
+                "persistent node runtime requires the node state's adjusted-time provider"
+            )
+        if adjusted_time is not None and adjusted_time is not state_adjusted_time:
+            raise ValueError(
+                "runtime adjusted-time provider must match the persistent node state's provider"
+            )
         self.state = state
         self.manager = manager
         self._sync_store = _NodeStateSyncStore(state)
@@ -73,7 +82,7 @@ class BlackrootNodeRuntime:
             self._sync_store,
             protocol_version=protocol_version,
             request_timeout=request_timeout,
-            adjusted_time=adjusted_time,
+            adjusted_time=state_adjusted_time,
             persist_headers=state.persist_synced_headers,
             require_node_state_lifecycle=True,
         )
