@@ -61,6 +61,18 @@ class GenesisPackageInventoryTests(unittest.TestCase):
         result = audit_genesis_package_inventory(files, expected_sha256=pins(files))
         self.assertIn("checksums.txt", result)
 
+    def test_non_string_inventory_names_rejected_cleanly(self):
+        files = package()
+        files[7] = b"unexpected"
+        with self.assertRaisesRegex(ValueError, "names must be strings"):
+            audit_genesis_package_inventory(files, expected_sha256={})
+
+        files = package()
+        expected = pins(files)
+        expected[7] = "00" * 32
+        with self.assertRaisesRegex(ValueError, "pin names must be strings"):
+            audit_genesis_package_inventory(files, expected_sha256=expected)
+
     def test_empty_required_artifact_rejected(self):
         files = package()
         files["approval.json"] = b""
