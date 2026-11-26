@@ -282,9 +282,17 @@ class UTXOStore:
         with self._write_scope() as db:
             if db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0]:
                 raise RuntimeError("bootstrap outputs cannot be added after chain activation")
-            bootstrap_issued = int(db.execute(
+            bootstrap_row = db.execute(
                 "SELECT value FROM metadata WHERE key='bootstrap_issued_sats'"
-            ).fetchone()[0])
+            ).fetchone()
+            if bootstrap_row is None:
+                raise RuntimeError("bootstrap issuance metadata is missing")
+            try:
+                bootstrap_issued = int(bootstrap_row[0])
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError("bootstrap issuance metadata is malformed") from exc
+            if bootstrap_issued < 0 or bootstrap_issued > TOTAL_SUPPLY_CAP:
+                raise RuntimeError("bootstrap issuance metadata exceeds total supply cap")
             if bootstrap_issued + output.value > TOTAL_SUPPLY_CAP:
                 raise ValueError("cumulative bootstrap issuance exceeds total supply cap")
             db.execute(
