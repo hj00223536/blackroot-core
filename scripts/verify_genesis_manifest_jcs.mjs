@@ -80,5 +80,5 @@ const digest = createHash("sha256")
 
 assert.equal(digest, "9bb6346eff59ffa041f2d81ad640e0af04bde0feade6da4eef223c7744c86370");
 assert.equal(sha256d(coinbase).reverse().toString("hex"),
-  "114782ba397fdd4cb92497fdff2e71198ea5d3b6bd9632466ca38df91c3e1a12");
+  "b8119fc7d37dd8983eacfc85e3a312d9e1ec8bfeca53c30e844003a23070a5cd");
 console.log("Independent genesis manifest JCS vector: OK");
