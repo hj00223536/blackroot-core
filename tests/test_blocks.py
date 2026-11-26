@@ -283,6 +283,17 @@ class BlockValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "exceeds subsidy"):
             validate_block_transactions(make_block([coinbase]), self.parent, 1)
 
+    def test_coinbase_outpoint_collision_does_not_mutate_parent_utxos(self):
+        coinbase = make_coinbase(1)
+        collision = OutPoint(coinbase.txid, 0)
+        parent = {collision: TxOutput(7, b"existing")}
+        original_parent = dict(parent)
+
+        with self.assertRaisesRegex(ValueError, "coinbase would overwrite"):
+            validate_block_transactions(make_block([coinbase]), parent, 1)
+
+        self.assertEqual(parent, original_parent)
+
     def test_rejects_second_coinbase(self):
         with self.assertRaisesRegex(ValueError, "more than one"):
             validate_block_transactions(make_block([make_coinbase(1), make_coinbase(1)]), self.parent, 1)
