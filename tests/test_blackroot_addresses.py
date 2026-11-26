@@ -20,6 +20,10 @@ class Base58Tests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 b58decode(value)
 
+    def test_base58_rejects_oversized_untrusted_input(self):
+        with self.assertRaisesRegex(ValueError, "maximum length"):
+            b58decode("1" * 513)
+
 
 class Base58CheckTests(unittest.TestCase):
     def test_round_trip_with_explicit_version(self):
