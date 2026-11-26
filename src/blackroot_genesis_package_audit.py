@@ -28,6 +28,10 @@ def audit_genesis_package_inventory(
     """
     if not isinstance(artifacts, Mapping) or not isinstance(expected_sha256, Mapping):
         raise TypeError("artifacts and expected_sha256 must be mappings")
+    if any(not isinstance(name, str) for name in artifacts):
+        raise ValueError("artifact names must be strings")
+    if any(not isinstance(name, str) for name in expected_sha256):
+        raise ValueError("external digest pin names must be strings")
     names = set(artifacts)
     missing = _REQUIRED - names
     unexpected = names - _REQUIRED - _OPTIONAL
