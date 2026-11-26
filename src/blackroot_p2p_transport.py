@@ -42,7 +42,7 @@ _COMMAND_MAX_PAYLOADS = {
 }
 _INVENTORY_MAX_PAYLOAD = 5 + MAX_INVENTORY_ITEMS * 36
 for _command in ("inv", "getdata", "notfound"):
-    _COMMAND_MAX_PAYLOADS[_command.encode("ascii").ljust(12, b"\\x00")] = _INVENTORY_MAX_PAYLOAD
+    _COMMAND_MAX_PAYLOADS[_command.encode("ascii").ljust(12, b"\x00")] = _INVENTORY_MAX_PAYLOAD
 
 
 def _validate_control_payload_length(command_field: bytes, length: int) -> None:
@@ -52,11 +52,11 @@ def _validate_control_payload_length(command_field: bytes, length: int) -> None:
         return
     expected = _CONTROL_PAYLOAD_LENGTHS.get(command_field)
     if expected is not None and length != expected:
-        command = command_field.split(b"\\x00", 1)[0].decode("ascii")
+        command = command_field.split(b"\x00", 1)[0].decode("ascii")
         raise PeerProtocolError(f"{command} payload must be exactly {expected} bytes")
     maximum = _COMMAND_MAX_PAYLOADS.get(command_field)
     if maximum is not None and length > maximum:
-        command = command_field.split(b"\\x00", 1)[0].decode("ascii")
+        command = command_field.split(b"\x00", 1)[0].decode("ascii")
         raise PeerProtocolError(f"{command} payload exceeds its command-specific limit")
 
 
