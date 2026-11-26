@@ -34,7 +34,10 @@ class PeerSyncCoordinator:
         *,
         block_provider: BlockProvider | None = None,
         request_tracker: BlockBodyRequestTracker | None = None,
+        require_node_state_lifecycle: bool = False,
     ) -> None:
+        if not isinstance(require_node_state_lifecycle, bool):
+            raise TypeError("require_node_state_lifecycle must be a bool")
         if not isinstance(header_sync, PeerHeaderSync):
             raise TypeError("header_sync must be a PeerHeaderSync")
         if block_provider is not None and not callable(block_provider):
@@ -46,6 +49,7 @@ class PeerSyncCoordinator:
         self.block_provider = block_provider
         self.requests = request_tracker or BlockBodyRequestTracker()
         self._header_request_pending = False
+        self.require_node_state_lifecycle = require_node_state_lifecycle
 
     def bind(self, peer):
         """Return the callback shape expected by PeerConnection for this peer."""
@@ -186,4 +190,6 @@ class PeerSyncCoordinator:
         """Attach the UTXO store used to validate and connect requested bodies."""
         if not callable(getattr(store, "connect_validated_block", None)):
             raise TypeError("store must provide connect_validated_block")
+        if self.require_node_state_lifecycle and getattr(store, "_blackroot_node_state_lifecycle", False) is not True:
+            raise ValueError("persistent-node P2P sync requires a node-state lifecycle adapter")
         self.store = store
