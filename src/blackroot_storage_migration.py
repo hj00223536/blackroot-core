@@ -123,6 +123,24 @@ def _inspect_database(path: Path, kind: str) -> dict:
                     raise RuntimeError("UTXO schema-v5 is missing its per-block issuance ledger")
                 if "bootstrap_issued_sats" not in metadata:
                     raise RuntimeError("UTXO schema-v5 is missing bootstrap issuance metadata")
+                try:
+                    bootstrap_issued = int(metadata["bootstrap_issued_sats"])
+                except (TypeError, ValueError) as exc:
+                    raise RuntimeError("UTXO schema-v5 bootstrap issuance metadata is malformed") from exc
+                from .blackroot_monetary import TOTAL_SUPPLY_CAP
+                if bootstrap_issued < 0 or bootstrap_issued > TOTAL_SUPPLY_CAP:
+                    raise RuntimeError("UTXO schema-v5 bootstrap issuance metadata exceeds supply cap")
+                required_columns = {
+                    "blocks": {"height", "block_hash", "prev_hash", "header", "tx_count", "total_fees", "subsidy_issued"},
+                    "block_transactions": {"height", "position", "txid", "raw_transaction"},
+                }
+                for table, required in required_columns.items():
+                    actual = {row[1] for row in db.execute(f'PRAGMA table_info("{table}")')}
+                    missing_columns = sorted(required - actual)
+                    if missing_columns:
+                        raise RuntimeError(
+                            f"UTXO schema-v5 table {table} is missing required columns: {missing_columns}"
+                        )
             counts = {
                 table: db.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
                 for table in sorted(_REQUIRED_TABLES["utxo"])
