@@ -1,8 +1,14 @@
 import unittest
+import hashlib
+import json
+
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from src.blackroot_blocks import COINBASE_INDEX
 from src.blackroot_monetary import COIN, FOUNDER_ALLOCATION, MINING_ALLOCATION, TOTAL_SUPPLY_CAP
 from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput
+from src.blackroot_genesis_approval import approval_message, verify_validated_genesis_manifest_approval
 from src.blackroot_genesis_manifest_v2 import (
     calculate_genesis_manifest_v2_digest,
     validate_genesis_manifest_v2,
@@ -123,6 +129,43 @@ class GenesisManifestV2Tests(unittest.TestCase):
         altered["manifest_digest"] = calculate_genesis_manifest_v2_digest(altered)
         with self.assertRaisesRegex(ValueError, "safe integer"):
             validate(altered)
+
+    def test_v2_validated_manifest_accepts_only_matching_detached_approval(self):
+        validated = validate(manifest())
+        # Public RFC 8032 test seed only; never an owner key.
+        private = Ed25519PrivateKey.from_private_bytes(bytes.fromhex(
+            "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"
+        ))
+        public = private.public_key().public_bytes(
+            serialization.Encoding.Raw, serialization.PublicFormat.Raw
+        )
+        key_id = hashlib.sha256(public).hexdigest()
+        record = {
+            "record_version": 1,
+            "network_id": validated.network_id,
+            "manifest_digest": validated.manifest_digest,
+            "approval_scope": "genesis-founder-allocation",
+            "signing_key_id": key_id,
+            "signature_algorithm": "Ed25519",
+            "signature": private.sign(
+                approval_message(validated.network_id, validated.manifest_digest)
+            ).hex(),
+        }
+        self.assertEqual(
+            verify_validated_genesis_manifest_approval(
+                validated,
+                json.dumps(record, separators=(",", ":")),
+                trusted_public_keys={key_id: public},
+            ),
+            key_id,
+        )
+        altered = dict(record, network_id="44" * 32)
+        with self.assertRaisesRegex(ValueError, "network_id"):
+            verify_validated_genesis_manifest_approval(
+                validated,
+                json.dumps(altered),
+                trusted_public_keys={key_id: public},
+            )
 
     def test_json_parser_is_strict(self):
         from src.blackroot_genesis_manifest import parse_genesis_manifest_json
