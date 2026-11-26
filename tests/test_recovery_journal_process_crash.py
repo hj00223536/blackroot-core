@@ -54,7 +54,7 @@ def make_block(previous, height, timestamp):
 genesis = make_block(bytes(32), 0, 1)
 state = PersistentNodeState(root / "headers.sqlite", root / "utxos.sqlite", limit, genesis.header, adjusted_time_provider=lambda: 1_000_000)
 candidate = make_block(genesis.header.hash, 1, 2)
-state.add_header(candidate.header, adjusted_time=2)
+state.add_header(candidate.header)
 state.utxos.store_block_body(candidate)
 old_tip = state.utxos.tip()
 new_tip = (1, candidate.header.hash)
