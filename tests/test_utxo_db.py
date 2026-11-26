@@ -306,11 +306,19 @@ store.apply(tx)
                     store = UTXOStore(shared_path, connection=connection)
                     store.add_genesis_output(funding, TxOutput(701, b"rollback"))
                     raise ValueError("abort coordinated setup")
+        # The coordinated first-time setup must roll back the entire schema,
+        # not merely the UTXO rows or bootstrap accounting metadata.
         with _managed_sqlite(shared_path) as db:
             tables = db.execute(
-                "SELECT name FROM sqlite_master WHERE type='table' AND name='utxos'"
+                "SELECT name FROM sqlite_master WHERE type='table' "
+                "AND name NOT LIKE 'sqlite_%' ORDER BY name"
+            ).fetchall()
+            indexes = db.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' "
+                "AND name NOT LIKE 'sqlite_%' ORDER BY name"
             ).fetchall()
         self.assertEqual(tables, [])
+        self.assertEqual(indexes, [])
 
     def test_apply_commits_inside_coordinator_transaction(self):
         shared_path = Path(self.tempdir.name) / "coordinated-apply.sqlite"
