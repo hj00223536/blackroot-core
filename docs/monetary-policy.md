@@ -22,7 +22,11 @@ Height 0 has no mining subsidy: `block_subsidy(0)` returns zero. The 20,000,000 
 
 ## Consensus enforcement
 
-The reference block validator calculates the ordinary coinbase ceiling as the mining subsidy plus transaction fees; at height 0 this ceiling is zero. Genesis founder issuance is not currently implemented. When implemented, it must be validated by exact fixed-genesis identity and transaction/output vectors, never by the ordinary coinbase subsidy helper. The mining schedule limits scheduled mining issuance to 20,000,000 BRT on a single valid chain. The 40,000,000 BRT money range is used for transaction/output range checks.
+The reference block validator calculates the ordinary coinbase ceiling as the mining subsidy plus transaction fees; at height 0 this ceiling is zero. Genesis founder issuance is not currently implemented. When implemented, it must be validated by exact fixed-genesis identity and transaction/output vectors, never by the ordinary coinbase subsidy helper.
+
+The persistent UTXO store now records a per-active-block issuance budget equal to the consensus subsidy schedule, independently of how much of that budget a miner actually claims. This is intentional: an underclaimed coinbase does not create extra subsidy capacity at a later height. Fees are transfers of existing value and are excluded from new issuance. The ledger is removed with disconnected blocks and rebuilt as replacement branches are connected, so reorganization follows the active chain. Trusted bootstrap outputs are tracked separately in persistent metadata and count against the same 40,000,000 BRT ceiling. The integrity audit compares each stored block budget with the consensus schedule.
+
+This is a reference implementation, not yet production consensus. The schema-v5 read-only migration preflight recognizes the new issuance column and bootstrap metadata; databases with older active state are refused rather than silently assigned an invented historical issuance total. A verified reindex from genesis is required for such stores.
 
 Genesis construction must separately create and prove the 20,000,000 BRT founder output. It is not yet present in the current genesis candidate. No private key or receiving address is stored in source control.
 
