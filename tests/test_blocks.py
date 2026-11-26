@@ -370,6 +370,20 @@ class BlockValidationTests(unittest.TestCase):
             make_block([zero_reward]), {}, LAST_MINING_HEIGHT + 1
         )
 
+    def test_genesis_founder_allocation_is_not_an_ordinary_coinbase_subsidy(self):
+        from src.blackroot_monetary import FOUNDER_ALLOCATION
+
+        founder_as_coinbase = make_coinbase(FOUNDER_ALLOCATION)
+        with self.assertRaisesRegex(ValueError, "coinbase reward exceeds"):
+            validate_block_transactions(
+                make_block([founder_as_coinbase]), {}, 0
+            )
+
+        zero_genesis_coinbase = make_coinbase(0)
+        validate_block_transactions(
+            make_block([zero_genesis_coinbase]), {}, 0
+        )
+
     def test_rejects_invalid_height(self):
         coinbase = make_coinbase(1)
         with self.assertRaisesRegex(ValueError, "height"):
