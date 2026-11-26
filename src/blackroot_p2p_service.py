@@ -57,7 +57,6 @@ class P2PSyncService:
         manager.on_peer_message_factory = self.message_handler_factory
         manager.on_peer_disconnected = self.peer_disconnected
         self.protocol_version = protocol_version
-        self.adjusted_time = adjusted_time
         if persist_headers is not None and not callable(persist_headers):
             raise TypeError("persist_headers must be callable")
         if persist_headers is not None:
@@ -71,6 +70,7 @@ class P2PSyncService:
                     "persistent P2P header sync clock must match the header chain provider"
                 )
             adjusted_time = chain_adjusted_time
+        self.adjusted_time = adjusted_time
         self.persist_headers = persist_headers
 
     def _peers(self) -> dict[object, object]:
