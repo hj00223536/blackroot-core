@@ -187,6 +187,15 @@ class RetargetAndWorkTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             retarget_compact(bits, 600, decode_compact_target(0x207FFFFF) - 1)
 
+    def test_retarget_pow_limit_must_be_a_uint256(self):
+        from src.blackroot_consensus import retarget_compact
+
+        bits = 0x1F3FFFFF
+        for invalid_limit in (0, -1, 1 << 256, True, 1.5):
+            with self.subTest(pow_limit=invalid_limit):
+                with self.assertRaisesRegex(ValueError, "positive uint256"):
+                    retarget_compact(bits, 600, invalid_limit)
+
 
 if __name__ == "__main__":
     unittest.main()
