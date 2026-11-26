@@ -34,6 +34,21 @@ class VersionHandshakeCodecTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "control"):
             VersionMessage(1, 0, 0, 1, 0, "bad\nagent")
 
+    def test_rejects_boolean_numeric_fields(self):
+        fields = {
+            "protocol_version": 1,
+            "services": 0,
+            "timestamp": 0,
+            "nonce": 1,
+            "start_height": 0,
+            "user_agent": "",
+        }
+        for name in ("protocol_version", "services", "timestamp", "nonce", "start_height"):
+            invalid = dict(fields)
+            invalid[name] = True
+            with self.subTest(field=name), self.assertRaisesRegex(TypeError, "not bool"):
+                VersionMessage(**invalid)
+
     def test_rejects_out_of_range_fields(self):
         invalid = (
             {"protocol_version": 0, "services": 0, "timestamp": 0, "nonce": 0, "start_height": 0, "user_agent": ""},
