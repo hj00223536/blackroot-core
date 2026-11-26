@@ -48,6 +48,26 @@ The focused tests currently cover MTP boundaries, the 11-header window, explicit
 
 No consensus constants or runtime behavior are changed by this audit note. The two-hour future allowance and all other time rules remain proposals pending owner approval and independent review.
 
+## Block-body ingress and reorganization audit (2026-11-26)
+
+The current block-body path is separate from header-time admission:
+
+- Peer header synchronization validates downloaded headers through `HeaderChain.add_batch()` with one adjusted-time sample for the batch. The node runtime passes its configured adjusted-time callback into the P2P sync service; callers that omit it cannot accept peer header batches.
+- Normal requested-body admission rejects unsolicited bodies, verifies the requested hash is still on the selected best chain, checks the serialized body header against the exact validated header entry, then delegates to the store's validated connection path.
+- `UTXOStore.connect_validated_block()` rechecks the selected best-chain header and active-tip linkage, derives parent MTP from the supplied `HeaderChain`, then invokes transaction/body validation and atomic UTXO persistence.
+- Fork-body download verifies the exact known header and Merkle commitment before archiving. The later `reorganize_to_best()` requires a strictly greater-work branch, matches each replacement body to its header, derives MTP from the header DAG, and applies the UTXO switch atomically. Transaction/script validation occurs while connecting replacement blocks; failures roll back the UTXO reorganization.
+
+Focused tests currently cover unsolicited and mismatched bodies, wrong-peer fork responses, invalid Merkle commitments, invalid transaction bodies, atomic reorganization, and rollback on invalid replacement bodies.
+
+### Remaining ingress and recovery gates
+
+1. This is a source-level audit of the inspected public P2P and persistent-state paths, not proof that every import, bootstrap, snapshot, migration, or future API is covered. Inventory all call sites of low-level `connect_block()` and `reorganize()`; those methods explicitly do not authenticate header PoW/difficulty/ancestry themselves.
+2. Ensure production-facing code cannot call those low-level storage primitives without a validated header-chain boundary. Add negative tests for each discovered caller and for coordinated-database rollback across header, body archive, UTXO, and recovery-journal writes.
+3. Define deterministic replay semantics separately from live future-time admission. The current host-clock callback is provisional and is not a peer-adjusted network-time algorithm.
+4. Keep block size, transaction/script subset, retarget timing, network identity, and all other provisional consensus parameters un-frozen until owner approval, complete vectors, an independently maintained implementation, and external review.
+
+This audit note changes documentation only; it does not change consensus or runtime behavior and does not authorize public Testnet/Mainnet launch.
+
 ## Integration status
 
 - [x] Injected adjusted-time provider supported by the in-memory header DAG.
