@@ -329,6 +329,7 @@ def import_snapshot_set_to_coordinated_database(
     destination_path: str | Path,
     *,
     batch_size: int = 512,
+    adjusted_time_provider=None,
 ) -> dict:
     """Copy a validated three-snapshot set into a new, exclusive SQLite file.
 
@@ -355,7 +356,8 @@ def import_snapshot_set_to_coordinated_database(
 
     # Validate the cross-store state before creating any output file.
     consistency = validate_snapshot_set_consistency(
-        sources["header"], sources["utxo"], sources["journal"]
+        sources["header"], sources["utxo"], sources["journal"],
+        adjusted_time_provider=adjusted_time_provider,
     )
     plan = plan_coordinated_schema_merge(
         sources["header"], sources["utxo"], sources["journal"]
