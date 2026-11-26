@@ -27,6 +27,27 @@ These are prototype facts, not a complete network time policy.
 | Local clock failure | Define startup, drift, rollback and loss-of-connectivity behavior | OPEN |
 | Historical validation | Specify deterministic handling of future-time checks during initial sync and reindex | OPEN |
 
+## Source-level ingress and replay audit (2026-11-26)
+
+The current source and focused tests establish the following narrower facts:
+
+- `HeaderChain.add_to_branch()` rejects a non-genesis header when neither an explicit adjusted-time value nor an injected provider is available, unless the explicitly named test-only bypass is enabled. Provider output is type/range checked before the future-time comparison.
+- `HeaderChain.add_batch()` samples its injected provider once for a non-empty batch and applies that same value to every header. Its in-memory rollback restores both the DAG and best-tip pointer if any member fails.
+- `PeerHeaderSync` independently requires a clock callback before accepting a peer `headers` message, validates its returned value, and passes one sample into the atomic batch path. The focused coordinator tests cover missing/invalid clocks, future-header rejection without chain mutation, and rollback of a batch with a valid prefix followed by a future header.
+- `PersistentHeaderStore` samples its provider once while replaying stored headers and once while rebuilding known branches for a new admission. That one sample is applied to every non-genesis header in the replay/rebuild, including historical side branches. A provider exception or invalid value therefore aborts that operation; the code does not silently disable the future-time check.
+- `PersistentNodeState.add_header()` delegates to the persistent header store, so its normal network-mode path inherits the store/provider requirement. The local CLI currently supplies the host UTC clock; this is not peer-adjusted time.
+
+The focused tests currently cover MTP boundaries, the 11-header window, explicit and injected future-time checks, one-sample batch behavior, invalid provider values, persistent replay/admission clock sampling, and P2P fail-closed behavior. This audit does **not** prove that every possible future block/body/import API is an ingress path or that all are protected; a complete call-graph audit remains required.
+
+### Replay/clock questions still unresolved
+
+1. Applying the *current* clock sample to every historical header means a local clock rollback or an unavailable/throwing provider can prevent database reopen/replay even when the stored chain was accepted earlier. The desired recovery behavior must be specified; do not weaken validation ad hoc.
+2. The proposal does not yet distinguish live admission's future-time rule from deterministic historical/reindex validation. Define whether historical replay uses the same current-time bound, a separately authenticated checkpoint policy, or another deterministic rule.
+3. Add explicit tests for provider exceptions, clock rollback across reopen/replay, exact future-boundary behavior through persistent replay and coordinated import, and every discovered block/header ingress path.
+4. Before public networking, define peer-time sampling, outlier rejection, minimum peer count, maximum permitted network adjustment, and behavior during isolation. The host clock supplied by the current CLI is only a provisional local reference.
+
+No consensus constants or runtime behavior are changed by this audit note. The two-hour future allowance and all other time rules remain proposals pending owner approval and independent review.
+
 ## Integration status
 
 - [x] Injected adjusted-time provider supported by the in-memory header DAG.
