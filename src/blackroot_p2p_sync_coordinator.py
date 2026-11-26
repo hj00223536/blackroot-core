@@ -1,10 +1,12 @@
-"""Per-peer P2P dispatcher joining header and block-body synchronization.
+"""Standalone per-peer P2P dispatcher for header and block-body synchronization.
 
 This coordinator is deliberately opt-in: callers bind it to an already
 handshaken peer and provide a block-body lookup callback for serving data.
 Unknown inventory triggers header discovery; only bodies requested through
 BlockBodyRequestTracker can be connected. Transaction relay/mempool is not
-implemented.
+implemented. For persistent-node production wiring, attach a lifecycle adapter
+whose connect_validated_block method delegates to PersistentNodeState; attaching
+a raw UTXOStore bypasses the node-state recovery-journal coordinator.
 """
 from __future__ import annotations
 
