@@ -97,6 +97,39 @@ class PeerConnectionTests(unittest.IsolatedAsyncioTestCase):
                     await peer._read_message()
                 self.assertEqual(len(reader._buffer), 0)
 
+    async def test_rejects_block_and_headers_over_limits_before_body_read(self):
+        cases = (
+            ("block", 1_000_001),
+            ("headers", 3 + 2_000 * 81 + 1),
+        )
+        for command, length in cases:
+            with self.subTest(command=command, length=length):
+                reader = asyncio.StreamReader()
+                command_field = command.encode("ascii").ljust(12, b"\\x00")
+                reader.feed_data(
+                    MAGIC + command_field + struct.pack("<I", length) + bytes(4)
+                )
+                peer = PeerConnection(
+                    reader, FakeWriter(), magic=MAGIC, local_version=version(101)
+                )
+                with self.assertRaisesRegex(PeerProtocolError, "command-specific limit"):
+                    await peer._read_message()
+                self.assertEqual(len(reader._buffer), 0)
+
+    async def test_rejects_oversized_inventory_before_body_read(self):
+        reader = asyncio.StreamReader()
+        maximum = 5 + 50_000 * 36
+        command_field = b"inv" + bytes(9)
+        reader.feed_data(
+            MAGIC + command_field + struct.pack("<I", maximum + 1) + bytes(4)
+        )
+        peer = PeerConnection(
+            reader, FakeWriter(), magic=MAGIC, local_version=version(101)
+        )
+        with self.assertRaisesRegex(PeerProtocolError, "command-specific limit"):
+            await peer._read_message()
+        self.assertEqual(len(reader._buffer), 0)
+
     async def test_rejects_application_message_before_handshake(self):
         with self.assertRaisesRegex(PeerProtocolError, "before handshake"):
             await self.peer.handle_message("ping", struct.pack("<Q", 7))
