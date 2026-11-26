@@ -19,6 +19,10 @@ class TestnetGenesisCandidateVectorTests(unittest.TestCase):
             (TxOutput(0, bytes.fromhex("6a")),),
             0,
         )
+        # This is deliberately a zero-value OP_RETURN regression candidate,
+        # not the founder allocation and not a spendable genesis balance.
+        self.assertEqual(len(coinbase.outputs), 1)
+        self.assertEqual(coinbase.outputs[0], TxOutput(0, bytes.fromhex("6a")))
         self.assertEqual(len(coinbase.serialize()), 63)
         self.assertEqual(
             coinbase.serialize().hex(),
