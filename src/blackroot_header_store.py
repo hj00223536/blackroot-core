@@ -164,6 +164,10 @@ class PersistentHeaderStore:
             "FROM headers ORDER BY height, block_hash"
         ).fetchall()
         genesis_rows = 0
+        replay_adjusted_time = (
+            self.adjusted_time_provider()
+            if self.adjusted_time_provider is not None else None
+        )
         for block_hash, height, version, prev_hash, merkle_root, timestamp, bits, nonce, chainwork in rows:
             header = BlockHeader(version, bytes(prev_hash), bytes(merkle_root), timestamp, bits, nonce)
             actual_hash = header.hash
@@ -177,7 +181,7 @@ class PersistentHeaderStore:
                     raise RuntimeError("persistent genesis metadata mismatch during replay")
                 continue
             try:
-                replayed.add_to_branch(header)
+                replayed.add_to_branch(header, adjusted_time=replay_adjusted_time)
             except (TypeError, ValueError) as exc:
                 raise RuntimeError(f"persistent header replay rejected {actual_hash.hex()}: {exc}") from exc
             node = replayed.node(actual_hash)
@@ -197,13 +201,18 @@ class PersistentHeaderStore:
             self.pow_limit, live_chain.best_chain()[0],
             adjusted_time_provider=self.adjusted_time_provider,
         )
-        # Rebuild all known branches so fork choice and duplicate checks are
-        # evaluated against the same DAG without mutating the live instance.
+        # Rebuild all known branches against one clock snapshot so replay does
+        # not depend on clock drift between individual stored headers.
+        replay_adjusted_time = adjusted_time
+        if replay_adjusted_time is None and self.adjusted_time_provider is not None:
+            replay_adjusted_time = self.adjusted_time_provider()
         nodes = (node for node in live_chain.nodes if node.height > 0)
         for node in nodes:
-            candidate.add_to_branch(node.header)
+            candidate.add_to_branch(
+                node.header, adjusted_time=replay_adjusted_time
+            )
         display_hash = candidate.add_to_branch(
-            header, adjusted_time=adjusted_time,
+            header, adjusted_time=replay_adjusted_time,
             max_future_seconds=max_future_seconds,
         )
         block_hash = header.hash
