@@ -61,6 +61,12 @@ class GenesisPackageInventoryTests(unittest.TestCase):
         result = audit_genesis_package_inventory(files, expected_sha256=pins(files))
         self.assertIn("checksums.txt", result)
 
+    def test_empty_required_artifact_rejected(self):
+        files = package()
+        files["approval.json"] = b""
+        with self.assertRaisesRegex(ValueError, "must not be empty"):
+            audit_genesis_package_inventory(files, expected_sha256=pins(files))
+
     def test_nested_names_and_non_bytes_rejected(self):
         files = package()
         files["../manifest.json"] = b"x"
