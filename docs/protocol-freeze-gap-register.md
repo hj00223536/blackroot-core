@@ -102,3 +102,8 @@ The HeaderChain public admission APIs now reject caller-supplied adjusted-time o
 ## CI follow-up: persistent node-state and future-time boundary (2026-11-27)
 
 The earlier note above saying CI 1227 was still in progress is superseded: CI run [1227](https://github.com/hj00223536/blackroot-core/actions/runs/45911607276) completed successfully on commit `c9d851f66a00`, with all four jobs passing. The inclusive adjusted-time future boundary regression was then added in commit `fc3f2e32cda6`: a timestamp exactly 7,200 seconds ahead of the configured clock is accepted, while 7,201 seconds is rejected; the test also checks that rejected input does not mutate the live chain or persist across reopen. CI run [1229](https://github.com/hj00223536/blackroot-core/actions/runs/45912171314) completed successfully with all four jobs passing: Python 3.12, Python 3.13, independent Node.js 22 genesis-vector reproduction, and static wallet-security guard. This records the existing prototype boundary; it does not independently approve or freeze a production clock policy. PF-05 remains OPEN.
+
+
+## Security architecture baseline (2026-11-27)
+
+Added [security-architecture-threat-model.md](security-architecture-threat-model.md) as a design-only baseline. It enumerates the principal consensus, issuance, script, peer-network, clock, persistence, wallet-key, and release threats; defines layered security boundaries and a verification program; and explicitly distinguishes design goals from implemented controls. It introduces no consensus parameters and does not close any release gate. In particular, external consensus/cryptography review, complete script semantics, network adversarial testing, production wallet/miner readiness, and genesis authorization remain open.
