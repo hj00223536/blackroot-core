@@ -8,7 +8,7 @@ from src.blackroot_monetary import (
 )
 from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput
 from src.blackroot_blocks import COINBASE_INDEX
-from src.blackroot_genesis_manifest import validate_genesis_manifest_structure
+from src.blackroot_genesis_manifest import (\n    calculate_genesis_manifest_digest,\n    canonicalize_genesis_manifest,\n    parse_genesis_manifest_json,\n    validate_genesis_manifest_structure,\n)
 
 
 NETWORK_ID = "11" * 32
@@ -153,6 +153,35 @@ class GenesisManifestStructureTests(unittest.TestCase):
         missing_approval["approval_record"] = "   "
         with self.assertRaisesRegex(ValueError, "approval_record"):
             _validate(missing_approval)
+
+
+    def test_digest_is_canonical_and_detects_any_field_change(self):
+        manifest = _manifest()
+        expected = calculate_genesis_manifest_digest(manifest)
+        self.assertEqual(manifest["manifest_digest"], expected)
+        reordered = dict(reversed(list(manifest.items())))
+        self.assertEqual(canonicalize_genesis_manifest(manifest), canonicalize_genesis_manifest(reordered))
+        self.assertEqual(calculate_genesis_manifest_digest(reordered), expected)
+
+        altered = dict(manifest)
+        altered["approval_record"] = "different-record"
+        with self.assertRaisesRegex(ValueError, "manifest_digest"):
+            _validate(altered)
+
+    def test_strict_json_parser_rejects_duplicate_keys_and_floats(self):
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            parse_genesis_manifest_json('{"manifest_version":1,"manifest_version":1}')
+        with self.assertRaisesRegex(ValueError, "floating-point"):
+            parse_genesis_manifest_json('{"amount":1.25}')
+        with self.assertRaisesRegex(ValueError, "invalid JSON"):
+            parse_genesis_manifest_json('{"amount":NaN}')
+
+    def test_jcs_uses_utf16_key_order_and_safe_integer_range(self):
+        from src.blackroot_genesis_manifest import _jcs_encode
+        self.assertEqual(_jcs_encode({"b": 1, "a": 2}), '{"a":2,"b":1}')
+        self.assertEqual(_jcs_encode({"😀": 1, "\\ue000": 2}), '{"😀":1,"\\ue000":2}')
+        with self.assertRaisesRegex(ValueError, "safe range"):
+            _jcs_encode(1 << 53)
 
 
 if __name__ == "__main__":
