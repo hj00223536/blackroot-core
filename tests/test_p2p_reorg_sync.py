@@ -82,6 +82,25 @@ class MultiPeerReorganizationSyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.tip(), second_result)
         self.assertEqual(self.sync.pool.pending_hashes, ())
 
+    def test_strict_lifecycle_mode_rejects_unmarked_store(self):
+        with self.assertRaisesRegex(ValueError, "lifecycle adapter"):
+            MultiPeerReorganizationSync(
+                self.chain, self.store, require_node_state_lifecycle=True
+            )
+
+    def test_strict_lifecycle_mode_accepts_marked_adapter(self):
+        adapter = type("LifecycleAdapter", (), {
+            "_blackroot_node_state_lifecycle": True,
+            "tip": lambda self: None,
+            "store_block_body": lambda self, block: block.header.hash,
+            "load_block_body": lambda self, block_hash: None,
+            "reorganize_to_best": lambda self, chain: None,
+        })()
+        sync = MultiPeerReorganizationSync(
+            self.chain, adapter, require_node_state_lifecycle=True
+        )
+        self.assertIs(sync.store, adapter)
+
     async def test_equal_work_tie_break_requests_body_for_selected_fork(self):
         chain = HeaderChain(
             POW_LIMIT,
