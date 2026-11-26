@@ -46,7 +46,7 @@ class P2PServiceReorganizationLoopbackTests(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(self.temp.cleanup)
         self.store = UTXOStore(Path(self.temp.name) / "chain.sqlite")
         self.genesis = mined_block(0, ZERO_HASH, 1)
-        self.chain = HeaderChain(POW_LIMIT, self.genesis.header)
+        self.chain = HeaderChain(POW_LIMIT, self.genesis.header, adjusted_time_provider=lambda: 1_000_000)
         self.old = mined_block(1, self.genesis.header.hash, 2)
         self.chain.add(self.old.header)
         self.store.connect_validated_block(self.genesis, 0, self.chain)
