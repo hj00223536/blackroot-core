@@ -38,7 +38,7 @@ The v1 manifest format and fail-closed validation requirements are documented in
 - Persistent schema-v5 accounting records scheduled active-chain subsidy budgets and trusted bootstrap issuance; this accounting does not itself mint the founder allocation.
 - Founder output remains absent. No founder balance, usable receive address, cash liquidity, market price or exchange listing is established.
 
-Difficulty adjustment has a separate [policy proposal](difficulty-adjustment-policy-proposal.md). Its first-boundary convention remains subject to explicit owner approval and independent review.
+Difficulty adjustment has a separate [policy proposal](difficulty-adjustment-policy-proposal.md). Its first-boundary convention remains subject to explicit owner approval and independent review. Standalone proof-of-work validation, the retarget helper, and HeaderChain construction now consistently reject proof-of-work limits outside the positive uint256 range; focused regression tests cover zero, negative, oversized, boolean, and non-integer values. This hardening does not freeze the network pow limit or approve the retarget convention.
 
 PF-07 has a detailed [transaction and script policy proposal](transaction-script-policy-proposal.md). The current verifier is a restricted P2PKH prototype, not a complete Script engine, and has not received independent cryptographic review.
 
