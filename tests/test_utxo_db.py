@@ -220,7 +220,7 @@ store.apply(tx)
                 "SELECT created_mtp FROM utxos WHERE txid=? AND output_index=?",
                 (genesis_tx.txid, 0),
             ).fetchone()
-        self.assertEqual(restored, (0,))
+        self.assertEqual(restored, (None,))
 
     def test_persists_output_across_instances(self):
         reopened = UTXOStore(self.db_path)
@@ -383,6 +383,28 @@ store.apply(tx)
             self.assertEqual(
                 db.execute("SELECT COUNT(*) FROM utxos").fetchone(),
                 (1,),
+            )
+
+    def test_schema_v3_rejection_preserves_database_with_ambiguous_creation_mtp(self):
+        with _managed_sqlite(self.db_path) as db:
+            db.execute(
+                "UPDATE metadata SET value='3' WHERE key='schema_version'"
+            )
+        before = self._database_snapshot(self.db_path)
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "schema-v3 migration requires a verified reindex from genesis",
+        ):
+            UTXOStore(self.db_path)
+
+        self.assertEqual(self._database_snapshot(self.db_path), before)
+        with _managed_sqlite(self.db_path) as db:
+            self.assertEqual(
+                db.execute(
+                    "SELECT value FROM metadata WHERE key='schema_version'"
+                ).fetchone(),
+                ("3",),
             )
 
     def test_unknown_future_schema_rejection_preserves_existing_database(self):
