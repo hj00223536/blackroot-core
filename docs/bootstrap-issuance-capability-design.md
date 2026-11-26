@@ -47,9 +47,9 @@ The manifest is public consensus input, not a wallet backup: it must never conta
 
 ## Non-operational initialization-record validator prototype
 
-A pure-Python prototype now exists in `src/blackroot_genesis_initialization_record.py`. It deterministically derives a proposed record from a `ValidatedGenesisManifest` and checks an exact field set and exact typed values against that validated object. The record includes the completion marker, network and genesis identity, manifest digest, canonical coinbase bytes and txid, founder output index/value/script, and total supply cap.
+A pure-Python prototype now exists in `src/blackroot_genesis_initialization_record.py`. It deterministically derives an integrity snapshot from a `ValidatedGenesisManifest` and checks an exact field set and exact typed values against that validated object. The snapshot is explicitly labeled `genesis-integrity-snapshot-v1` and contains no initialization-complete marker.
 
-The prototype is intentionally not an initializer: it does not open a database, write UTXOs or metadata, create a capability, verify owner approval, establish trust-anchor provenance, prove atomicity or immutability, or authorize issuance. Its tests exercise field tampering, missing/unknown fields, and strict type matching. A persisted record will require a separately reviewed schema, transactional implementation, startup integrity checks, crash-injection tests, and external security review.
+The prototype is intentionally not an initializer: it does not open a database, write UTXOs or metadata, create a capability, verify owner approval, establish trust-anchor provenance, prove atomicity or immutability, or authorize issuance. Its tests exercise field tampering, missing/unknown fields, strict type matching, and ensure the snapshot cannot be mistaken for completed initialization. A persisted record will require a separately reviewed schema, transactional implementation, startup integrity checks, crash-injection tests, and external security review.
 
 ## Additional accounting-integrity gap
 
