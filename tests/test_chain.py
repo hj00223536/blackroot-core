@@ -25,7 +25,7 @@ def mine_header(prev_hash, timestamp, bits=BITS, pow_limit=POW_LIMIT):
 class HeaderChainTests(unittest.TestCase):
     def test_accepts_linked_headers(self):
         genesis = mine_header(ZERO_HASH, 1)
-        chain = HeaderChain(POW_LIMIT, genesis)
+        chain = HeaderChain(POW_LIMIT, genesis, allow_unchecked_time_for_tests=True)
         next_header = mine_header(genesis.hash, 2)
         chain.add(next_header)
         self.assertEqual(chain.height, 1)
@@ -34,14 +34,14 @@ class HeaderChainTests(unittest.TestCase):
 
     def test_rejects_wrong_parent(self):
         genesis = mine_header(ZERO_HASH, 1)
-        chain = HeaderChain(POW_LIMIT, genesis)
+        chain = HeaderChain(POW_LIMIT, genesis, allow_unchecked_time_for_tests=True)
         wrong_parent = mine_header(bytes([1]) * 32, 2)
         with self.assertRaisesRegex(ValueError, "does not extend"):
             chain.add(wrong_parent)
 
     def test_rejects_non_increasing_timestamp(self):
         genesis = mine_header(ZERO_HASH, 5)
-        chain = HeaderChain(POW_LIMIT, genesis)
+        chain = HeaderChain(POW_LIMIT, genesis, allow_unchecked_time_for_tests=True)
         same_time = mine_header(genesis.hash, 5)
         with self.assertRaisesRegex(ValueError, "timestamp"):
             chain.add(same_time)
@@ -54,7 +54,7 @@ class HeaderChainTests(unittest.TestCase):
         self.assertEqual(encode_compact_target(target), canonical_bits)
         genesis = mine_header(ZERO_HASH, 1, noncanonical_bits, POW_LIMIT)
         with self.assertRaisesRegex(ValueError, "non-canonical compact target"):
-            HeaderChain(POW_LIMIT, genesis)
+            HeaderChain(POW_LIMIT, genesis, allow_unchecked_time_for_tests=True)
 
     def test_rejects_target_above_pow_limit(self):
         strict_bits = 0x201FFFFF
@@ -67,7 +67,7 @@ class HeaderChainTests(unittest.TestCase):
 
     def test_selects_longer_work_fork_and_reports_reorganization(self):
         genesis = mine_header(ZERO_HASH, 1)
-        chain = HeaderChain(POW_LIMIT, genesis)
+        chain = HeaderChain(POW_LIMIT, genesis, allow_unchecked_time_for_tests=True)
 
         old_branch = mine_header(genesis.hash, 2)
         chain.add(old_branch)
@@ -90,9 +90,9 @@ class HeaderChainTests(unittest.TestCase):
         side_one = mine_header(genesis.hash, 3)
         side_two = mine_header(side_one.hash, 4)
 
-        node_a = HeaderChain(POW_LIMIT, genesis)
-        node_b = HeaderChain(POW_LIMIT, genesis)
-        node_c = HeaderChain(POW_LIMIT, genesis)
+        node_a = HeaderChain(POW_LIMIT, genesis, allow_unchecked_time_for_tests=True)
+        node_b = HeaderChain(POW_LIMIT, genesis, allow_unchecked_time_for_tests=True)
+        node_c = HeaderChain(POW_LIMIT, genesis, allow_unchecked_time_for_tests=True)
 
         # Simulate three peers receiving the same valid headers in different
         # delivery orders while preserving parent-before-child per branch.
@@ -118,7 +118,7 @@ class HeaderChainTests(unittest.TestCase):
 
     def test_rejects_unknown_parent_and_duplicate_header(self):
         genesis = mine_header(ZERO_HASH, 1)
-        chain = HeaderChain(POW_LIMIT, genesis)
+        chain = HeaderChain(POW_LIMIT, genesis, allow_unchecked_time_for_tests=True)
         with self.assertRaisesRegex(ValueError, "unknown parent"):
             chain.add_to_branch(mine_header(bytes.fromhex("55" * 32), 2))
         with self.assertRaisesRegex(ValueError, "duplicate"):
@@ -127,7 +127,7 @@ class HeaderChainTests(unittest.TestCase):
 
     def test_median_time_past_allows_time_below_parent_timestamp(self):
         genesis = mine_header(ZERO_HASH, 1)
-        chain = HeaderChain(POW_LIMIT, genesis)
+        chain = HeaderChain(POW_LIMIT, genesis, allow_unchecked_time_for_tests=True)
         first = mine_header(genesis.hash, 100)
         chain.add(first)
         second = mine_header(first.hash, 200)
@@ -139,7 +139,7 @@ class HeaderChainTests(unittest.TestCase):
 
     def test_rejects_header_not_above_median_time_past(self):
         genesis = mine_header(ZERO_HASH, 1)
-        chain = HeaderChain(POW_LIMIT, genesis)
+        chain = HeaderChain(POW_LIMIT, genesis, allow_unchecked_time_for_tests=True)
         first = mine_header(genesis.hash, 100)
         chain.add(first)
         second = mine_header(first.hash, 200)
@@ -150,7 +150,7 @@ class HeaderChainTests(unittest.TestCase):
 
     def test_median_time_past_uses_exactly_eleven_recent_headers(self):
         genesis = mine_header(ZERO_HASH, 1)
-        chain = HeaderChain(POW_LIMIT, genesis)
+        chain = HeaderChain(POW_LIMIT, genesis, allow_unchecked_time_for_tests=True)
         parent = genesis
         for height in range(1, 12):
             parent = mine_header(parent.hash, 100 + height)
@@ -169,7 +169,7 @@ class HeaderChainTests(unittest.TestCase):
         from src.blackroot_consensus import DIFFICULTY_INTERVAL
 
         genesis = mine_header(ZERO_HASH, 1)
-        chain = HeaderChain(POW_LIMIT, genesis)
+        chain = HeaderChain(POW_LIMIT, genesis, allow_unchecked_time_for_tests=True)
         parent = genesis
         for height in range(1, DIFFICULTY_INTERVAL):
             parent = mine_header(parent.hash, 1 + height * 600)
@@ -195,7 +195,7 @@ class HeaderChainTests(unittest.TestCase):
 
     def test_non_boundary_height_requires_parent_bits(self):
         genesis = mine_header(ZERO_HASH, 1)
-        chain = HeaderChain(POW_LIMIT, genesis)
+        chain = HeaderChain(POW_LIMIT, genesis, allow_unchecked_time_for_tests=True)
         wrong_bits = 0x2070ffff
         wrong = mine_header(genesis.hash, 2, wrong_bits)
         with self.assertRaisesRegex(ValueError, "difficulty bits"):
@@ -204,7 +204,7 @@ class HeaderChainTests(unittest.TestCase):
 
     def test_network_adjusted_future_time_limit_is_deterministic(self):
         genesis = mine_header(ZERO_HASH, 1)
-        chain = HeaderChain(POW_LIMIT, genesis)
+        chain = HeaderChain(POW_LIMIT, genesis, allow_unchecked_time_for_tests=True)
         too_far = mine_header(genesis.hash, 7_301)
         with self.assertRaisesRegex(ValueError, "future-time limit"):
             chain.add_to_branch(too_far, adjusted_time=1, max_future_seconds=7_200)
@@ -213,9 +213,33 @@ class HeaderChainTests(unittest.TestCase):
         chain.add_to_branch(accepted, adjusted_time=1, max_future_seconds=7_200)
         self.assertEqual(chain.node(accepted.hash).height, 1)
 
-    def test_future_time_limit_rejects_invalid_parameters(self):
+
+    def test_network_mode_requires_adjusted_time_for_every_non_genesis_header(self):
         genesis = mine_header(ZERO_HASH, 1)
         chain = HeaderChain(POW_LIMIT, genesis)
+        candidate = mine_header(genesis.hash, 2)
+
+        with self.assertRaisesRegex(ValueError, "adjusted_time is required"):
+            chain.add_to_branch(candidate)
+        self.assertEqual(chain.height, 0)
+
+        # The exact upper boundary is accepted; one second beyond is rejected.
+        boundary = mine_header(genesis.hash, 7_201)
+        chain.add_to_branch(boundary, adjusted_time=1, max_future_seconds=7_200)
+        self.assertEqual(chain.height, 1)
+
+    def test_network_mode_batch_requires_time_and_rolls_back(self):
+        genesis = mine_header(ZERO_HASH, 1)
+        chain = HeaderChain(POW_LIMIT, genesis)
+        first = mine_header(genesis.hash, 2)
+        with self.assertRaisesRegex(ValueError, "adjusted_time is required"):
+            chain.add_batch([first])
+        self.assertEqual(chain.height, 0)
+        self.assertIsNone(chain.node(first.hash))
+
+    def test_future_time_limit_rejects_invalid_parameters(self):
+        genesis = mine_header(ZERO_HASH, 1)
+        chain = HeaderChain(POW_LIMIT, genesis, allow_unchecked_time_for_tests=True)
         candidate = mine_header(genesis.hash, 2)
         with self.assertRaisesRegex(ValueError, "adjusted_time"):
             chain.add_to_branch(candidate, adjusted_time=-1)
@@ -225,7 +249,7 @@ class HeaderChainTests(unittest.TestCase):
 
     def test_add_batch_rolls_back_entire_dag_when_later_header_is_invalid(self):
         genesis = mine_header(ZERO_HASH, 1)
-        chain = HeaderChain(POW_LIMIT, genesis)
+        chain = HeaderChain(POW_LIMIT, genesis, allow_unchecked_time_for_tests=True)
         before_nodes = chain.nodes
         before_tip = chain.best_hash
         before_work = chain.chainwork
@@ -242,7 +266,7 @@ class HeaderChainTests(unittest.TestCase):
 
     def test_equal_work_fork_selection_is_deterministic(self):
         genesis = mine_header(ZERO_HASH, 1)
-        chain = HeaderChain(POW_LIMIT, genesis)
+        chain = HeaderChain(POW_LIMIT, genesis, allow_unchecked_time_for_tests=True)
         candidates = [
             mine_header(genesis.hash, timestamp)
             for timestamp in (2, 3)
@@ -269,7 +293,7 @@ class HeaderChainTests(unittest.TestCase):
         )
 
         genesis = mine_header(ZERO_HASH, 1)
-        chain = HeaderChain(POW_LIMIT, genesis)
+        chain = HeaderChain(POW_LIMIT, genesis, allow_unchecked_time_for_tests=True)
         main_parent = genesis
         side_parent = genesis
 
