@@ -196,6 +196,10 @@ class PersistentHeaderStore:
         max_future_seconds: int = 7_200,
     ) -> str:
         """Validate on a replayed candidate, persist atomically, then publish it."""
+        if self.adjusted_time_provider is not None and adjusted_time is not None:
+            raise ValueError(
+                "persistent header store must use its configured adjusted-time provider"
+            )
         live_chain = self.chain
         candidate = HeaderChain(
             self.pow_limit, live_chain.best_chain()[0],
