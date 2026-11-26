@@ -236,6 +236,33 @@ store.apply(tx)
         self.assertEqual(reopened.get(self.funding), TxOutput(900, b"funding-script"))
         self.assertEqual(reopened.count(), 1)
 
+
+    def test_reopening_preserves_bootstrap_accounting_without_reissuing_outputs(self):
+        with _managed_sqlite(self.db_path) as db:
+            before = db.execute(
+                "SELECT value FROM metadata WHERE key='bootstrap_issued_sats'"
+            ).fetchone()[0]
+
+        reopened = UTXOStore(self.db_path)
+        reopened.verify_integrity()
+        self.assertEqual(reopened.get(self.funding), TxOutput(900, b"funding-script"))
+        self.assertEqual(reopened.count(), 1)
+
+        with _managed_sqlite(self.db_path) as db:
+            after_reopen = db.execute(
+                "SELECT value FROM metadata WHERE key='bootstrap_issued_sats'"
+            ).fetchone()[0]
+        self.assertEqual(after_reopen, before)
+
+        with self.assertRaises(Exception):
+            reopened.add_genesis_output(self.funding, TxOutput(900, b"duplicate"))
+        with _managed_sqlite(self.db_path) as db:
+            after_duplicate = db.execute(
+                "SELECT value FROM metadata WHERE key='bootstrap_issued_sats'"
+            ).fetchone()[0]
+        self.assertEqual(after_duplicate, before)
+        reopened.verify_integrity()
+
     def test_coordinator_owned_connection_initializes_and_commits_bootstrap_state(self):
         shared_path = Path(self.tempdir.name) / "shared.sqlite"
         funding = OutPoint(bytes.fromhex("51" * 32), 0)
