@@ -464,6 +464,48 @@ class PersistentNodeStateTests(unittest.TestCase):
         self.assertEqual(reopened.utxos.load_block_body(first.header.hash), first)
         self.assertEqual(reopened.utxos.load_block_body(second.header.hash), second)
 
+    def test_split_store_competing_branch_reorg_survives_restart(self):
+        state = self.state()
+        state.connect_best_block(self.genesis_block, 0)
+
+        def branch_block(parent_hash, height, timestamp, branch_tag):
+            tx = Transaction(
+                1,
+                (TxInput(
+                    OutPoint(ZERO_TXID, COINBASE_INDEX),
+                    script_sig=branch_tag + bytes([height + 1]),
+                ),),
+                (TxOutput(block_subsidy(height), b"miner-" + branch_tag),),
+            )
+            header = mine_header(parent_hash, merkle_root([tx.txid]), timestamp)
+            return Block(header, (tx,))
+
+        # Activate branch A first, then persist a longer competing branch B.
+        a1 = branch_block(self.genesis_block.header.hash, 1, 2, b"A")
+        a2 = branch_block(a1.header.hash, 2, 3, b"A")
+        for block, timestamp in ((a1, 2), (a2, 3)):
+            state.add_header(block.header, adjusted_time=timestamp)
+            state.archive_block_body(block)
+        self.assertEqual(state.reorganize_best(), (2, a2.header.hash))
+
+        b1 = branch_block(self.genesis_block.header.hash, 1, 4, b"B")
+        b2 = branch_block(b1.header.hash, 2, 5, b"B")
+        b3 = branch_block(b2.header.hash, 3, 6, b"B")
+        for block, timestamp in ((b1, 4), (b2, 5), (b3, 6)):
+            state.add_header(block.header, adjusted_time=timestamp)
+            state.archive_block_body(block)
+
+        # Simulate shutdown before switching the UTXO state to branch B.
+        reopened = self.state()
+        self.assertEqual(reopened.headers.chain.best_hash, b3.header.hash)
+        self.assertEqual(reopened.utxos.tip(), (2, a2.header.hash))
+        self.assertEqual(reopened.reorganize_best(), (3, b3.header.hash))
+        self.assertEqual(reopened.utxos.tip(), (3, b3.header.hash))
+        self.assertEqual(reopened.utxos.count(), 4)
+        reopened.utxos.verify_integrity()
+        reopened._verify_persistent_tip()
+        self.assertFalse(reopened.recovery_journal.pending())
+
     def test_reorganization_revalidates_archived_candidate_body(self):
         state = self.state()
         state.connect_best_block(self.genesis_block, 0)
