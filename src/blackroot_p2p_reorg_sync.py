@@ -44,7 +44,7 @@ class MultiPeerReorganizationSync:
         best_node = self.chain.node(self.chain.best_hash)
         if active_node is None or active_node.height != height:
             raise ValueError("active UTXO tip is inconsistent with header DAG")
-        if best_node is None or best_node.chainwork <= active_node.chainwork:
+        if best_node is None or best_node.chainwork < active_node.chainwork or best_node.header.hash == active_hash:
             return ()
         _disconnect, connect = self.chain.reorganization(active_hash)
         return tuple(
