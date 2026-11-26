@@ -36,7 +36,8 @@ This describes a candidate encoding only. It is not an instruction to generate a
 - Decide whether P2SH, SegWit, or only legacy P2PKH is supported in the first release.
 - Confirm network ports and protocol version against the eventual node implementation.
 - Derive and publish the chain ID only after the final genesis block is independently reproduced.
-- Add independent encode/decode vectors, malformed-checksum tests, and cross-implementation tests.
+- [x] Add an independent Node.js 22 Base58Check/P2PKH vector for the proposed 0x26 encoding, including checksum, wrong-version, and payload-length rejection. The vector is exercised in CI; it does not approve or freeze the provisional prefix.
+- [ ] Complete external prefix-collision review and broader cross-client tests before freezing the address version.
 - Update the normative protocol specification and all node/wallet implementations atomically.
 - Obtain independent protocol and security review.
 
