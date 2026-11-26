@@ -120,6 +120,34 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
         finally:
             await restarted.close()
 
+    async def test_retry_loop_runs_and_stops_cleanly(self):
+        calls = asyncio.Event()
+
+        async def retry_expired(*, now=None):
+            calls.set()
+            return {}
+
+        self.runtime.sync.retry_expired = retry_expired
+        await self.runtime.start_retry_loop(interval=0.01)
+        await asyncio.wait_for(calls.wait(), timeout=1)
+        task = self.runtime._retry_task
+        await self.runtime.stop_retry_loop()
+        self.assertIsNone(self.runtime._retry_task)
+        self.assertTrue(task.cancelled())
+
+    async def test_retry_loop_rejects_invalid_intervals(self):
+        for invalid in (float("nan"), float("inf"), float("-inf"), True, 0, -1, "1"):
+            with self.subTest(interval=invalid):
+                with self.assertRaisesRegex(ValueError, "finite positive"):
+                    await self.runtime.start_retry_loop(interval=invalid)
+
+    async def test_close_stops_retry_loop(self):
+        await self.runtime.start_retry_loop(interval=10)
+        task = self.runtime._retry_task
+        await self.runtime.close()
+        self.assertTrue(task.cancelled())
+        self.assertIsNone(self.runtime._retry_task)
+
     async def test_close_is_idempotent_and_blocks_new_network_actions(self):
         await self.runtime.close()
         await self.runtime.close()
