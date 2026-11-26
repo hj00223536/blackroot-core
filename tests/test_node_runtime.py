@@ -96,6 +96,24 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
             )
         self.assertIsNone(self.state.utxos.tip())
 
+    async def test_runtime_sync_store_routes_fork_activation_through_node_state(self):
+        adapter = self.runtime.sync.store
+        calls = []
+        original = self.state.reorganize_best
+
+        def tracked_reorganize():
+            calls.append("reorganize_best")
+            return "coordinated-reorg"
+
+        self.state.reorganize_best = tracked_reorganize
+        try:
+            result = adapter.reorganize_to_best(self.state.headers.chain)
+        finally:
+            self.state.reorganize_best = original
+
+        self.assertEqual(result, "coordinated-reorg")
+        self.assertEqual(calls, ["reorganize_best"])
+
     async def test_runtime_binds_sync_callbacks_and_starts_listener(self):
         self.assertIs(
             self.runtime.manager.on_peer_message_factory.__self__,
