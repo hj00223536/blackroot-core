@@ -21,20 +21,20 @@ The package must not contain private keys, seed phrases, wallet passwords, decry
 
 ## Verification order
 
-A future activation verifier must fail closed and perform these checks in order:
+A future activation verifier must fail closed and follow the detailed [Genesis package semantic verification plan](genesis-package-semantic-verification-plan.md). At minimum, the sequence is:
 
-1. Reject missing, duplicate, unexpected, or malformed package files and enforce size limits.
-2. Strictly parse the manifest and recompute its version-specific canonical digest.
-3. Validate every manifest field against independently frozen network, genesis, monetary, and mining-schedule constants.
-4. Reconstruct the coinbase transaction and verify its canonical bytes, txid, output index, amount, and locking script.
-5. Verify the genesis header, Merkle commitment, proof of work, and all remaining consensus rules with the final independently reproduced implementation.
-6. Load trust anchors from the separately approved trust configuration; reject a key supplied only by the package.
-7. Verify the detached approval signature, exact digest, network identifier, scope, key status, and revocation state.
-8. Verify the optional checksum index, if present, while treating it only as corruption detection.
-9. Require a separate human release approval over the same exact manifest digest and target network.
+1. Validate exact package membership, simple filenames, non-empty bytes, and per-file/aggregate size limits.
+2. Authenticate the external digest-pin source independently, then compare every artifact against the exact pinned inventory. A checksum file inside the package is not an external trust anchor.
+3. Strictly parse every adopted artifact schema, rejecting duplicate JSON keys, unknown fields, invalid types, and ambiguous encodings.
+4. Recompute the manifest's version-specific canonical digest; validate network, genesis identity, coinbase serialization/txid, founder output index/value/script, supply cap, and mining schedule against independently frozen constants.
+5. Validate the separately pinned trust configuration, key identifiers, scopes, key status, sequence, predecessor, and durable anti-rollback state.
+6. Verify the detached approval signature over the exact network, manifest digest, and narrow scope using only an independently trusted active key.
+7. Independently validate the genesis header, Merkle commitment, proof of work, timestamp, difficulty, transaction rules, and every adopted consensus rule. Any required but unsupported check blocks release.
+8. Require a separately authenticated human release decision naming the exact manifest digest, network, verifier revision, and approvers.
+9. Emit a deterministic evidence report containing input digests, verifier revision, runtime versions, individual check results, and explicit authorization status.
 10. Only then may a separately reviewed one-time initializer be considered. The initializer must independently repeat critical checks and atomically commit the exact genesis outputs and immutable initialization evidence.
 
-A successful package verification is not itself permission to launch. Testnet and mainnet require separate release decisions and their own gates.
+The optional `checksums.txt` file is transport-integrity metadata only; it never replaces authenticated external pins or signatures. A successful package verification is not itself permission to launch. Testnet and mainnet require separate release decisions and their own gates.
 
 ## Reproducibility and substitution controls
 
