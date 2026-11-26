@@ -9,6 +9,8 @@ from __future__ import annotations
 import hashlib
 
 ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+# Bound untrusted text before doing repeated big-integer arithmetic.
+MAX_BASE58_TEXT_LENGTH = 512
 _INDEX = {char: index for index, char in enumerate(ALPHABET)}
 
 
@@ -31,6 +33,8 @@ def b58encode(raw: bytes) -> str:
 def b58decode(text: str) -> bytes:
     if not isinstance(text, str):
         raise TypeError("Base58 value must be text")
+    if len(text) > MAX_BASE58_TEXT_LENGTH:
+        raise ValueError("Base58 value exceeds maximum length")
     number = 0
     for char in text:
         try:
