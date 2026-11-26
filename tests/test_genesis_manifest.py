@@ -89,12 +89,14 @@ class GenesisManifestStructureTests(unittest.TestCase):
 
     def test_noncanonical_hex_and_boolean_integer_are_rejected(self):
         malformed_hex = _manifest()
-        malformed_hex["network_id"] = NETWORK_ID.upper()
+        malformed_hex["network_id"] = "AA" * 32
+        malformed_hex["manifest_digest"] = calculate_genesis_manifest_digest(malformed_hex)
         with self.assertRaisesRegex(ValueError, "lowercase"):
             _validate(malformed_hex)
 
         boolean_amount = _manifest()
         boolean_amount["founder_amount_sats"] = True
+        boolean_amount["manifest_digest"] = calculate_genesis_manifest_digest(boolean_amount)
         with self.assertRaisesRegex(ValueError, "safe integer"):
             _validate(boolean_amount)
 
