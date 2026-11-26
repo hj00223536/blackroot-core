@@ -231,7 +231,7 @@ store.apply(tx)
 
         coinbase = Transaction(
             1,
-            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\x01\x01"),),
             (TxOutput(block_subsidy(0), b"miner"),),
         )
         header = BlockHeader(
