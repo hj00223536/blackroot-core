@@ -228,6 +228,36 @@ class HeaderChainTests(unittest.TestCase):
         chain.add_to_branch(boundary, adjusted_time=1, max_future_seconds=7_200)
         self.assertEqual(chain.height, 1)
 
+
+    def test_injected_adjusted_time_provider_is_used_by_default_admission(self):
+        genesis = mine_header(ZERO_HASH, 1)
+        clock_values = iter([1, 7_201])
+        calls = []
+
+        def clock():
+            value = next(clock_values)
+            calls.append(value)
+            return value
+
+        chain = HeaderChain(POW_LIMIT, genesis, adjusted_time_provider=clock)
+        too_far = mine_header(genesis.hash, 7_301)
+        with self.assertRaisesRegex(ValueError, "future-time limit"):
+            chain.add(too_far)
+        self.assertEqual(chain.height, 0)
+
+        accepted = mine_header(genesis.hash, 7_201)
+        chain.add(accepted)
+        self.assertEqual(chain.height, 1)
+        self.assertEqual(calls, [1, 7_201])
+
+    def test_injected_clock_provider_invalid_value_fails_closed(self):
+        genesis = mine_header(ZERO_HASH, 1)
+        chain = HeaderChain(POW_LIMIT, genesis, adjusted_time_provider=lambda: -1)
+        candidate = mine_header(genesis.hash, 2)
+        with self.assertRaisesRegex(ValueError, "adjusted_time"):
+            chain.add(candidate)
+        self.assertEqual(chain.height, 0)
+
     def test_network_mode_batch_requires_time_and_rolls_back(self):
         genesis = mine_header(ZERO_HASH, 1)
         chain = HeaderChain(POW_LIMIT, genesis)
