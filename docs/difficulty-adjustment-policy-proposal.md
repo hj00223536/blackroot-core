@@ -48,12 +48,14 @@ The Node.js vectors cover quarter/nominal/double/four-times clamping and the 2,0
 ## Required additional review before acceptance
 
 - [ ] Owner explicitly approves or rejects the first-boundary convention.
-- [ ] Add full header-chain vectors at heights 2,015, 2,016 and 2,017.
-- [ ] Add competing-branch vectors proving retarget calculations use branch-local ancestors.
+- [x] Add header-chain boundary coverage at heights 2,015, 2,016 and 2,017.
+- [x] Add competing-branch vectors proving retarget calculations use branch-local ancestors.
 - [x] Add integer-floor rounding and zero-target fail-closed regression vectors in Python and independent Node.js.
 - [x] Existing vectors cover PoW-limit saturation; minimum-target behavior remains an explicit open protocol decision.
 - [ ] Reproduce final vectors in a separately maintained implementation.
 - [ ] Obtain independent consensus review and document any changes before testnet genesis is generated.
+
+The checked boundary tests verify that candidate height 2,015 inherits its parent's bits, candidate height 2,016 uses the first-boundary calculation, and candidate height 2,017 inherits the newly calculated bits. The competing-branch test builds distinct timestamp histories and checks that each branch receives its own retarget result. These are in-repository regression tests; they do not constitute owner approval or an external implementation.
 
 ## Explicit separation from timestamp validity
 
