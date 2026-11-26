@@ -50,7 +50,8 @@ The Node.js vectors cover quarter/nominal/double/four-times clamping and the 2,0
 - [ ] Owner explicitly approves or rejects the first-boundary convention.
 - [ ] Add full header-chain vectors at heights 2,015, 2,016 and 2,017.
 - [ ] Add competing-branch vectors proving retarget calculations use branch-local ancestors.
-- [ ] Add compact-target rounding, PoW-limit saturation, and minimum-target edge vectors.
+- [x] Add integer-floor rounding and zero-target fail-closed regression vectors in Python and independent Node.js.
+- [x] Existing vectors cover PoW-limit saturation; minimum-target behavior remains an explicit open protocol decision.
 - [ ] Reproduce final vectors in a separately maintained implementation.
 - [ ] Obtain independent consensus review and document any changes before testnet genesis is generated.
 
