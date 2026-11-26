@@ -8,11 +8,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
+import struct
 import json
 from typing import Mapping
 
 from .blackroot_blocks import is_coinbase
-from .blackroot_transactions import Transaction
+from .blackroot_chain import BlockHeader
+from .blackroot_transactions import Transaction, merkle_root
 
 
 
@@ -89,6 +91,34 @@ def canonicalize_genesis_manifest(manifest: Mapping[str, object]) -> bytes:
 def calculate_genesis_manifest_digest(manifest: Mapping[str, object]) -> str:
     """Calculate the domain-separated SHA-256 digest of a manifest."""
     return hashlib.sha256(_DOMAIN_SEPARATOR + canonicalize_genesis_manifest(manifest)).hexdigest()
+
+
+def validate_genesis_header_commitment(
+    validated: "ValidatedGenesisManifest",
+    serialized_header_hex: str,
+) -> BlockHeader:
+    """Bind the validated coinbase txid to a canonical 80-byte genesis header.
+
+    Checks the one-transaction Merkle root, zero previous-block hash, and
+    header hash against the manifest. This does NOT validate proof of work,
+    difficulty rules, timestamps, or external approval.
+    """
+    if not isinstance(validated, ValidatedGenesisManifest):
+        raise TypeError("validated must be a ValidatedGenesisManifest")
+    raw_hex = _require_lower_hex(serialized_header_hex, "genesis_header", exact_length=160)
+    raw = bytes.fromhex(raw_hex)
+    version, previous_hash, root, timestamp, bits, nonce = struct.unpack("<I32s32sIII", raw)
+    header = BlockHeader(version, previous_hash, root, timestamp, bits, nonce)
+    if header.serialize() != raw:
+        raise ValueError("genesis header is not canonically serialized")
+    if header.prev_hash != bytes(32):
+        raise ValueError("genesis header previous hash must be zero")
+    expected_root = merkle_root([validated.coinbase.txid])
+    if header.merkle_root != expected_root:
+        raise ValueError("genesis header merkle root does not commit to manifest coinbase")
+    if header.display_hash != validated.genesis_block_hash:
+        raise ValueError("genesis header hash does not match manifest genesis_block_hash")
+    return header
 
 
 _REQUIRED_FIELDS = frozenset({
