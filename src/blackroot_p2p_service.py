@@ -54,8 +54,6 @@ class P2PSyncService:
         self._header_sync: dict[object, PeerHeaderSync] = {}
         self._previous_factory = getattr(manager, "on_peer_message_factory", None)
         self._previous_disconnect = getattr(manager, "on_peer_disconnected", None)
-        manager.on_peer_message_factory = self.message_handler_factory
-        manager.on_peer_disconnected = self.peer_disconnected
         self.protocol_version = protocol_version
         if persist_headers is not None and not callable(persist_headers):
             raise TypeError("persist_headers must be callable")
@@ -72,6 +70,8 @@ class P2PSyncService:
             adjusted_time = chain_adjusted_time
         self.adjusted_time = adjusted_time
         self.persist_headers = persist_headers
+        manager.on_peer_message_factory = self.message_handler_factory
+        manager.on_peer_disconnected = self.peer_disconnected
 
     def _peers(self) -> dict[object, object]:
         return {peer: peer for peer in self.manager.peers if getattr(peer, "connected", False)}
