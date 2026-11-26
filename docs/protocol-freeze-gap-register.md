@@ -75,7 +75,8 @@ PF-07 has a detailed [transaction and script policy proposal](transaction-script
 - [Browser wallet security plan](browser-wallet-security-plan.md)
 
 
-- [Genesis approval record proposal](genesis-approval-record-spec.md)\n- [Time-validity policy proposal](time-validity-policy-proposal.md)
+- [Genesis approval record proposal](genesis-approval-record-spec.md)
+- [Time-validity policy proposal](time-validity-policy-proposal.md)
 - [Wallet readiness audit](wallet-readiness-audit.md)
 - [Browser wallet security test matrix](browser-wallet-test-matrix.md)
 - [Browser wallet cryptography dependency decision](browser-wallet-cryptography-decision.md)
