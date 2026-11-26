@@ -6,6 +6,8 @@ peer, and shares one fork-body assignment pool across the node.
 """
 from __future__ import annotations
 
+import math
+
 from .blackroot_chain import HeaderChain
 from .blackroot_p2p_header_sync import PeerHeaderSync
 from .blackroot_p2p_multi_peer_sync import MultiPeerBlockScheduler
@@ -29,7 +31,7 @@ class P2PSyncService:
     ) -> None:
         if not isinstance(chain, HeaderChain):
             raise TypeError("chain must be a HeaderChain")
-        if not isinstance(request_timeout, (int, float)) or isinstance(request_timeout, bool) or request_timeout <= 0:
+        if (not isinstance(request_timeout, (int, float)) or isinstance(request_timeout, bool)\n                or not math.isfinite(request_timeout) or request_timeout <= 0):
             raise ValueError("request_timeout must be positive")
         self.manager = manager
         self.chain = chain
