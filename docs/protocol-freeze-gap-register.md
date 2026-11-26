@@ -76,3 +76,4 @@ PF-07 has a detailed [transaction and script policy proposal](transaction-script
 - [Wallet readiness audit](wallet-readiness-audit.md)
 - [Browser wallet security test matrix](browser-wallet-test-matrix.md)
 - [Browser wallet cryptography dependency decision](browser-wallet-cryptography-decision.md)
+- [Trusted bootstrap issuance capability design](bootstrap-issuance-capability-design.md)
