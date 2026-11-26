@@ -355,6 +355,48 @@ store.apply(tx)
         self.assertEqual(int(after), TOTAL_SUPPLY_CAP)
 
 
+    def test_bootstrap_issuance_is_rejected_after_chain_activation_atomically(self):
+        from src.blackroot_blocks import Block, COINBASE_INDEX
+        from src.blackroot_chain import BlockHeader
+        from src.blackroot_consensus import block_subsidy
+        from src.blackroot_transactions import merkle_root
+
+        coinbase = Transaction(
+            1,
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
+            (TxOutput(block_subsidy(0), b"genesis-miner"),),
+        )
+        header = BlockHeader(
+            1, bytes(32), merkle_root((coinbase.txid,)), 1, 0x207fffff, 0
+        )
+        genesis = Block(header, (coinbase,))
+        self.store.connect_block(genesis, 0)
+
+        before_count = self.store.count()
+        with _managed_sqlite(self.db_path) as db:
+            before_issued = db.execute(
+                "SELECT value FROM metadata WHERE key='bootstrap_issued_sats'"
+            ).fetchone()[0]
+
+        with self.assertRaisesRegex(
+            RuntimeError, "bootstrap outputs cannot be added after chain activation"
+        ):
+            self.store.add_genesis_output(
+                OutPoint(bytes.fromhex("63" * 32), 0),
+                TxOutput(20_000_000, b"late-founder-credit"),
+            )
+
+        self.assertEqual(self.store.count(), before_count)
+        self.assertIsNone(
+            self.store.get(OutPoint(bytes.fromhex("63" * 32), 0))
+        )
+        with _managed_sqlite(self.db_path) as db:
+            after_issued = db.execute(
+                "SELECT value FROM metadata WHERE key='bootstrap_issued_sats'"
+            ).fetchone()[0]
+        self.assertEqual(after_issued, before_issued)
+
+
     def test_refuses_unsafe_schema_v1_database_with_live_utxos(self):
         legacy_path = Path(self.tempdir.name) / "legacy-v1.sqlite"
         with _managed_sqlite(legacy_path) as db:
