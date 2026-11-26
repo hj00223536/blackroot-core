@@ -53,11 +53,32 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
         )
         self.runtime = BlackrootNodeRuntime(
             self.state, manager, protocol_version=1, request_timeout=1,
-            adjusted_time=lambda: 1_800_000_100
+            adjusted_time=self.state.headers.adjusted_time_provider
         )
 
     async def asyncTearDown(self):
         await self.runtime.close()
+
+    async def test_runtime_rejects_clock_provider_different_from_persistent_state(self):
+        with self.assertRaisesRegex(ValueError, "must match the persistent node state's provider"):
+            BlackrootNodeRuntime(
+                self.state, self.runtime.manager, protocol_version=1,
+                adjusted_time=lambda: 1_800_000_100,
+            )
+
+    async def test_runtime_requires_persistent_state_clock_provider(self):
+        root = Path(self.temp.name) / "missing-clock"
+        state = PersistentNodeState(
+            root / "headers.sqlite", root / "utxos.sqlite",
+            POW_LIMIT, self.state.headers.chain.get(0),
+        )
+        try:
+            with self.assertRaisesRegex(ValueError, "requires the node state's adjusted-time provider"):
+                BlackrootNodeRuntime(
+                    state, self.runtime.manager, protocol_version=1,
+                )
+        finally:
+            state.close()
 
     async def test_runtime_sync_store_routes_activation_through_node_state(self):
         adapter = self.runtime.sync.store
@@ -277,7 +298,7 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
         )
         restarted = BlackrootNodeRuntime(
             reopened_state, manager, protocol_version=1, request_timeout=1,
-            adjusted_time=lambda: 1_800_000_100
+            adjusted_time=self.state.headers.adjusted_time_provider
         )
         try:
             address = await restarted.listen()
@@ -366,7 +387,7 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
         )
         remote = BlackrootNodeRuntime(
             remote_state, remote_manager, protocol_version=1, request_timeout=1,
-            adjusted_time=lambda: 1_800_000_100
+            adjusted_time=self.state.headers.adjusted_time_provider
         )
         try:
             host, port = await remote.listen("127.0.0.1", 0)
