@@ -42,3 +42,5 @@ jobs:
         run: node scripts/verify_transaction_vectors.mjs
       - name: Verify P2PKH signature and SIGHASH_ALL vectors
         run: node scripts/verify_p2pkh_vectors.mjs
+      - name: Verify independent Base58Check address vectors
+        run: node scripts/verify_address_vectors.mjs
