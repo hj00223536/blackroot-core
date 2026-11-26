@@ -86,7 +86,7 @@ class PeerConnectionTests(unittest.IsolatedAsyncioTestCase):
         for command, length in (("verack", 1), ("ping", 7), ("pong", 9)):
             with self.subTest(command=command, length=length):
                 reader = asyncio.StreamReader()
-                command_field = command.encode("ascii").ljust(12, b"\\x00")
+                command_field = command.encode("ascii").ljust(12, b"\x00")
                 reader.feed_data(
                     MAGIC + command_field + struct.pack("<I", length) + bytes(4)
                 )
@@ -105,7 +105,7 @@ class PeerConnectionTests(unittest.IsolatedAsyncioTestCase):
         for command, length in cases:
             with self.subTest(command=command, length=length):
                 reader = asyncio.StreamReader()
-                command_field = command.encode("ascii").ljust(12, b"\\x00")
+                command_field = command.encode("ascii").ljust(12, b"\x00")
                 reader.feed_data(
                     MAGIC + command_field + struct.pack("<I", length) + bytes(4)
                 )
