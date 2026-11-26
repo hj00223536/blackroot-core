@@ -4,7 +4,7 @@ Status: design only; not a usable wallet and not approved for mainnet funds.
 
 ## User requirement
 
-The founder wants a browser-based wallet that can be opened on a phone without a terminal. The owner-approved monetary design is 20,000,000 BRT for the founder and 20,000,000 BRT for mining, with a proposed 40,000,000 BRT maximum supply. The reference subsidy helper returns zero at genesis height 0 and 10 BRT mining subsidy at heights 1–2,000,000. The founder allocation is a separate planned genesis output and has not been issued. A persistent schema-v5 issuance ledger records the consensus subsidy budget on the active block chain and counts trusted bootstrap outputs against the proposed 40,000,000 BRT ceiling. The latest changes are undergoing GitHub Actions validation; passing reference tests alone does not establish launch readiness.
+The founder wants a browser-based wallet that can be opened on a phone without a terminal. The owner-approved monetary design is 20,000,000 BRT for the founder and 20,000,000 BRT for mining, with a proposed 40,000,000 BRT maximum supply. The reference subsidy helper returns zero at genesis height 0 and 10 BRT mining subsidy at heights 1–2,000,000. The founder allocation is a separate planned genesis output and has not been issued. A persistent schema-v5 issuance ledger records the consensus subsidy budget on the active block chain and counts trusted bootstrap outputs against the proposed 40,000,000 BRT ceiling. The the schema-v5 issuance-ledger changes passed 428 tests on Python 3.12 and 3.13 in GitHub Actions run 45825892104; independent Base58Check address vectors also passed Node.js 22 and Python CI in runs 45826222268 and 45826234922. Passing reference tests alone does not establish launch readiness.
 
 ## Current blockers verified in the repository
 
@@ -33,7 +33,7 @@ The founder wants a browser-based wallet that can be opened on a phone without a
 - [x] Record the owner-approved 40,000,000 BRT monetary ceiling and exact 20,000,000 BRT mining emission schedule in the reference implementation.
 - [x] Add persistent active-chain subsidy-budget accounting, rollback/reorganization handling, bootstrap-output accounting, and schema-v5 read-only preflight checks; latest CI results are still pending.
 - [ ] Implement and test founder genesis output construction and spendability. The current genesis candidate remains zero-value OP_RETURN.
-- [ ] Implement and test address encode/decode with independent test vectors.
+- [x] Implement and test generic address encode/decode with independent Python and Node.js Base58Check vectors. The 0x26 network prefix remains provisional and is not approved for real funds.
 - [ ] Add a browser app with pinned, bundled cryptographic dependencies and no secret-bearing network requests.
 - [ ] Add local key creation, receive-address display, encrypted backup, and restore tests.
 - [ ] Implement transaction construction and signing against the final consensus transaction format.
