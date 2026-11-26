@@ -148,6 +148,22 @@ class HeaderChainTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "median-time-past"):
             chain.add(invalid)
 
+    def test_median_time_past_uses_exactly_eleven_recent_headers(self):
+        genesis = mine_header(ZERO_HASH, 1)
+        chain = HeaderChain(POW_LIMIT, genesis)
+        parent = genesis
+        for height in range(1, 12):
+            parent = mine_header(parent.hash, 100 + height)
+            chain.add(parent)
+
+        self.assertEqual(chain.median_time_past(parent.hash), 106)
+        # The candidate is below its direct parent's timestamp, but above
+        # the median of the eleven most recent ancestor headers.
+        candidate = mine_header(parent.hash, 107)
+        chain.add(candidate)
+        self.assertEqual(chain.tip.hash, candidate.hash)
+        self.assertEqual(chain.median_time_past(candidate.hash), 107)
+
 
     def test_enforces_difficulty_retarget_at_interval_boundary(self):
         from src.blackroot_consensus import DIFFICULTY_INTERVAL
