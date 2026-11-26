@@ -132,6 +132,22 @@ class UTXOStore:
                     raise RuntimeError("schema-v3 migration requires a verified reindex from genesis to distinguish unknown creation MTP")
                 else:
                     raise RuntimeError("unsupported UTXO database schema version")
+            bootstrap_row = db.execute(
+                "SELECT value FROM metadata WHERE key='bootstrap_issued_sats'"
+            ).fetchone()
+            if bootstrap_row is None:
+                if row is not None and row[0] != "4":
+                    raise RuntimeError("schema-v5 database is missing bootstrap issuance metadata")
+                db.execute(
+                    "INSERT INTO metadata(key, value) VALUES('bootstrap_issued_sats', '0')"
+                )
+            else:
+                try:
+                    bootstrap_value = int(bootstrap_row[0])
+                except (TypeError, ValueError) as exc:
+                    raise RuntimeError("bootstrap issuance metadata is malformed") from exc
+                if bootstrap_value < 0 or bootstrap_value > TOTAL_SUPPLY_CAP:
+                    raise RuntimeError("bootstrap issuance metadata exceeds total supply cap")
             db.execute("""
                 CREATE TABLE IF NOT EXISTS blocks (
                     height INTEGER PRIMARY KEY CHECK(height >= 0),
@@ -172,9 +188,6 @@ class UTXOStore:
                     PRIMARY KEY(height, txid, output_index)
                 ) WITHOUT ROWID
             """)
-            db.execute(
-                "INSERT OR IGNORE INTO metadata(key, value) VALUES('bootstrap_issued_sats', '0')"
-            )
             db.execute("""
                 CREATE TABLE IF NOT EXISTS block_undo_created (
                     height INTEGER NOT NULL REFERENCES blocks(height) ON DELETE CASCADE,
