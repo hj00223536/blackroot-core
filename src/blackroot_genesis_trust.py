@@ -1,0 +1,151 @@
+"""Fail-closed parser for a proposed, externally pinned genesis trust configuration.
+
+This prototype validates data against caller-supplied release-policy pins. It
+does not establish owner identity, provide secure storage, or authorize issuance.
+"""
+from __future__ import annotations
+
+import hashlib
+from dataclasses import dataclass
+from typing import Mapping
+
+from .blackroot_genesis_manifest import (
+    _MAX_SAFE_INTEGER,
+    _jcs_encode,
+    parse_genesis_manifest_json,
+)
+
+_DOMAIN = b"BLACKROOT-TRUST-CONFIG-V1\\x00"
+_FIELDS = frozenset({
+    "config_version", "network_id", "sequence", "previous_config_digest",
+    "keys", "config_digest",
+})
+_KEY_FIELDS = frozenset({"key_id", "public_key", "scopes", "status"})
+_SCOPE = "genesis-founder-allocation"
+
+
+@dataclass(frozen=True)
+class ValidatedTrustKey:
+    key_id: str
+    public_key: bytes
+    scopes: frozenset[str]
+    status: str
+
+
+@dataclass(frozen=True)
+class ValidatedTrustConfiguration:
+    network_id: str
+    sequence: int
+    previous_config_digest: str | None
+    config_digest: str
+    keys: Mapping[str, ValidatedTrustKey]
+
+
+def _hex(value: object, field: str, length: int) -> str:
+    if not isinstance(value, str) or len(value) != length:
+        raise ValueError(f"{field} must be {length} lowercase hexadecimal characters")
+    if any(char not in "0123456789abcdef" for char in value):
+        raise ValueError(f"{field} must be canonical lowercase hexadecimal")
+    return value
+
+
+def _digest_payload(config: Mapping[str, object]) -> bytes:
+    payload = dict(config)
+    payload.pop("config_digest", None)
+    return _jcs_encode(payload).encode("utf-8")
+
+
+def calculate_trust_configuration_digest(config: Mapping[str, object]) -> str:
+    """Calculate the domain-separated digest, excluding config_digest itself."""
+    if not isinstance(config, Mapping):
+        raise TypeError("trust configuration must be a mapping")
+    return hashlib.sha256(_DOMAIN + _digest_payload(config)).hexdigest()
+
+
+def validate_trust_configuration(
+    config: Mapping[str, object],
+    *,
+    expected_network_id: str,
+    pinned_config_digest: str,
+    expected_sequence: int,
+    expected_previous_config_digest: str | None,
+) -> ValidatedTrustConfiguration:
+    """Validate a trust config against pins supplied outside the package.
+
+    The pins must come from an independently reviewed release policy. This
+    function cannot authenticate their provenance and never chooses defaults.
+    """
+    if not isinstance(config, Mapping) or set(config) != _FIELDS:
+        raise ValueError("trust configuration fields mismatch")
+    if type(config["config_version"]) is not int or config["config_version"] != 1:
+        raise ValueError("unsupported trust configuration version")
+    network_id = _hex(config["network_id"], "network_id", 64)
+    expected_network = _hex(expected_network_id, "expected_network_id", 64)
+    digest = _hex(config["config_digest"], "config_digest", 64)
+    pinned_digest = _hex(pinned_config_digest, "pinned_config_digest", 64)
+    if network_id != expected_network:
+        raise ValueError("trust configuration network mismatch")
+    sequence = config["sequence"]
+    if type(sequence) is not int or sequence < 1 or sequence > _MAX_SAFE_INTEGER:
+        raise ValueError("trust configuration sequence must be a positive safe integer")
+    if type(expected_sequence) is not int or expected_sequence < 1:
+        raise ValueError("expected_sequence must be a positive integer")
+    if sequence != expected_sequence:
+        raise ValueError("trust configuration sequence does not match pinned sequence")
+
+    previous = config["previous_config_digest"]
+    if expected_previous_config_digest is None:
+        if previous is not None:
+            raise ValueError("initial trust configuration must not name a predecessor")
+    else:
+        expected_previous = _hex(
+            expected_previous_config_digest, "expected_previous_config_digest", 64
+        )
+        previous = _hex(previous, "previous_config_digest", 64)
+        if previous != expected_previous:
+            raise ValueError("trust configuration predecessor mismatch")
+
+    if not isinstance(config["keys"], list) or not config["keys"]:
+        raise ValueError("trust configuration keys must be a non-empty array")
+    keys: dict[str, ValidatedTrustKey] = {}
+    public_keys: set[bytes] = set()
+    for entry in config["keys"]:
+        if not isinstance(entry, Mapping) or set(entry) != _KEY_FIELDS:
+            raise ValueError("trust key fields mismatch")
+        public_hex = _hex(entry["public_key"], "public_key", 64)
+        public_bytes = bytes.fromhex(public_hex)
+        key_id = _hex(entry["key_id"], "key_id", 64)
+        if hashlib.sha256(public_bytes).hexdigest() != key_id:
+            raise ValueError("trust key identifier mismatch")
+        if key_id in keys or public_bytes in public_keys:
+            raise ValueError("duplicate trust key identifier or public key")
+        scopes = entry["scopes"]
+        if (not isinstance(scopes, list) or not scopes
+                or any(not isinstance(scope, str) for scope in scopes)
+                or len(set(scopes)) != len(scopes)):
+            raise ValueError("trust key scopes must be unique non-empty strings")
+        if any(scope != _SCOPE for scope in scopes):
+            raise ValueError("unsupported or overbroad trust key scope")
+        status = entry["status"]
+        if status not in ("active", "revoked"):
+            raise ValueError("trust key status must be active or revoked")
+        keys[key_id] = ValidatedTrustKey(
+            key_id=key_id, public_key=public_bytes,
+            scopes=frozenset(scopes), status=status,
+        )
+        public_keys.add(public_bytes)
+
+    calculated = calculate_trust_configuration_digest(config)
+    if digest != calculated:
+        raise ValueError("trust configuration digest mismatch")
+    if digest != pinned_digest:
+        raise ValueError("trust configuration digest does not match external pin")
+    return ValidatedTrustConfiguration(
+        network_id=network_id, sequence=sequence,
+        previous_config_digest=previous, config_digest=digest, keys=keys,
+    )
+
+
+def parse_trust_configuration_json(raw: str) -> dict[str, object]:
+    """Strict JSON parser rejecting duplicate keys, floats and non-object roots."""
+    return parse_genesis_manifest_json(raw)
