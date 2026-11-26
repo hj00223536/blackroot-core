@@ -86,13 +86,12 @@ class P2PSyncService:
             self.chain,
             protocol_version=self.protocol_version,
             adjusted_time=self.adjusted_time,
+            on_headers_validated=self.persist_headers,
         )
 
         async def dispatch(command: str, payload: bytes) -> None:
             if command in ("headers", "getheaders"):
                 await self._header_sync[peer].handle_message(peer, command, payload)
-                if command == "headers" and self.persist_headers is not None:
-                    self.persist_headers(self.chain)
                 # A fresh node has no active UTXO tip until its genesis body is
                 # explicitly bootstrapped. Header sync must remain usable without
                 # turning that expected bootstrap state into a peer-disconnect error.
