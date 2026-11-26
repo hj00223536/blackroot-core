@@ -28,6 +28,10 @@ A further persistent-state regression test now activates one branch, stores a co
 
 The current helper and header-chain behavior, including retarget boundaries, compact-target precision, timestamp handling, branch tie-breaks, subsidy arithmetic, and unsupported script scope, is recorded in [docs/consensus-decisions.md](consensus-decisions.md). These are implementation observations and unresolved protocol choices, not frozen network rules. Resolve and independently test them before activating a testnet.
 
+## Independent retarget arithmetic regression evidence
+
+A standalone Node.js 22 verifier now checks compact-target retarget arithmetic against fixed clamp vectors and the current first-boundary convention. The test runs in CI independently of Python. This is useful cross-language regression coverage, but it does not freeze the first-period consensus rule or satisfy the separately maintained external-client requirement below.
+
 ## Mandatory gates before a public testnet
 
 ### 1. Freeze a separate testnet protocol
