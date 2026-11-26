@@ -32,6 +32,8 @@ This register converts the current prototype observations into explicit decision
 - Persistent schema-v5 accounting records scheduled active-chain subsidy budgets and trusted bootstrap issuance; this accounting does not itself mint the founder allocation.
 - Founder output remains absent. No founder balance, usable receive address, cash liquidity, market price or exchange listing is established.
 
+Difficulty adjustment has a separate [policy proposal](difficulty-adjustment-policy-proposal.md). Its first-boundary convention remains subject to explicit owner approval and independent review.
+
 ## Required evidence package for protocol freeze
 
 1. A versioned normative specification that resolves PF-01 through PF-11.
