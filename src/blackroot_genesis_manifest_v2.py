@@ -83,15 +83,15 @@ def validate_genesis_manifest_v2(
     if _require_uint(manifest_snapshot["manifest_version"], "manifest_version") != 2:
         raise ValueError("unsupported manifest_version for v2")
 
-    digest = _require_lower_hex(manifest["manifest_digest"], "manifest_digest", exact_length=64)
+    digest = _require_lower_hex(manifest_snapshot["manifest_digest"], "manifest_digest", exact_length=64)
     if digest != calculate_genesis_manifest_v2_digest(manifest_snapshot):
         raise ValueError("manifest_digest does not match canonical v2 contents")
 
-    network_id = _require_lower_hex(manifest["network_id"], "network_id", exact_length=64)
-    block_hash = _require_lower_hex(manifest["genesis_block_hash"], "genesis_block_hash", exact_length=64)
-    tx_hex = _require_lower_hex(manifest["genesis_coinbase_tx"], "genesis_coinbase_tx")
-    schedule_id = _require_lower_hex(manifest["mining_schedule_id"], "mining_schedule_id", exact_length=64)
-    script_hex = _require_lower_hex(manifest["founder_script_pub_key"], "founder_script_pub_key")
+    network_id = _require_lower_hex(manifest_snapshot["network_id"], "network_id", exact_length=64)
+    block_hash = _require_lower_hex(manifest_snapshot["genesis_block_hash"], "genesis_block_hash", exact_length=64)
+    tx_hex = _require_lower_hex(manifest_snapshot["genesis_coinbase_tx"], "genesis_coinbase_tx")
+    schedule_id = _require_lower_hex(manifest_snapshot["mining_schedule_id"], "mining_schedule_id", exact_length=64)
+    script_hex = _require_lower_hex(manifest_snapshot["founder_script_pub_key"], "founder_script_pub_key")
     if network_id != expected_network_id:
         raise ValueError("manifest network_id does not match frozen configuration")
     if block_hash != expected_genesis_block_hash:
@@ -108,10 +108,10 @@ def validate_genesis_manifest_v2(
     if coinbase.display_txid != expected_genesis_txid:
         raise ValueError("genesis coinbase txid does not match frozen configuration")
 
-    output_index = _require_uint(manifest["founder_output_index"], "founder_output_index")
+    output_index = _require_uint(manifest_snapshot["founder_output_index"], "founder_output_index")
     if output_index >= len(coinbase.outputs):
         raise ValueError("founder_output_index is outside the coinbase outputs")
-    amount = _require_uint(manifest["founder_amount_sats"], "founder_amount_sats")
+    amount = _require_uint(manifest_snapshot["founder_amount_sats"], "founder_amount_sats")
     if amount != expected_founder_amount_sats:
         raise ValueError("founder amount does not match frozen monetary policy")
     script = bytes.fromhex(script_hex)
@@ -119,7 +119,7 @@ def validate_genesis_manifest_v2(
     if output.value != amount or output.script_pubkey != script:
         raise ValueError("founder output value or locking script does not match manifest")
 
-    supply_cap = _require_uint(manifest["total_supply_cap_sats"], "total_supply_cap_sats")
+    supply_cap = _require_uint(manifest_snapshot["total_supply_cap_sats"], "total_supply_cap_sats")
     if supply_cap != expected_total_supply_cap_sats:
         raise ValueError("manifest supply cap does not match frozen monetary policy")
     mining_max = _require_uint(maximum_mining_issuance_sats, "maximum_mining_issuance_sats")
