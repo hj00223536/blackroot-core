@@ -179,4 +179,9 @@ Python 3.12 and 3.13 each completed 428 tests successfully, and the independent
 Node.js 22 genesis verifier passed. This remains regression evidence for the
 implemented storage paths, not a production consensus audit or authorization
 to issue founder coins. The current genesis candidate still contains no founder
-allocation, and the network is not launched.
+allocation, and the network is not launched. The candidate regression test now
+also asserts explicitly that its only coinbase output is a zero-value
+`OP_RETURN`; this prevents the test vector from being mistaken for a spendable
+founder allocation. This assertion is intentionally not a substitute for a
+future owner-approved founder locking script, deterministic issuance bytes, or
+an independently verified final genesis.
