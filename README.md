@@ -44,6 +44,10 @@ Do not use this prototype to store value, accept deposits, advertise an investme
 
 No mainnet genesis, exchange listing, market price, or launch date is established by this repository. Earlier network identity/address/port proposals remain provisional until collisions, interoperability and protocol rules are reviewed.
 
+## Protocol freeze register
+
+The unresolved consensus, network-identity, genesis, and independent-review decisions are tracked in the [Protocol-freeze gap register](docs/protocol-freeze-gap-register.md). The register is an engineering checklist, not an activation approval.
+
 ## Testnet launch status
 
 BLACKROOT has **not launched a public testnet**. A loopback-only local node CLI and strict JSON configuration loader exist, but the testnet protocol and genesis are not approved/frozen, block-body sync and full consensus are incomplete, and no public operating infrastructure exists. See [Testnet launch gates](docs/testnet-launch-gates.md) for the verified blockers and required sequence. Testnet coins, if a future testnet is operated, will have no monetary value.
