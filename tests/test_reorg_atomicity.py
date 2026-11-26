@@ -46,7 +46,7 @@ class ReorganizationAtomicityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             store = UTXOStore(Path(directory) / "chain.sqlite")
             genesis = mined_block(0, ZERO_HASH, 1)
-            chain = HeaderChain(POW_LIMIT, genesis.header)
+            chain = HeaderChain(POW_LIMIT, genesis.header, adjusted_time_provider=lambda: 1_000_000)
             old = mined_block(1, genesis.header.hash, 2)
             chain.add(old.header)
             store.connect_validated_block(genesis, 0, chain)
@@ -104,7 +104,7 @@ class ReorganizationAtomicityTests(unittest.TestCase):
             store.add_genesis_output(funding, funding_output)
 
             genesis = mined_block(0, ZERO_HASH, 1)
-            chain = HeaderChain(POW_LIMIT, genesis.header)
+            chain = HeaderChain(POW_LIMIT, genesis.header, adjusted_time_provider=lambda: 1_000_000)
             old = mined_block(1, genesis.header.hash, 2)
             chain.add(old.header)
             store.connect_validated_block(genesis, 0, chain)
@@ -166,7 +166,7 @@ class ReorganizationAtomicityTests(unittest.TestCase):
             database = Path(directory) / "chain.sqlite"
             store = UTXOStore(database)
             genesis = mined_block(0, ZERO_HASH, 1)
-            chain = HeaderChain(POW_LIMIT, genesis.header)
+            chain = HeaderChain(POW_LIMIT, genesis.header, adjusted_time_provider=lambda: 1_000_000)
             old = mined_block(1, genesis.header.hash, 2)
             chain.add(old.header)
             store.connect_validated_block(genesis, 0, chain)
