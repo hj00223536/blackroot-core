@@ -55,10 +55,15 @@ async def run_node(config: TestnetConfig, data_dir: Path, bind_host: str, connec
     state = None
     runtime = None
     try:
+        # One explicit clock source is shared by persistent replay and live
+        # P2P header admission. This is a provisional local clock, not a
+        # network-adjusted production time policy.
+        adjusted_time = lambda: int(time.time())
         state = PersistentNodeState.open_coordinated(
             data_dir / "blackroot-node.sqlite",
             config.pow_limit,
             config.genesis_header,
+            adjusted_time_provider=adjusted_time,
         )
         version = VersionMessage(
             protocol_version=config.protocol_version,
@@ -76,7 +81,7 @@ async def run_node(config: TestnetConfig, data_dir: Path, bind_host: str, connec
             # Provisional local UTC clock for the future-time bound. A
             # production network must replace this with a network-adjusted
             # clock derived from its peer-time policy.
-            adjusted_time=lambda: int(time.time()),
+            adjusted_time=adjusted_time,
         )
         host, port = await runtime.listen(bind_host, config.p2p_port)
         if connect_to is not None:
