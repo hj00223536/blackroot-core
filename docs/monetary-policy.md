@@ -18,11 +18,11 @@ For block height h:
 
 There are exactly 2,000,000 eligible mining heights. The maximum scheduled mining issuance is therefore exactly 20,000,000 BRT. At the proposed 600-second target spacing, that is approximately 38 years if blocks arrive on schedule.
 
-Height 0 is not a mining height. In the current reference helper, `block_subsidy(0)` returns the 20,000,000 BRT founder issuance allowance so the genesis accounting fixture can represent that ceiling; this is not a mining reward and does not mean a founder output exists. The current genesis candidate still has a zero-value OP_RETURN output. Before launch, consensus must separate a one-time, fixed-genesis founder-output check from ordinary block coinbase subsidy validation, so the founder allowance cannot be treated as a reusable mining reward. Unclaimed subsidy is not carried forward. Fees transfer existing value and do not increase supply.
+Height 0 has no mining subsidy: `block_subsidy(0)` returns zero. The 20,000,000 BRT founder allocation is a separate intended genesis output, not a block reward. The current genesis candidate still has a zero-value OP_RETURN output, so no founder allocation has been issued. A future founder output must be bound to one exact, frozen genesis transaction and hash and validated separately from ordinary block coinbase subsidy rules. Unclaimed subsidy is not carried forward. Fees transfer existing value and do not increase supply.
 
 ## Consensus enforcement
 
-The reference block validator currently calculates the coinbase ceiling as the helper's height allowance plus transaction fees. This is not yet sufficient as a production issuance rule: the genesis founder allowance must be validated only against the single fixed genesis transaction, while ordinary blocks must use the mining schedule only. Once separated and independently tested, the mining schedule limits scheduled mining issuance to 20,000,000 BRT on a single valid chain. The 40,000,000 BRT money range is used for transaction/output range checks.
+The reference block validator calculates the ordinary coinbase ceiling as the mining subsidy plus transaction fees; at height 0 this ceiling is zero. Genesis founder issuance is not currently implemented. When implemented, it must be validated by exact fixed-genesis identity and transaction/output vectors, never by the ordinary coinbase subsidy helper. The mining schedule limits scheduled mining issuance to 20,000,000 BRT on a single valid chain. The 40,000,000 BRT money range is used for transaction/output range checks.
 
 Genesis construction must separately create and prove the 20,000,000 BRT founder output. It is not yet present in the current genesis candidate. No private key or receiving address is stored in source control.
 
