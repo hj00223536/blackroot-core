@@ -141,10 +141,7 @@ class P2PSyncServiceTests(unittest.IsolatedAsyncioTestCase):
 
         await handler("inv", encode_inventory([InventoryVector(2, genesis.header.hash)]))
         self.assertIs(self.service.blocks.pool.assigned_peer(genesis.header.hash), self.peer_a)
-        self.store.tip.side_effect = [
-            (0, genesis.header.hash),
-            (0, genesis.header.hash),
-        ]
+        self.store.tip.return_value = (0, genesis.header.hash)
         await handler("block", genesis.serialize())
 
         self.assertEqual(self.service.blocks.pool.pending_hashes, ())
