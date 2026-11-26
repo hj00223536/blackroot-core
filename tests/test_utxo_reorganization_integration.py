@@ -59,7 +59,7 @@ class UTXOReorganizationIntegrationTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.store = UTXOStore(Path(self.temp.name) / "chain.sqlite")
         self.genesis = mined_block(0, ZERO_HASH, 1)
-        self.headers = HeaderChain(POW_LIMIT, self.genesis.header)
+        self.headers = HeaderChain(POW_LIMIT, self.genesis.header, adjusted_time_provider=lambda: 1_000_000)
         self.old_one = mined_block(1, self.genesis.header.hash, 2)
         self.headers.add(self.old_one.header)
         self.store.connect_validated_block(self.genesis, 0, self.headers)
@@ -207,7 +207,7 @@ Path(result).write_text(stored.hex())
         # this isolates the test to competing block-connection transactions,
         # rather than concurrent first-time schema/WAL initialization.
         setup_store = UTXOStore(path)
-        setup_headers = HeaderChain(POW_LIMIT, self.genesis.header)
+        setup_headers = HeaderChain(POW_LIMIT, self.genesis.header, adjusted_time_provider=lambda: 1_000_000)
         setup_headers.add(self.old_one.header)
         setup_store.connect_validated_block(self.genesis, 0, setup_headers)
         setup_store.connect_validated_block(self.old_one, 1, setup_headers)
@@ -309,7 +309,7 @@ Path(result).write_text(outcome)
         path = Path(self.temp.name) / "ordinary-spend-reorg.sqlite"
         store = UTXOStore(path)
         genesis = mined_block(0, ZERO_HASH, 1)
-        headers = HeaderChain(POW_LIMIT, genesis.header)
+        headers = HeaderChain(POW_LIMIT, genesis.header, adjusted_time_provider=lambda: 1_000_000)
 
         point = _mul(1)
         pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
@@ -419,9 +419,9 @@ Path(result).write_text(outcome)
 
     def test_coordinated_reorganization_commits_with_outer_transaction(self):
         path = Path(self.temp.name) / "coordinated-reorg.sqlite"
-        active_headers = HeaderChain(POW_LIMIT, self.genesis.header)
+        active_headers = HeaderChain(POW_LIMIT, self.genesis.header, adjusted_time_provider=lambda: 1_000_000)
         active_headers.add(self.old_one.header)
-        headers = HeaderChain(POW_LIMIT, self.genesis.header)
+        headers = HeaderChain(POW_LIMIT, self.genesis.header, adjusted_time_provider=lambda: 1_000_000)
         headers.add(self.old_one.header)
         headers.add_to_branch(self.side_one.header)
         headers.add_to_branch(self.side_two.header)
@@ -443,9 +443,9 @@ Path(result).write_text(outcome)
 
     def test_outer_rollback_reverts_entire_coordinated_reorganization(self):
         path = Path(self.temp.name) / "rollback-reorg.sqlite"
-        active_headers = HeaderChain(POW_LIMIT, self.genesis.header)
+        active_headers = HeaderChain(POW_LIMIT, self.genesis.header, adjusted_time_provider=lambda: 1_000_000)
         active_headers.add(self.old_one.header)
-        headers = HeaderChain(POW_LIMIT, self.genesis.header)
+        headers = HeaderChain(POW_LIMIT, self.genesis.header, adjusted_time_provider=lambda: 1_000_000)
         headers.add(self.old_one.header)
         headers.add_to_branch(self.side_one.header)
         headers.add_to_branch(self.side_two.header)
@@ -469,7 +469,7 @@ Path(result).write_text(outcome)
 
     def test_disconnect_tip_uses_coordinator_outer_transaction(self):
         path = Path(self.temp.name) / "coordinated-disconnect.sqlite"
-        active_headers = HeaderChain(POW_LIMIT, self.genesis.header)
+        active_headers = HeaderChain(POW_LIMIT, self.genesis.header, adjusted_time_provider=lambda: 1_000_000)
         active_headers.add(self.old_one.header)
         with SQLiteTransactionCoordinator(path) as coordinator:
             with coordinator.transaction() as connection:
