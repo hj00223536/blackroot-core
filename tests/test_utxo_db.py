@@ -381,9 +381,10 @@ store.apply(tx)
         self.assertEqual(self.store.get(self.funding), TxOutput(900, b"funding-script"))
 
     def test_rejects_duplicate_bootstrap_outpoint(self):
-        with self.assertRaises(Exception):
+        with self.assertRaises(sqlite3.IntegrityError):
             self.store.add_genesis_output(self.funding, TxOutput(900, b"duplicate"))
         self.assertEqual(self.store.count(), 1)
+        self.store.verify_integrity()
 
     def test_bootstrap_issuance_cap_is_cumulative_and_atomic(self):
         final_outpoint = OutPoint(bytes.fromhex("61" * 32), 0)
@@ -408,6 +409,7 @@ store.apply(tx)
                 "SELECT value FROM metadata WHERE key='bootstrap_issued_sats'"
             ).fetchone()[0]
         self.assertEqual(int(after), TOTAL_SUPPLY_CAP)
+        self.store.verify_integrity()
 
 
     def test_bootstrap_issuance_is_rejected_after_chain_activation_atomically(self):
