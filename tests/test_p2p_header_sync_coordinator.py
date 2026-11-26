@@ -101,6 +101,26 @@ class PeerHeaderSyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.chain.chainwork, before_work)
         self.assertIsNone(self.chain.node(too_far.hash))
 
+    async def test_batch_with_valid_prefix_and_future_header_rolls_back_entire_batch(self):
+        valid_prefix = mine(self.genesis.hash, 2)
+        invalid_suffix = mine(valid_prefix.hash, 107_201)
+        before_nodes = self.chain.nodes
+        before_tip = self.chain.best_hash
+        before_work = self.chain.chainwork
+
+        with self.assertRaisesRegex(ValueError, "future-time limit"):
+            await self.sync.handle_message(
+                FakePeer(),
+                "headers",
+                encode_headers([valid_prefix, invalid_suffix]),
+            )
+
+        self.assertEqual(self.chain.nodes, before_nodes)
+        self.assertEqual(self.chain.best_hash, before_tip)
+        self.assertEqual(self.chain.chainwork, before_work)
+        self.assertIsNone(self.chain.node(valid_prefix.hash))
+        self.assertIsNone(self.chain.node(invalid_suffix.hash))
+
     async def test_rejects_unknown_sync_command(self):
         with self.assertRaisesRegex(ValueError, "unsupported"):
             await self.sync.handle_message(FakePeer(), "inv", b"")
