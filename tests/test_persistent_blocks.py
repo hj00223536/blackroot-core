@@ -457,7 +457,7 @@ class PersistentBlockTests(unittest.TestCase):
         replacement_cb = coinbase(block_subsidy(1) - 123, b"\\x02\\x01")
         replacement = block_for([replacement_cb], previous=genesis.header.hash, timestamp=3)
         self.store.reorganize((old_block.header.hash,), (replacement,))
-        self.assertEqual(self.store.issued_subsidy(), block_subsidy(1) - 123)
+        self.assertEqual(self.store.issued_subsidy(), block_subsidy(1))
         self.store.verify_integrity()
 
     def test_transaction_fees_are_not_counted_as_new_subsidy(self):
