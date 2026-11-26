@@ -70,6 +70,17 @@ class MultiPeerBlockSchedulerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.scheduler.pool.pending_hashes, ())
         self.assertEqual(self.scheduler.tracker.pending_hashes, ())
 
+    async def test_disconnected_source_can_be_replaced_by_another_peer(self):
+        first = await self.scheduler.request_block(self.block.header.hash, self.peers)
+        self.peers[first].connected = False
+        released = self.scheduler.peer_disconnected(first)
+        self.assertEqual(released, (self.block.header.hash,))
+        second = await self.scheduler.request_block(self.block.header.hash, self.peers)
+        self.assertNotEqual(second, first)
+        self.assertEqual(self.scheduler.pool.assigned_peer(self.block.header.hash), second)
+        self.assertEqual(self.scheduler.tracker.pending_hashes, (self.block.header.hash,))
+        self.assertEqual(len(self.peers[second].sent), 1)
+
     async def test_rejects_when_no_peer_is_connected(self):
         self.peer_a.connected = False
         self.peer_b.connected = False
