@@ -61,8 +61,12 @@ class HeaderChain:
             raise TypeError("adjusted_time_provider must be callable")
         if not isinstance(allow_unchecked_time_for_tests, bool):
             raise TypeError("allow_unchecked_time_for_tests must be a boolean")
-        if not isinstance(pow_limit, int) or isinstance(pow_limit, bool) or pow_limit <= 0:
-            raise ValueError("pow_limit must be a positive integer")
+        if (
+            not isinstance(pow_limit, int)
+            or isinstance(pow_limit, bool)
+            or not 0 < pow_limit < 1 << 256
+        ):
+            raise ValueError("pow_limit must be a positive uint256")
         if not isinstance(genesis, BlockHeader) or genesis.prev_hash != ZERO_HASH:
             raise ValueError("genesis previous hash must be all zeroes")
         self.pow_limit = pow_limit
