@@ -254,7 +254,7 @@ store.apply(tx)
             ).fetchone()[0]
         self.assertEqual(after_reopen, before)
 
-        with self.assertRaises(Exception):
+        with self.assertRaises(sqlite3.IntegrityError):
             reopened.add_genesis_output(self.funding, TxOutput(900, b"duplicate"))
         with _managed_sqlite(self.db_path) as db:
             after_duplicate = db.execute(
