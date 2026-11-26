@@ -24,6 +24,11 @@ class Base58Tests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "maximum length"):
             b58decode("1" * 513)
 
+    def test_base58_accepts_documented_maximum_length(self):
+        decoded = b58decode("1" * 512)
+        self.assertEqual(len(decoded), 512)
+        self.assertEqual(decoded, b"\\x00" * 512)
+
 
 class Base58CheckTests(unittest.TestCase):
     def test_round_trip_with_explicit_version(self):
