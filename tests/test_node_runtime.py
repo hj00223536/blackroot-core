@@ -135,6 +135,27 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.runtime._retry_task)
         self.assertTrue(task.cancelled())
 
+    async def test_retry_loop_survives_transient_error_and_recovers(self):
+        calls = 0
+        recovered = asyncio.Event()
+
+        async def retry_expired(*, now=None):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise OSError("temporary peer failure")
+            recovered.set()
+            return {}
+
+        self.runtime.sync.retry_expired = retry_expired
+        await self.runtime.start_retry_loop(interval=0.01)
+        await asyncio.wait_for(recovered.wait(), timeout=1)
+        self.assertGreaterEqual(calls, 2)
+        self.assertIsNone(self.runtime.retry_last_error)
+        self.assertIsNotNone(self.runtime._retry_task)
+        self.assertFalse(self.runtime._retry_task.done())
+        await self.runtime.stop_retry_loop()
+
     async def test_retry_loop_rejects_invalid_intervals(self):
         for invalid in (float("nan"), float("inf"), float("-inf"), True, 0, -1, "1"):
             with self.subTest(interval=invalid):
