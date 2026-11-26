@@ -606,6 +606,7 @@ def validate_coordinated_staging_database(
     genesis,
     require_import_manifest: bool = False,
     verify_manifest_counts: bool = False,
+    adjusted_time_provider=None,
 ) -> dict:
     """Reopen a staged DB through the real coordinated node stores.
 
@@ -684,7 +685,10 @@ def validate_coordinated_staging_database(
         finally:
             manifest_db.close()
 
-    state = PersistentNodeState.open_coordinated(path, pow_limit, genesis)
+    state = PersistentNodeState.open_coordinated(
+        path, pow_limit, genesis,
+        adjusted_time_provider=adjusted_time_provider,
+    )
     try:
         if not state.coordinated:
             raise RuntimeError("staging database did not open in coordinated mode")
