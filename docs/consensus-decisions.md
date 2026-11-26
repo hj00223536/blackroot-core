@@ -1,8 +1,6 @@
 # BLACKROOT provisional consensus decisions
 
-**Status: engineering record only — none of these rules are frozen for a public network.**
-
-This document records behavior currently present in the prototype so that test results are not mistaken for an approved protocol. Any change to these rules can change chain validity and must be reviewed as a consensus change.
+**Status: engineering record — the owner-approved monetary schedule is integrated into the reference subsidy helper, but no public network rules are frozen or activated.**
 
 ## Current implementation behavior
 
@@ -18,8 +16,8 @@ This document records behavior currently present in the prototype so that test r
 | Median time past | Median of up to 11 timestamps ending at the candidate's parent | Confirm ancestor count and genesis handling |
 | Future timestamp | HeaderChain checks a future bound only if caller supplies adjusted_time; default allowance is 7,200 seconds | Define a trusted network-adjusted clock, peer-time algorithm, and mandatory validation path |
 | Branch choice | Select greatest cumulative work; equal-work tie-break uses deterministic raw-hash ordering | Confirm tie-break and reorg policy |
-| Subsidy | 50 BRT initial subsidy, integer halving every 210,000 heights, 100,000,000 atomic units per BRT | Confirm monetary policy and genesis-height convention |
-| Maximum supply | The current integer schedule sums to 20,999,999.9769 BRT, below the nominal 21,000,000 BRT cap | Decide whether this small unissued remainder is intentional |
+| Subsidy | 10 BRT per block at heights 1 through 2,000,000 inclusive; zero at height 0 and after height 2,000,000 | Complete independent cross-client monetary vectors |
+| Maximum supply | 20,000,000 BRT founder genesis allocation plus maximum 20,000,000 BRT scheduled mining issuance; 40,000,000 BRT total ceiling | Implement and verify spendable founder genesis output |
 | Script support | Strict legacy P2PKH/SIGHASH_ALL subset; unsupported scripts and sighash modes rejected | Define full transaction/script language or explicitly freeze a limited language |
 
 | Genesis UTXO time provenance | Persistent UTXO storage currently serializes missing creation-MTP metadata as integer zero | Define genesis-output spendability and a nullable/explicitly tagged MTP representation before time-based relative locks can be considered production-safe |
@@ -30,8 +28,8 @@ This document records behavior currently present in the prototype so that test r
 2. **Timestamp validity:** specify MTP, future-time bound, clock adjustment, missing-clock behavior, and whether all node entry points enforce the same rule.
 3. **Difficulty arithmetic:** specify clamp constants, integer division order, compact encoding canonicality, and behavior when target reaches the PoW limit.
 4. **Chain selection:** specify cumulative-work comparison, equal-work behavior, and reorganization limits/recovery.
-5. **Monetary rules:** specify subsidy at genesis, halving boundaries, fees, coinbase maturity, total issuance, and treatment of unclaimed/invalid rewards.
-6. **Script and transaction validity:** publish the complete supported script set, sighash rules, locktime/sequence semantics, serialization, and consensus limits.
+5. **Script and transaction validity:** publish the complete supported script set, sighash rules, locktime/sequence semantics, serialization, and consensus limits.
+6. **Founder genesis output:** construct and independently verify the spendable founder allocation without committing private key material.
 
 ## Verification requirements
 
