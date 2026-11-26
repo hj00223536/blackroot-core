@@ -283,6 +283,43 @@ Path(result).write_text(outcome)
         self.assertEqual(active[-1][:2], (2, contender.header.hash))
         final_store.verify_integrity()
 
+    def test_reorganizes_utxo_store_when_header_chain_selects_equal_work_tie_break(self):
+        # Rebuild a DAG containing only equal-work height-1 alternatives.
+        # HeaderChain deterministically chooses the lexicographically smallest
+        # raw hash; the persistent UTXO tip must follow that exact choice.
+        headers = HeaderChain(
+            POW_LIMIT,
+            self.genesis.header,
+            adjusted_time_provider=lambda: 1_000_000,
+        )
+        headers.add(self.old_one.header)
+        self.store.store_block_body(self.old_one)
+
+        candidates = []
+        for timestamp in range(10, 30):
+            candidate = mined_block(1, self.genesis.header.hash, timestamp)
+            headers.add_to_branch(candidate.header)
+            self.store.store_block_body(candidate)
+            candidates.append(candidate)
+
+        selected_hash = headers.best_hash
+        self.assertNotEqual(selected_hash, self.old_one.header.hash)
+        self.assertEqual(
+            headers.node(selected_hash).chainwork,
+            headers.node(self.old_one.header.hash).chainwork,
+        )
+
+        switched = self.store.reorganize_to_best(headers)
+        self.assertEqual(switched, (1, selected_hash))
+        self.assertEqual(self.store.tip(), switched)
+        self.assertIsNotNone(
+            self.store.get(OutPoint(headers.node(selected_hash).header.merkle_root, 0))
+            if False else self.store.get(
+                OutPoint(next(block for block in candidates if block.header.hash == selected_hash).transactions[0].txid, 0)
+            )
+        )
+        self.store.verify_integrity()
+
     def test_reorganizes_utxo_store_to_greater_work_branch(self):
         self.assertEqual(self.headers.tip.hash, self.side_two.header.hash)
         tip = self.store.reorganize_to_best(
