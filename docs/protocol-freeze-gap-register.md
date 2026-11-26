@@ -34,6 +34,8 @@ This register converts the current prototype observations into explicit decision
 
 Difficulty adjustment has a separate [policy proposal](difficulty-adjustment-policy-proposal.md). Its first-boundary convention remains subject to explicit owner approval and independent review.
 
+PF-07 has a detailed [transaction and script policy proposal](transaction-script-policy-proposal.md). The current verifier is a restricted P2PKH prototype, not a complete Script engine, and has not received independent cryptographic review.
+
 ## Required evidence package for protocol freeze
 
 1. A versioned normative specification that resolves PF-01 through PF-11.
