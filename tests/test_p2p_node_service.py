@@ -120,6 +120,18 @@ class NodePeerSyncServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.scheduler.pool.assigned_peer(self.block.header.hash),
                          assigned)
 
+    async def test_strict_persistent_mode_rejects_unmarked_store(self):
+        with self.assertRaisesRegex(ValueError, "lifecycle adapter"):
+            NodePeerSyncService(self.scheduler, require_node_state_lifecycle=True)
+
+    async def test_strict_persistent_mode_accepts_marked_adapter(self):
+        adapter = Mock()
+        adapter.connect_validated_block.return_value = 0
+        adapter._blackroot_node_state_lifecycle = True
+        scheduler = MultiPeerBlockScheduler(self.chain, adapter)
+        service = NodePeerSyncService(scheduler, require_node_state_lifecycle=True)
+        self.assertIs(service.scheduler.store, adapter)
+
 
 if __name__ == "__main__":
     unittest.main()
