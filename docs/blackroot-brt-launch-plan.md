@@ -16,7 +16,7 @@ This plan records the owner's selected direction: an independent blockchain name
 - Owner-approved mining allocation: 20,000,000 BRT (50%), scheduled at 10 BRT per block for heights 1 through 2,000,000 inclusive
 - No cash liquidity pool is funded or promised at this stage.
 - The previous 21,000,000 BRT supply and 50 BRT / 210,000-block subsidy model have been replaced in the reference consensus subsidy helper by the owner-approved 40,000,000 BRT schedule.
-- CI is still validating the integration. The 20,000,000 BRT founder output is not yet present in genesis, and no wallet balance has been created.
+- CI run 45731576058 passed: Python 3.12, Python 3.13, and independent Node.js 22 genesis/vector checks all succeeded. This is a test-suite result, not a complete protocol audit. The 20,000,000 BRT founder output is not yet present in genesis, and no wallet balance has been created.
 - These monetary and consensus parameters are not frozen; do not rely on them until the normative specification and test vectors are reviewed and approved.
 
 ## Release stages
