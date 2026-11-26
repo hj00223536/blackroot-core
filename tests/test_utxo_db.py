@@ -523,5 +523,19 @@ store.apply(tx)
             )
 
 
+    def test_bootstrap_counter_is_not_genesis_initialization_marker(self):
+        # The counter tracks only aggregate trusted bootstrap value. Its
+        # presence (including zero) must never be treated as proof that a
+        # canonical genesis manifest was authenticated and initialized.
+        with _managed_sqlite(self.db_path) as db:
+            metadata = dict(db.execute(
+                "SELECT key, value FROM metadata"
+            ).fetchall())
+
+        self.assertEqual(metadata["bootstrap_issued_sats"], "900")
+        self.assertNotIn("genesis_initialization", metadata)
+        self.assertNotIn("genesis_manifest_digest", metadata)
+
+
 if __name__ == "__main__":
     unittest.main()
