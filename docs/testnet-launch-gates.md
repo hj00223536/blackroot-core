@@ -123,3 +123,21 @@ with all three jobs successful. These results confirm the checked-in
 regression suite and in-repository cross-language candidate vector only;
 they do not resolve the protocol decisions, provide an external client, or
 satisfy the public-testnet activation gates.
+
+## Cumulative issuance ledger regression evidence (2026-11-26)
+
+The schema-v5 UTXO store records the consensus subsidy budget per active-chain
+block, counts trusted pre-chain bootstrap outputs against the same supply cap,
+and removes/rebuilds block issuance rows as the active branch disconnects or
+reorganizes. Fees are excluded from newly issued subsidy. Integrity checks
+compare each persisted block budget against the consensus subsidy schedule.
+Schema-v5 preflight verifies the issuance column and bootstrap metadata; older
+active stores are refused rather than assigned an invented historical total.
+
+The complete schema-v5 fixture and issuance regression changes passed
+[GitHub Actions run 45825892104](https://github.com/hj00223536/blackroot-core/actions/runs/45825892104):
+Python 3.12 and 3.13 each completed 428 tests successfully, and the independent
+Node.js 22 genesis verifier passed. This remains regression evidence for the
+implemented storage paths, not a production consensus audit or authorization
+to issue founder coins. The current genesis candidate still contains no founder
+allocation, and the network is not launched.
