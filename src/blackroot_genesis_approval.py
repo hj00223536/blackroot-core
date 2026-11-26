@@ -6,6 +6,7 @@ not establish who owns that anchor, create keys, or authorize database writes.
 from __future__ import annotations
 
 import hashlib
+import json
 from typing import Mapping
 
 from cryptography.exceptions import InvalidSignature
@@ -88,3 +89,30 @@ def verify_genesis_approval_record(
     except (InvalidSignature, ValueError) as exc:
         raise ValueError("genesis approval signature verification failed") from exc
     return key_id
+
+
+def _reject_duplicate_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate approval JSON key: {key}")
+        result[key] = value
+    return result
+
+
+def parse_genesis_approval_record_json(raw: str) -> dict[str, object]:
+    """Parse detached approval JSON without duplicate keys or non-object roots."""
+    if not isinstance(raw, str):
+        raise TypeError("approval JSON must be text")
+    try:
+        value = json.loads(
+            raw,
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_float=lambda _value: (_ for _ in ()).throw(ValueError("floating-point values are forbidden")),
+            parse_constant=lambda value: (_ for _ in ()).throw(ValueError(f"invalid JSON constant: {value}")),
+        )
+    except (json.JSONDecodeError, UnicodeError) as exc:
+        raise ValueError("approval JSON is invalid") from exc
+    if not isinstance(value, dict):
+        raise ValueError("approval JSON root must be an object")
+    return value
