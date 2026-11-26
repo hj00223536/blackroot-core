@@ -75,6 +75,34 @@ class GenesisEvidenceReportTests(unittest.TestCase):
             serialize_genesis_evidence_report(dict(reversed(list(report.items())))),
         )
 
+    def test_cross_network_trust_configuration_prevents_report(self):
+        config = {
+            "config_version": 1,
+            "network_id": "55" * 32,
+            "sequence": 1,
+            "previous_config_digest": None,
+            "keys": [{
+                "key_id": self.key_id,
+                "public_key": self.private.public_key().public_bytes(
+                    serialization.Encoding.Raw, serialization.PublicFormat.Raw
+                ).hex(),
+                "scopes": ["genesis-founder-allocation"],
+                "status": "active",
+            }],
+        }
+        config["config_digest"] = calculate_trust_configuration_digest(config)
+        foreign_trust = validate_trust_configuration(
+            config,
+            expected_network_id="55" * 32,
+            pinned_config_digest=config["config_digest"],
+            expected_sequence=1,
+            expected_previous_config_digest=None,
+        )
+        with self.assertRaisesRegex(ValueError, "network does not match"):
+            build_genesis_evidence_report(
+                self.manifest, json.dumps(self.approval), foreign_trust
+            )
+
     def test_invalid_signature_prevents_report(self):
         bad = dict(self.approval)
         bad["signature"] = "00" * 64
