@@ -244,7 +244,7 @@ class PersistentNodeState:
         return self.utxos.store_block_body(block)
 
     def reorganize_best(self, replacement_blocks: dict[bytes, Block] | None = None) -> tuple[int, bytes]:
-        """Switch to the greater-work branch using supplied or archived block bodies."""
+        """Switch to the HeaderChain-selected best branch using supplied or archived block bodies."""
         if self.coordinated:
             with self._require_coordinator().transaction():
                 old_tip = self.utxos.tip()
