@@ -598,5 +598,30 @@ store.apply(tx)
         self.assertIsNone(self.store.get(candidate))
 
 
+    def test_bootstrap_insertion_rejects_corrupt_issuance_metadata_without_mutation(self):
+        candidate = OutPoint(bytes.fromhex("52" * 32), 1)
+        cases = (
+            ("not-an-integer", "bootstrap issuance metadata is malformed"),
+            ("-1", "bootstrap issuance metadata exceeds total supply cap"),
+            (str(TOTAL_SUPPLY_CAP + 1), "bootstrap issuance metadata exceeds total supply cap"),
+        )
+        for value, expected_error in cases:
+            with self.subTest(value=value):
+                with _managed_sqlite(self.db_path) as db:
+                    db.execute(
+                        "UPDATE metadata SET value=? WHERE key='bootstrap_issued_sats'",
+                        (value,),
+                    )
+                with self.assertRaisesRegex(RuntimeError, expected_error):
+                    self.store.add_genesis_output(
+                        candidate, TxOutput(100, b"candidate-script")
+                    )
+                self.assertIsNone(self.store.get(candidate))
+                with _managed_sqlite(self.db_path) as db:
+                    db.execute(
+                        "UPDATE metadata SET value='900' WHERE key='bootstrap_issued_sats'"
+                    )
+
+
 if __name__ == "__main__":
     unittest.main()
