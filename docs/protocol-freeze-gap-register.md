@@ -40,7 +40,7 @@ The v1 manifest format and fail-closed validation requirements are documented in
 
 Difficulty adjustment is documented in the [policy proposal](difficulty-adjustment-policy-proposal.md). The owner approved its stated parameters and first-boundary convention on 2026-11-26; independent implementation and external consensus review remain mandatory before protocol freeze. Standalone proof-of-work validation, the retarget helper, and HeaderChain construction now consistently reject proof-of-work limits outside the positive uint256 range; focused regression tests cover zero, negative, oversized, boolean, and non-integer values. This hardening does not freeze the network pow limit or approve the retarget convention.
 
-PF-07 has a detailed [transaction and script policy proposal](transaction-script-policy-proposal.md). The current verifier is a restricted P2PKH prototype, not a complete Script engine, and has not received independent cryptographic review.
+PF-07 has a detailed [transaction and script policy proposal](transaction-script-policy-proposal.md). The current verifier is a restricted P2PKH prototype, not a complete Script engine, and has not received independent cryptographic review. The node-state body-archival boundary now also checks the transaction Merkle root against the known header before persisting a candidate body; this is a defense-in-depth storage check, not a substitute for full block/consensus validation.
 
 ## Required evidence package for protocol freeze
 
