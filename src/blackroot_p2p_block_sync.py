@@ -6,6 +6,7 @@ a block payload: only requested, best-chain headers may be connected.
 """
 from __future__ import annotations
 
+import math
 import time
 from collections.abc import Callable
 
@@ -51,15 +52,22 @@ class BlockBodyRequestTracker:
             raise ValueError("block body is already outstanding")
         if len(self._pending) >= self.max_outstanding:
             raise ValueError("maximum outstanding block-body requests reached")
-        self._pending[block_hash] = (node.height, self._clock())
+        requested_at = self._clock()
+        if (
+            isinstance(requested_at, bool)
+            or not isinstance(requested_at, (int, float))
+            or not math.isfinite(requested_at)
+        ):
+            raise ValueError("clock must return a finite timestamp")
+        self._pending[block_hash] = (node.height, requested_at)
         return node.height
 
     def expire(self, timeout: float, *, now: float | None = None) -> tuple[bytes, ...]:
         """Remove and return requests whose age reached timeout seconds."""
-        if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0:
+        if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))\n                or not math.isfinite(timeout) or timeout <= 0):
             raise ValueError("timeout must be a positive number")
         current = self._clock() if now is None else now
-        if isinstance(current, bool) or not isinstance(current, (int, float)):
+        if (isinstance(current, bool) or not isinstance(current, (int, float))\n                or not math.isfinite(current)):
             raise ValueError("now must be a number")
         expired = tuple(
             block_hash for block_hash, (_, requested_at) in self._pending.items()
