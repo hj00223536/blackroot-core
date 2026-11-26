@@ -85,9 +85,10 @@ class GenesisPackageInventoryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unexpected"):
             audit_genesis_package_inventory(files, expected_sha256=pins(files))
         files = package()
+        expected = pins(files)
         files["manifest.json"] = "not bytes"
         with self.assertRaisesRegex(TypeError, "must be supplied as bytes"):
-            audit_genesis_package_inventory(files, expected_sha256=pins(files))
+            audit_genesis_package_inventory(files, expected_sha256=expected)
 
 
 if __name__ == "__main__":
