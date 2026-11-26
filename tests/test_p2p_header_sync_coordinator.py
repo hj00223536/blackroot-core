@@ -89,14 +89,16 @@ class PeerHeaderSyncTests(unittest.IsolatedAsyncioTestCase):
             )
 
     async def test_header_sync_fails_closed_without_clock_provider(self):
-        sync = PeerHeaderSync(self.chain, protocol_version=70001)
+        clockless_chain = HeaderChain(POW_LIMIT, self.genesis)
+        sync = PeerHeaderSync(clockless_chain, protocol_version=70001)
         with self.assertRaisesRegex(RuntimeError, "requires an adjusted-time provider"):
             await sync.handle_message(FakePeer(), "headers", encode_headers([]))
 
     async def test_header_sync_rejects_invalid_clock_value(self):
-        sync = PeerHeaderSync(
-            self.chain, protocol_version=70001, adjusted_time=lambda: -1
+        invalid_clock_chain = HeaderChain(
+            POW_LIMIT, self.genesis, adjusted_time_provider=lambda: -1
         )
+        sync = PeerHeaderSync(invalid_clock_chain, protocol_version=70001)
         with self.assertRaisesRegex(ValueError, "non-negative integer"):
             await sync.handle_message(FakePeer(), "headers", encode_headers([]))
 
@@ -104,23 +106,24 @@ class PeerHeaderSyncTests(unittest.IsolatedAsyncioTestCase):
         def broken_clock():
             raise RuntimeError("clock unavailable")
 
-        sync = PeerHeaderSync(
-            self.chain, protocol_version=70001, adjusted_time=broken_clock
+        broken_clock_chain = HeaderChain(
+            POW_LIMIT, self.genesis, adjusted_time_provider=broken_clock
         )
+        sync = PeerHeaderSync(broken_clock_chain, protocol_version=70001)
         candidate = mine(self.genesis.hash, 2)
-        before_nodes = self.chain.nodes
-        before_tip = self.chain.best_hash
-        before_work = self.chain.chainwork
+        before_nodes = broken_clock_chain.nodes
+        before_tip = broken_clock_chain.best_hash
+        before_work = broken_clock_chain.chainwork
 
         with self.assertRaisesRegex(RuntimeError, "clock unavailable"):
             await sync.handle_message(
                 FakePeer(), "headers", encode_headers([candidate])
             )
 
-        self.assertEqual(self.chain.nodes, before_nodes)
-        self.assertEqual(self.chain.best_hash, before_tip)
-        self.assertEqual(self.chain.chainwork, before_work)
-        self.assertIsNone(self.chain.node(candidate.hash))
+        self.assertEqual(broken_clock_chain.nodes, before_nodes)
+        self.assertEqual(broken_clock_chain.best_hash, before_tip)
+        self.assertEqual(broken_clock_chain.chainwork, before_work)
+        self.assertIsNone(broken_clock_chain.node(candidate.hash))
 
     async def test_header_at_exact_future_time_boundary_is_accepted(self):
         boundary = mine(self.genesis.hash, 107_200)
