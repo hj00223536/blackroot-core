@@ -15,7 +15,7 @@
 | Compact precision | Encoding discards low-order target precision; decoded target can be slightly below the uncompressed integer result | Confirm canonical compact encoding and reject non-canonical alternatives consistently |
 | Median time past | Median of up to 11 timestamps ending at the candidate's parent | Confirm ancestor count and genesis handling |
 | Future timestamp | HeaderChain checks a future bound only if caller supplies adjusted_time; default allowance is 7,200 seconds | Define a trusted network-adjusted clock, peer-time algorithm, and mandatory validation path |
-| Branch choice | Select greatest cumulative work; equal-work tie-break uses deterministic raw-hash ordering | Confirm tie-break and reorg policy |
+| Branch choice | Prototype selects greatest cumulative work; equal-work tie-break selects the lexicographically smallest raw header hash. Persistent UTXO reorganization now follows the selected header tip even on equal-work ties | Owner decision on tie-break, reorg limits/recovery and independent cross-client vectors remains open |
 | Subsidy | 10 BRT per block at heights 1 through 2,000,000 inclusive; zero at height 0 and after height 2,000,000 | Complete independent cross-client monetary vectors |
 | Maximum supply | 20,000,000 BRT founder genesis allocation plus maximum 20,000,000 BRT scheduled mining issuance; 40,000,000 BRT total ceiling | Implement and verify spendable founder genesis output |
 | Script support | Strict legacy P2PKH/SIGHASH_ALL subset; unsupported scripts and sighash modes rejected | Define full transaction/script language or explicitly freeze a limited language |
@@ -33,7 +33,7 @@ The [difficulty-adjustment policy](difficulty-adjustment-policy-proposal.md) rec
 1. **First retarget period:** the owner-approved boundary convention is documented; independently reproduce vectors at heights 2,015, 2,016, 2,017 and across a reorganization.
 2. **Timestamp validity:** specify MTP, future-time bound, clock adjustment, missing-clock behavior, and whether all node entry points enforce the same rule.
 3. **Difficulty arithmetic:** owner-approved constants and integer arithmetic are documented; independently reproduce compact encoding canonicality and PoW-limit edge behavior.
-4. **Chain selection:** specify cumulative-work comparison, equal-work behavior, and reorganization limits/recovery.
+4. **Chain selection:** cumulative-work selection and the prototype equal-work tie-break are documented; owner decision on whether to freeze that tie-break, reorganization limits/recovery, and independent cross-client vectors remains open.
 5. **Script and transaction validity:** publish the complete supported script set, sighash rules, locktime/sequence semantics, serialization, and consensus limits.
 6. **Founder genesis output:** construct and independently verify the spendable founder allocation without committing private key material.
 
