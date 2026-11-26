@@ -79,6 +79,30 @@ class PersistentHeaderStoreTests(unittest.TestCase):
         self.assertEqual([h.hash for h in disconnect], [main_one.hash])
         self.assertEqual([h.hash for h in connect], [side_one.hash, side_two.hash])
 
+
+    def test_side_branch_rebuild_uses_one_clock_sample_per_admission(self):
+        clock_calls = []
+        store = PersistentHeaderStore(
+            self.path,
+            POW_LIMIT,
+            self.genesis,
+            adjusted_time_provider=lambda: clock_calls.append(1_000_000) or 1_000_000,
+        )
+        main = mine(self.genesis.hash, 2)
+        side = mine(self.genesis.hash, 3)
+        store.add_to_branch(main)
+        self.assertEqual(len(clock_calls), 1)
+        store.add_to_branch(side)
+        self.assertEqual(len(clock_calls), 2)
+        reopened = PersistentHeaderStore(
+            self.path,
+            POW_LIMIT,
+            self.genesis,
+            adjusted_time_provider=lambda: clock_calls.append(1_000_000) or 1_000_000,
+        )
+        self.assertEqual(reopened.chain.height, 1)
+        self.assertEqual(len(clock_calls), 3)
+
     def test_rejects_network_parameter_mismatch(self):
         self.open_store()
         with self.assertRaisesRegex(RuntimeError, "parameters do not match"):
