@@ -58,6 +58,11 @@ def _deserialize_transaction_from(raw: bytes, offset: int = 0) -> tuple["Transac
     input_count, offset = _read_compact_size(raw, offset)
     if not 1 <= input_count <= MAX_VECTOR_ITEMS:
         raise ValueError("unsupported transaction input count")
+    # Every serialized input needs at least 41 bytes (outpoint, empty
+    # CompactSize script, and sequence). Reject impossible counts before
+    # entering attacker-controlled loops or allocating input objects.
+    if input_count > (MAX_TRANSACTION_SIZE - (offset - start)) // 41:
+        raise ValueError("serialized transaction exceeds prototype size limit")
     inputs = []
     for _ in range(input_count):
         if offset + 36 > len(raw):
@@ -71,9 +76,15 @@ def _deserialize_transaction_from(raw: bytes, offset: int = 0) -> tuple["Transac
         sequence = struct.unpack_from("<I", raw, offset)[0]
         offset += 4
         inputs.append(TxInput(OutPoint(txid, index), script_sig, sequence))
+        if offset - start > MAX_TRANSACTION_SIZE:
+            raise ValueError("serialized transaction exceeds prototype size limit")
     output_count, offset = _read_compact_size(raw, offset)
     if not 1 <= output_count <= MAX_VECTOR_ITEMS:
         raise ValueError("unsupported transaction output count")
+    # Every serialized output needs at least nine bytes (value and empty
+    # CompactSize script); bound the loop against the remaining byte budget.
+    if output_count > (MAX_TRANSACTION_SIZE - (offset - start)) // 9:
+        raise ValueError("serialized transaction exceeds prototype size limit")
     outputs = []
     for _ in range(output_count):
         if offset + 8 > len(raw):
@@ -82,6 +93,8 @@ def _deserialize_transaction_from(raw: bytes, offset: int = 0) -> tuple["Transac
         offset += 8
         script_pubkey, offset = _read_varbytes(raw, offset)
         outputs.append(TxOutput(value, script_pubkey))
+        if offset - start > MAX_TRANSACTION_SIZE:
+            raise ValueError("serialized transaction exceeds prototype size limit")
     if offset + 4 > len(raw):
         raise ValueError("truncated transaction lock_time")
     lock_time = struct.unpack_from("<I", raw, offset)[0]
