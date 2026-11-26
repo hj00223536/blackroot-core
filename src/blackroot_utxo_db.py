@@ -347,10 +347,13 @@ class UTXOStore:
             if integrity != [("ok",)]:
                 raise RuntimeError(f"UTXO SQLite integrity check failed: {integrity!r}")
             issued = db.execute("SELECT COALESCE(SUM(subsidy_issued), 0) FROM blocks").fetchone()[0]
+            bootstrap_row = db.execute(
+                "SELECT value FROM metadata WHERE key='bootstrap_issued_sats'"
+            ).fetchone()
+            if bootstrap_row is None:
+                raise RuntimeError("persisted bootstrap issuance metadata is malformed")
             try:
-                bootstrap_issued = int(db.execute(
-                    "SELECT value FROM metadata WHERE key='bootstrap_issued_sats'"
-                ).fetchone()[0])
+                bootstrap_issued = int(bootstrap_row[0])
             except (TypeError, ValueError) as exc:
                 raise RuntimeError("persisted bootstrap issuance metadata is malformed") from exc
             if bootstrap_issued < 0 or issued < 0 or bootstrap_issued + issued > TOTAL_SUPPLY_CAP:
