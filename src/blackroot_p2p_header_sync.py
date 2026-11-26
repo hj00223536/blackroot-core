@@ -127,10 +127,17 @@ class PeerHeaderSync:
             await peer.send("headers", self.make_headers_response(payload))
             return
         if command == "headers":
+            # When the chain owns a configured clock, let HeaderChain sample it
+            # exactly once for the atomic batch. Standalone sync chains use the
+            # coordinator's explicitly supplied clock instead.
+            adjusted_time = (
+                None if self.chain.adjusted_time_provider is not None
+                else self._now()
+            )
             accepted = accept_headers_payload(
                 self.chain,
                 payload,
-                adjusted_time=self._now(),
+                adjusted_time=adjusted_time,
                 max_future_seconds=self.max_future_seconds,
                 on_commit=self.on_headers_validated,
             )
