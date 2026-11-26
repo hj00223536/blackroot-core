@@ -26,6 +26,20 @@ class BootstrapIssuanceBoundaryTests(unittest.TestCase):
                     references.append((source_path.name, node.lineno))
                     if isinstance(node.ctx, ast.Load):
                         call_sites.append((source_path.name, node.lineno))
+                elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                    for imported in node.names:
+                        if imported.name == "add_genesis_output":
+                            references.append((source_path.name, node.lineno))
+                elif (
+                    isinstance(node, ast.Call)
+                    and isinstance(node.func, ast.Name)
+                    and node.func.id in {"getattr", "setattr", "hasattr"}
+                    and len(node.args) >= 2
+                    and isinstance(node.args[1], ast.Constant)
+                    and node.args[1].value == "add_genesis_output"
+                ):
+                    references.append((source_path.name, node.lineno))
+                    call_sites.append((source_path.name, node.lineno))
 
         self.assertEqual(definitions, ["blackroot_utxo_db.py"])
         self.assertEqual(
