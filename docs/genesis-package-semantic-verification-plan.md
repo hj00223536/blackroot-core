@@ -64,6 +64,10 @@ Before any semantic verifier can be considered reviewable, tests must cover:
 - Deterministic evidence reports and explicit negative assertions that verification alone does not authorize release or issuance.
 - Initializer crash/fault injection, duplicate invocation, database rollback, and post-initialization tampering — only after the initializer design has been independently reviewed.
 
+## Trust validator input consistency
+
+The trust-configuration validator now snapshots the caller's top-level mapping and copies each key entry and mutable scopes list before checking fields, sequence, predecessor, key identifiers, statuses, scopes, and digests. Its regression test uses a mapping that changes the configuration version on a second read and confirms validation consumes the captured value once. This is an in-process consistency safeguard only: it does not authenticate the external digest pin, protect persistent anti-rollback state, or establish governance over trusted keys.
+
 ## Manifest validator input consistency
 
 The v2 structural validator now snapshots a caller-supplied mapping once and uses only that snapshot for schema, digest, network, transaction, founder-output, and supply checks. A regression test supplies a custom mapping that changes the founder amount on a second read; validation must consume the first captured value exactly once. This protects the validator from inconsistent repeated reads of a mutable mapping during one validation call. It does not authenticate the manifest source or replace canonical parsing of the original package bytes.
