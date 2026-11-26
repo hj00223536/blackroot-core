@@ -18,11 +18,9 @@ LAST_MINING_HEIGHT = 2_000_000
 
 
 def block_subsidy(height: int) -> int:
-    """Return genesis founder issuance at height 0, or mining subsidy thereafter."""
+    """Return mining subsidy only; genesis founder issuance is not a block reward."""
     if not isinstance(height, int) or isinstance(height, bool) or height < 0:
         raise ValueError("height must be a non-negative integer")
-    if height == 0:
-        return FOUNDER_ALLOCATION
     if FIRST_MINING_HEIGHT <= height <= LAST_MINING_HEIGHT:
         return BLOCK_SUBSIDY
     return 0
