@@ -44,6 +44,22 @@ class Base58CheckTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "version"):
             decode_base58check(address, expected_version=0x00)
 
+    def test_decoder_rejects_invalid_expected_version_argument(self):
+        address = encode_base58check(0x26, b"\x11" * 20)
+        for version in (-1, 256, True, "38"):
+            with self.subTest(version=version), self.assertRaisesRegex(
+                ValueError, "expected_version must be a uint8"
+            ):
+                decode_base58check(address, expected_version=version)
+
+    def test_decoder_rejects_invalid_payload_length_argument(self):
+        address = encode_base58check(0x26, b"\x11" * 20)
+        for length in (0, -1, True, "20"):
+            with self.subTest(length=length), self.assertRaisesRegex(
+                ValueError, "payload_length must be a positive integer"
+            ):
+                decode_base58check(address, payload_length=length)
+
     def test_rejects_bad_checksum(self):
         address = encode_base58check(0x26, b"\x22" * 20)
         replacement = "1" if address[-1] != "1" else "2"
