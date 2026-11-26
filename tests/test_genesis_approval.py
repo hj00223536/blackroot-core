@@ -4,7 +4,7 @@ import unittest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives import serialization
 
-from src.blackroot_genesis_approval import approval_message, verify_genesis_approval_record
+from src.blackroot_genesis_approval import (approval_message, parse_genesis_approval_record_json, verify_genesis_approval_record)
 
 
 # RFC 8032 test vector seed/public key; public test material only.
@@ -76,6 +76,14 @@ class GenesisApprovalTests(unittest.TestCase):
         changed = dict(self.record, signature=self.record["signature"].upper())
         with self.assertRaisesRegex(ValueError, "canonical lowercase"):
             self.verify(changed)
+
+    def test_strict_approval_json_rejects_duplicate_keys_floats_and_non_objects(self):
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            parse_genesis_approval_record_json('{"record_version":1,"record_version":1}')
+        with self.assertRaisesRegex(ValueError, "floating-point"):
+            parse_genesis_approval_record_json('{"record_version":1.0}')
+        with self.assertRaisesRegex(ValueError, "root must be an object"):
+            parse_genesis_approval_record_json('[]')
 
     def test_public_key_trust_anchor_must_match_identifier(self):
         wrong = {self.key_id: bytes(32)}
