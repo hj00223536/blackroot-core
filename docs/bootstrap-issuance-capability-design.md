@@ -6,7 +6,7 @@
 
 The current `UTXOStore.add_genesis_output(outpoint, output)` method is a trusted pre-chain storage primitive. It checks that no block has been activated and that cumulative bootstrap issuance remains below the supply cap. It does **not** authenticate the caller, prove owner approval, or prove that an output belongs in the canonical genesis transaction.
 
-The AST regression test scans the current flat `src/*.py` production tree for direct names/attributes, imports, and common literal-string reflective lookups (including `getattr`, `setattr`, `hasattr`, `globals()`, and `__dict__` forms, plus simple constant-foldable string concatenation and literal-only f-strings). It is a regression tripwire, not a security boundary: dynamically constructed names, code outside that scan, external Python callers, modified source, direct database writes, and runtime introspection can bypass static analysis.
+The AST regression test scans the current flat `src/*.py` production tree for direct names/attributes, imports, and common literal-string reflective lookups (including `getattr`, `setattr`, `hasattr`, `globals()`, and `__dict__` forms, plus simple constant-foldable string concatenation and literal-only f-strings). A regression test explicitly records that runtime-built names (for example, `''.join([...])`) are outside the scanner's scope. It is a regression tripwire, not a security boundary: dynamically constructed names, code outside that scan, external Python callers, modified source, direct database writes, and runtime introspection can bypass static analysis.
 
 ## Required design properties
 
