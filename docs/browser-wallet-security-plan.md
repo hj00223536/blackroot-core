@@ -4,7 +4,7 @@ Status: design only; not a usable wallet and not approved for mainnet funds.
 
 ## User requirement
 
-The founder wants a browser-based wallet that can be opened on a phone without a terminal. The owner-approved monetary design is 20,000,000 BRT for the founder and 20,000,000 BRT for mining, with a proposed 40,000,000 BRT maximum supply. The reference subsidy helper now represents the 20,000,000 BRT founder issuance allowance at genesis height 0 and 10 BRT mining rewards at heights 1–2,000,000. The repository CI run 45731576058 completed successfully: Python 3.12, Python 3.13, and the independent Node.js 22 genesis/vector job all passed. This validates those test suites only; it does not establish launch readiness or validate the founder output, which is still absent.
+The founder wants a browser-based wallet that can be opened on a phone without a terminal. The owner-approved monetary design is 20,000,000 BRT for the founder and 20,000,000 BRT for mining, with a proposed 40,000,000 BRT maximum supply. The reference subsidy helper returns zero at genesis height 0 and 10 BRT mining subsidy at heights 1–2,000,000. The founder allocation is a separate planned genesis output and has not been issued. A persistent schema-v5 issuance ledger records the consensus subsidy budget on the active block chain and counts trusted bootstrap outputs against the proposed 40,000,000 BRT ceiling. The latest changes are undergoing GitHub Actions validation; passing reference tests alone does not establish launch readiness.
 
 ## Current blockers verified in the repository
 
@@ -30,7 +30,8 @@ The founder wants a browser-based wallet that can be opened on a phone without a
 ## Implementation sequence
 
 - [ ] Freeze chain identity and address encoding (network magic, address prefix/version, checksum, public-key format, ports, protocol version).
-- [x] Record the owner-approved 40,000,000 BRT monetary ceiling and exact 20,000,000 BRT mining emission schedule in the reference implementation; CI and full integration review remain pending.
+- [x] Record the owner-approved 40,000,000 BRT monetary ceiling and exact 20,000,000 BRT mining emission schedule in the reference implementation.
+- [x] Add persistent active-chain subsidy-budget accounting, rollback/reorganization handling, bootstrap-output accounting, and schema-v5 read-only preflight checks; latest CI results are still pending.
 - [ ] Implement and test founder genesis output construction and spendability. The current genesis candidate remains zero-value OP_RETURN.
 - [ ] Implement and test address encode/decode with independent test vectors.
 - [ ] Add a browser app with pinned, bundled cryptographic dependencies and no secret-bearing network requests.
