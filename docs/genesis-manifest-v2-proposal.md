@@ -47,6 +47,23 @@ The approval record is distributed alongside the manifest as part of a reviewed 
 
 The current helper `verify_validated_genesis_manifest_approval()` implements only step 6/7's prototype signature-binding portion. It does not implement steps 1–5, 8, or 9 and is not called automatically by node startup.
 
+### Current v2 prototype evidence
+
+The repository contains a Python structural validator and strict JSON parser in
+`src/blackroot_genesis_manifest_v2.py`, with negative and positive fixtures in
+`tests/test_genesis_manifest_v2.py`. A small canonical digest fixture is
+reproduced independently by Python and Node.js in
+`scripts/verify_genesis_manifest_v2_jcs.mjs` and the CI workflow.
+
+Fixture digest:
+
+`d5d7ee8495437bc233533966de69a8cb59583dc15f311fea8819a6bff6f604dd`
+
+This fixture verifies canonical serialization and domain separation only; it
+is not a valid activation manifest, does not freeze network constants, and
+does not authorize issuance. Full independent cross-client consensus
+validation remains an open gate.
+
 ## 5. Migration and compatibility
 
 - Do not reinterpret v1 manifests as v2.
