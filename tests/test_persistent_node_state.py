@@ -124,7 +124,7 @@ class PersistentNodeStateTests(unittest.TestCase):
         state = self.coordinated_state()
         try:
             candidate = make_block(self.genesis_block.header.hash, 1, 2)
-            state.add_header(candidate.header, adjusted_time=2)
+            state.add_header(candidate.header)
             self.assertEqual(state.headers.chain.best_hash, candidate.header.hash)
             self.assertEqual(state.utxos.tip(), None)
         finally:
@@ -135,7 +135,7 @@ class PersistentNodeStateTests(unittest.TestCase):
         try:
             state.connect_best_block(self.genesis_block, 0)
             candidate = make_block(self.genesis_block.header.hash, 1, 2)
-            state.add_header(candidate.header, adjusted_time=2)
+            state.add_header(candidate.header)
             state.archive_block_body(candidate)
             self.assertEqual(
                 state.reorganize_best(),
@@ -167,7 +167,7 @@ class PersistentNodeStateTests(unittest.TestCase):
             a1 = branch_block(self.genesis_block.header.hash, 1, 2, b"A")
             a2 = branch_block(a1.header.hash, 2, 3, b"A")
             for block, timestamp in ((a1, 2), (a2, 3)):
-                state.add_header(block.header, adjusted_time=timestamp)
+                state.add_header(block.header)
                 state.archive_block_body(block)
             self.assertEqual(state.reorganize_best(), (2, a2.header.hash))
             self.assertEqual(state.utxos.tip(), (2, a2.header.hash))
@@ -178,7 +178,7 @@ class PersistentNodeStateTests(unittest.TestCase):
             b2 = branch_block(b1.header.hash, 2, 5, b"B")
             b3 = branch_block(b2.header.hash, 3, 6, b"B")
             for block, timestamp in ((b1, 4), (b2, 5), (b3, 6)):
-                state.add_header(block.header, adjusted_time=timestamp)
+                state.add_header(block.header)
                 state.archive_block_body(block)
 
             self.assertEqual(state.headers.chain.best_hash, b3.header.hash)
@@ -221,7 +221,7 @@ class PersistentNodeStateTests(unittest.TestCase):
             a1 = branch_block(self.genesis_block.header.hash, 1, 2, b"A")
             a2 = branch_block(a1.header.hash, 2, 3, b"A")
             for block, timestamp in ((a1, 2), (a2, 3)):
-                state.add_header(block.header, adjusted_time=timestamp)
+                state.add_header(block.header)
                 state.archive_block_body(block)
             state.reorganize_best()
             original_tip = state.utxos.tip()
@@ -231,7 +231,7 @@ class PersistentNodeStateTests(unittest.TestCase):
             b2 = branch_block(b1.header.hash, 2, 5, b"B")
             b3 = branch_block(b2.header.hash, 3, 6, b"B")
             for block, timestamp in ((b1, 4), (b2, 5), (b3, 6)):
-                state.add_header(block.header, adjusted_time=timestamp)
+                state.add_header(block.header)
                 state.archive_block_body(block)
 
             original_reorganize = state.utxos.reorganize
@@ -263,7 +263,7 @@ class PersistentNodeStateTests(unittest.TestCase):
         try:
             state.connect_best_block(self.genesis_block, 0)
             candidate = make_block(self.genesis_block.header.hash, 1, 2)
-            state.add_header(candidate.header, adjusted_time=2)
+            state.add_header(candidate.header)
             state.archive_block_body(candidate)
             original_reconcile = state.recovery_journal.reconcile
 
@@ -393,7 +393,7 @@ class PersistentNodeStateTests(unittest.TestCase):
         state.connect_best_block(self.genesis_block, 0)
 
         candidate = make_block(self.genesis_block.header.hash, 1, 2)
-        state.add_header(candidate.header, adjusted_time=2)
+        state.add_header(candidate.header)
 
         # Simulate a crash after the header DB commit but before body/UTXO commit.
         reopened = self.state()
@@ -421,7 +421,7 @@ class PersistentNodeStateTests(unittest.TestCase):
         state = self.state()
         state.connect_best_block(self.genesis_block, 0)
         candidate = make_block(self.genesis_block.header.hash, 1, 2)
-        state.add_header(candidate.header, adjusted_time=2)
+        state.add_header(candidate.header)
         old_tip = state.utxos.tip()
         new_tip = (1, candidate.header.hash)
         state.recovery_journal.prepare(old_tip, new_tip)
@@ -436,7 +436,7 @@ class PersistentNodeStateTests(unittest.TestCase):
         state = self.state()
         state.connect_best_block(self.genesis_block, 0)
         candidate = make_block(self.genesis_block.header.hash, 1, 2)
-        state.add_header(candidate.header, adjusted_time=2)
+        state.add_header(candidate.header)
         old_tip = state.utxos.tip()
         new_tip = (1, candidate.header.hash)
         state.recovery_journal.prepare(old_tip, new_tip)
@@ -454,8 +454,8 @@ class PersistentNodeStateTests(unittest.TestCase):
         state.connect_best_block(self.genesis_block, 0)
         first = make_block(self.genesis_block.header.hash, 1, 2)
         second = make_block(first.header.hash, 2, 3)
-        state.add_header(first.header, adjusted_time=2)
-        state.add_header(second.header, adjusted_time=3)
+        state.add_header(first.header)
+        state.add_header(second.header)
         state.recovery_journal.prepare(
             state.utxos.tip(), (1, first.header.hash)
         )
@@ -475,8 +475,8 @@ class PersistentNodeStateTests(unittest.TestCase):
 
         first = make_block(self.genesis_block.header.hash, 1, 2)
         second = make_block(first.header.hash, 2, 3)
-        state.add_header(first.header, adjusted_time=2)
-        state.add_header(second.header, adjusted_time=3)
+        state.add_header(first.header)
+        state.add_header(second.header)
         state.archive_block_body(first)
         state.archive_block_body(second)
 
@@ -506,7 +506,7 @@ class PersistentNodeStateTests(unittest.TestCase):
         a1 = branch_block(self.genesis_block.header.hash, 1, 2, b"A")
         a2 = branch_block(a1.header.hash, 2, 3, b"A")
         for block, timestamp in ((a1, 2), (a2, 3)):
-            state.add_header(block.header, adjusted_time=timestamp)
+            state.add_header(block.header)
             state.archive_block_body(block)
         self.assertEqual(state.reorganize_best(), (2, a2.header.hash))
 
@@ -514,7 +514,7 @@ class PersistentNodeStateTests(unittest.TestCase):
         b2 = branch_block(b1.header.hash, 2, 5, b"B")
         b3 = branch_block(b2.header.hash, 3, 6, b"B")
         for block, timestamp in ((b1, 4), (b2, 5), (b3, 6)):
-            state.add_header(block.header, adjusted_time=timestamp)
+            state.add_header(block.header)
             state.archive_block_body(block)
 
         # Simulate shutdown before switching the UTXO state to branch B.
@@ -543,7 +543,7 @@ class PersistentNodeStateTests(unittest.TestCase):
             2,
         )
         bad_block = Block(bad_header, (bad_coinbase,))
-        state.add_header(bad_header, adjusted_time=2)
+        state.add_header(bad_header)
         state.archive_block_body(bad_block)
 
         reopened = self.state()
@@ -558,7 +558,7 @@ class PersistentNodeStateTests(unittest.TestCase):
         state = self.state()
         state.connect_best_block(self.genesis_block, 0)
         candidate = make_block(self.genesis_block.header.hash, 1, 2)
-        state.add_header(candidate.header, adjusted_time=2)
+        state.add_header(candidate.header)
         state.archive_block_body(candidate)
 
         raw = candidate.serialize()
@@ -579,7 +579,7 @@ class PersistentNodeStateTests(unittest.TestCase):
     def test_refuses_to_archive_body_with_merkle_root_mismatch(self):
         state = self.state()
         candidate = make_block(self.genesis_block.header.hash, 1, 2)
-        state.add_header(candidate.header, adjusted_time=2)
+        state.add_header(candidate.header)
         wrong_tx = Transaction(
             1,
             (TxInput(
@@ -627,7 +627,7 @@ class PersistentNodeStateTests(unittest.TestCase):
         state = self.state()
         state.connect_best_block(self.genesis_block, 0)
         second = make_block(self.genesis_block.header.hash, 1, 2)
-        state.add_header(second.header, adjusted_time=2)
+        state.add_header(second.header)
         state.connect_best_block(second, 1)
         with managed_sqlite(sqlite3.connect(self.root / "utxos.sqlite")) as db:
             db.execute("DELETE FROM blocks WHERE height=0")
@@ -638,7 +638,7 @@ class PersistentNodeStateTests(unittest.TestCase):
         state = self.state()
         state.connect_best_block(self.genesis_block, 0)
         second = make_block(self.genesis_block.header.hash, 1, 2)
-        state.add_header(second.header, adjusted_time=2)
+        state.add_header(second.header)
         state.connect_best_block(second, 1)
         with managed_sqlite(sqlite3.connect(self.root / "utxos.sqlite")) as db:
             db.execute("UPDATE blocks SET prev_hash=? WHERE height=1", (bytes([0x11]) * 32,))
