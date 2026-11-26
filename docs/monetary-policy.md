@@ -1,32 +1,34 @@
-# BLACKROOT monetary policy
+# BLACKROOT BRT monetary policy
 
-## Units
+**Status: owner-approved monetary schedule; consensus integration is being tested. Network activation is not authorized.**
 
-- 1 BROOT = 100,000,000 atomic units.
-- Initial subsidy = 5,000,000,000 atomic units (50 BROOT).
-- Subsidy halves every 210,000 blocks using integer division by powers of two.
-- Subsidy becomes zero after 64 halvings.
+## Units and allocations
 
-## Formula
+- 1 BRT = 100,000,000 atomic units.
+- Founder genesis allocation: 20,000,000 BRT, intended to be spendable and not time-locked.
+- Maximum mining allocation: 20,000,000 BRT.
+- Maximum total supply: 40,000,000 BRT.
+
+## Mining formula
 
 For block height h:
 
-    halvings = floor(h / 210000)
-    subsidy_atomic = floor(5000000000 / 2^halvings)
+    subsidy(h) = 10 BRT, when 1 <= h <= 2,000,000
+    subsidy(h) = 0 BRT, otherwise
 
-The reference implementation uses a right shift on the integer atomic-unit subsidy, giving deterministic truncation.
+There are exactly 2,000,000 eligible mining heights. The maximum scheduled mining issuance is therefore exactly 20,000,000 BRT. At the proposed 600-second target spacing, that is approximately 38 years if blocks arrive on schedule.
 
-## Supply ceiling
+Height 0 has no mining subsidy. The founder allocation is a separate genesis output and must not be counted as mining rewards. Unclaimed subsidy is not carried forward. Fees transfer existing value and do not increase supply.
 
-The protocol ceiling is 2,100,000,000,000,000 atomic units (21,000,000 BROOT). Because each subsidy is rounded down to whole atomic units at every halving, the sum of scheduled subsidies is slightly below the ceiling. Fees transfer existing value and do not create new supply.
+## Consensus enforcement
 
-A full node must reject any block whose coinbase claims more than the allowed subsidy plus fees, and must maintain a supply-accounting invariant. The prototype helper calculates scheduled subsidy only; it does not validate coinbase transactions or total chain issuance.
+The reference block validator calculates the coinbase ceiling as the height subsidy plus transaction fees. Because each valid height has one accepted block and the subsidy is fixed only for heights 1 through 2,000,000, scheduled mining issuance cannot exceed 20,000,000 BRT on a single valid chain. The 40,000,000 BRT money range is used for transaction/output range checks.
 
-## Not specified yet
+Genesis construction must separately create and prove the 20,000,000 BRT founder output. It is not yet present in the current genesis candidate. No private key or receiving address is stored in source control.
 
-- Whether any tail emission exists (current proposal: no)
-- Fee policy and relay minimums
-- Coinbase maturity
-- Monetary policy change process
+## Remaining launch gates
 
-Changes to the emission schedule after mainnet launch would be a consensus change and require broad public review.
+- Implement the founder genesis output after a secure wallet has generated and independently verified a receiving address.
+- Publish independent transaction/genesis vectors and verify founder output spendability.
+- Complete P2P, full-node, consensus, script, security, and operational review.
+- Do not claim a live network, wallet balance, market price, exchange listing, or liquidity before independently verified deployment.
