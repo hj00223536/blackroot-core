@@ -120,7 +120,7 @@ class MultiPeerReorganizationSync:
         current = time.monotonic() if now is None else now
         if (not isinstance(current, (int, float)) or isinstance(current, bool)
                 or not math.isfinite(current)):
-            raise TypeError("now must be a monotonic timestamp")
+            raise ValueError("now must be a finite monotonic timestamp")
         expired = tuple(
             block_hash for block_hash, requested_at in self._requested_at.items()
             if current - requested_at >= timeout
