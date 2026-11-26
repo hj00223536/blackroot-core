@@ -99,13 +99,19 @@ class P2PSyncService:
                     elif self.chain.get(node.height).hash == item.item_hash:
                         peers = self._peers()
                         if self.store.tip() is None:
-                            # Genesis bootstrap is the only ordinary-body
-                            # path before a persistent active UTXO tip exists.
-                            try:
-                                await self.blocks.request_block(item.item_hash, peers)
-                            except ValueError as exc:
-                                if "already has an assigned source" not in str(exc) and "already outstanding" not in str(exc):
-                                    raise
+                            # Only the selected genesis body can bootstrap an
+                            # empty UTXO store; later heights must wait for it.
+                            if node.height == 0:
+                                try:
+                                    await self.blocks.request_block(item.item_hash, peers)
+                                except ValueError as exc:
+                                    if "already has an assigned source" not in str(exc) and "already outstanding" not in str(exc):
+                                        raise
+                        else:
+                            # Once initialized, the fork synchronizer owns all
+                            # missing bodies from the active tip to the selected
+                            # best header, avoiding out-of-order direct connects.
+                            await self.reorg.request_missing_bodies(peers)
                         else:
                             # Once initialized, the fork synchronizer owns all
                             # missing bodies from the active tip to the selected
@@ -122,6 +128,10 @@ class P2PSyncService:
                     self.reorg.accept_block(peer, payload)
                 elif self.blocks.pool.assigned_peer(block_hash) == peer:
                     self.blocks.accept_block(peer, payload)
+                    # Completing genesis may turn on ordered body sync for
+                    # headers that arrived before the UTXO chain was bootstrapped.
+                    if self.store.tip() is not None:
+                        await self.reorg.request_missing_bodies(self._peers())
                 else:
                     raise ValueError("block response was not assigned to this peer")
             elif command == "notfound":
