@@ -6,8 +6,8 @@ work branch selection. Non-genesis headers require an explicit network-adjusted
 time unless the caller opts into the clearly named test-only unchecked mode.
 
 This is not production consensus: it does not validate block bodies, scripts,
-UTXOs, or persistent branch state, and it does not itself obtain or require a
-trusted network-adjusted clock.
+UTXOs, or persistent branch state, and it requires callers to supply a network-adjusted time for every
+non-genesis header unless the explicit test-only bypass is enabled.
 """
 from __future__ import annotations
 
@@ -147,10 +147,16 @@ class HeaderChain:
             TARGET_SPACING * DIFFICULTY_INTERVAL,
         )
 
-    def add(self, header: BlockHeader) -> str:
+    def add(
+        self, header: BlockHeader, *, adjusted_time: int | None = None,
+        max_future_seconds: int = 7_200,
+    ) -> str:
         if header.prev_hash != self.best_hash:
             raise ValueError("header does not extend current tip")
-        return self.add_to_branch(header)
+        return self.add_to_branch(
+            header, adjusted_time=adjusted_time,
+            max_future_seconds=max_future_seconds,
+        )
 
     def add_to_branch(
         self, header: BlockHeader, *, adjusted_time: int | None = None,
