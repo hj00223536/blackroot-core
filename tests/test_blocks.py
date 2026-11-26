@@ -283,6 +283,26 @@ class BlockValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "exceeds subsidy"):
             validate_block_transactions(make_block([coinbase]), self.parent, 1)
 
+    def test_failed_later_transaction_preserves_parent_utxos_and_provenance(self):
+        first = signed_spend(
+            self.funding, self.previous_output,
+            output_script=self.previous_output.script_pubkey,
+        )
+        missing = OutPoint(bytes.fromhex("22" * 32), 0)
+        second = signed_spend(missing, self.previous_output)
+        provenance = {self.funding: UTXOProvenance(0, False)}
+        original_utxos = dict(self.parent)
+        original_provenance = dict(provenance)
+
+        with self.assertRaisesRegex(ValueError, "referenced UTXO does not exist"):
+            validate_block_transactions(
+                make_block([make_coinbase(1), first, second]),
+                self.parent, 1, provenance,
+            )
+
+        self.assertEqual(self.parent, original_utxos)
+        self.assertEqual(provenance, original_provenance)
+
     def test_coinbase_outpoint_collision_does_not_mutate_parent_utxos(self):
         coinbase = make_coinbase(1)
         collision = OutPoint(coinbase.txid, 0)
