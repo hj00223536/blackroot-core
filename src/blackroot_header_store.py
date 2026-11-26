@@ -251,10 +251,10 @@ class PersistentHeaderStore:
             raise ValueError("cannot persist a chain with a different genesis")
         if chain.pow_limit != self.pow_limit:
             raise ValueError("cannot persist a chain validated under a different proof-of-work limit")
-        if chain.adjusted_time_provider is not self.adjusted_time_provider:
-            raise ValueError("cannot persist a chain with a different adjusted-time provider")
         if chain.allow_unchecked_time_for_tests:
             raise ValueError("cannot persist a chain using the test-only unchecked-time mode")
+        if chain.adjusted_time_provider is not self.adjusted_time_provider:
+            raise ValueError("cannot persist a chain with a different adjusted-time provider")
         live_nodes = sorted(chain.nodes, key=lambda node: (node.height, node.header.hash))
         with self._write_scope() as db:
             rows = db.execute(
