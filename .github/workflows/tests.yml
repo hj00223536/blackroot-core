@@ -44,6 +44,8 @@ jobs:
         run: node scripts/verify_genesis_manifest_jcs.mjs
       - name: Verify independent genesis manifest v2 JCS digest vector
         run: node scripts/verify_genesis_manifest_v2_jcs.mjs
+      - name: Verify independent genesis trust configuration digest vector
+        run: node scripts/verify_genesis_trust_config.mjs
       - name: Verify legacy transaction serialization and CompactSize vectors
         run: node scripts/verify_transaction_vectors.mjs
       - name: Verify P2PKH signature and SIGHASH_ALL vectors
