@@ -17,6 +17,8 @@ from .blackroot_p2p_service import P2PSyncService
 class _NodeStateSyncStore:
     """Adapt P2P storage while routing activation through persistent node state."""
 
+    _blackroot_node_state_lifecycle = True
+
     def __init__(self, state: PersistentNodeState) -> None:
         if not isinstance(state, PersistentNodeState):
             raise TypeError("state must be a PersistentNodeState")
@@ -73,6 +75,7 @@ class BlackrootNodeRuntime:
             request_timeout=request_timeout,
             adjusted_time=adjusted_time,
             persist_headers=state.persist_synced_headers,
+            require_node_state_lifecycle=True,
         )
         self._closed = False
         self._retry_task: asyncio.Task | None = None
