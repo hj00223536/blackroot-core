@@ -40,6 +40,8 @@ A source-level review of the current Python call paths found:
 - The low-level `UTXOStore.connect_block()` and `UTXOStore.reorganize()` methods are storage primitives and explicitly do not independently authenticate header PoW, difficulty, ancestry, or greater chainwork. Current node-state wrappers route through the validated methods; tests also intentionally call low-level primitives to test storage behavior. Future production callers must not bypass the validated boundary.
 - `UTXOStore.add_genesis_output()` is a trusted pre-chain bootstrap primitive: it can insert an output before chain activation and counts it against the supply cap, but it does not authenticate who authorized the output. It must remain unavailable to untrusted network input and must not be used to manufacture the founder allocation. The current monetary module explicitly states that the founder output is not implemented in the genesis candidate.
 
+- A new AST regression guard, `tests/test_bootstrap_issuance_boundary.py`, asserts that the bootstrap issuer is defined only by `UTXOStore` and that no production module under `src/` directly references/calls it. This is a static direct-reference guard, not a capability system: it does not prevent external trusted Python callers, reflection, or future dynamic dispatch. A real issuance authorization boundary is still required before any production genesis can be assembled.
+
 ### Remaining release gates
 
 1. Add an explicit production API boundary or capability guard for bootstrap issuance, and test that network/P2P paths cannot invoke it. Genesis allocations must be committed by deterministic, reviewed genesis bytes, not an unauthenticated runtime call.
