@@ -298,7 +298,7 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
         )
         restarted = BlackrootNodeRuntime(
             reopened_state, manager, protocol_version=1, request_timeout=1,
-            adjusted_time=self.state.headers.adjusted_time_provider
+            adjusted_time=reopened_state.headers.adjusted_time_provider
         )
         try:
             address = await restarted.listen()
@@ -387,7 +387,7 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
         )
         remote = BlackrootNodeRuntime(
             remote_state, remote_manager, protocol_version=1, request_timeout=1,
-            adjusted_time=self.state.headers.adjusted_time_provider
+            adjusted_time=remote_state.headers.adjusted_time_provider
         )
         try:
             host, port = await remote.listen("127.0.0.1", 0)
