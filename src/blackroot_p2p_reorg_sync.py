@@ -114,10 +114,12 @@ class MultiPeerReorganizationSync:
 
     def expire_requests(self, timeout: float, *, now: float | None = None) -> tuple[bytes, ...]:
         """Release body requests older than timeout, using a monotonic clock."""
-        if (not isinstance(timeout, (int, float)) or isinstance(timeout, bool)\n                or not math.isfinite(timeout) or timeout <= 0):
+        if (not isinstance(timeout, (int, float)) or isinstance(timeout, bool)
+                or not math.isfinite(timeout) or timeout <= 0):
             raise ValueError("timeout must be a positive number")
         current = time.monotonic() if now is None else now
-        if (not isinstance(current, (int, float)) or isinstance(current, bool)\n                or not math.isfinite(current)):
+        if (not isinstance(current, (int, float)) or isinstance(current, bool)
+                or not math.isfinite(current)):
             raise TypeError("now must be a monotonic timestamp")
         expired = tuple(
             block_hash for block_hash, requested_at in self._requested_at.items()
