@@ -181,7 +181,9 @@ class PersistentHeaderStore:
                     raise RuntimeError("persistent genesis metadata mismatch during replay")
                 continue
             try:
-                replayed.add_to_branch(header, adjusted_time=replay_adjusted_time)
+                replayed._add_to_branch_with_time(
+                    header, adjusted_time=replay_adjusted_time
+                )
             except (TypeError, ValueError) as exc:
                 raise RuntimeError(f"persistent header replay rejected {actual_hash.hex()}: {exc}") from exc
             node = replayed.node(actual_hash)
@@ -212,10 +214,10 @@ class PersistentHeaderStore:
             replay_adjusted_time = self.adjusted_time_provider()
         nodes = (node for node in live_chain.nodes if node.height > 0)
         for node in nodes:
-            candidate.add_to_branch(
+            candidate._add_to_branch_with_time(
                 node.header, adjusted_time=replay_adjusted_time
             )
-        display_hash = candidate.add_to_branch(
+        display_hash = candidate._add_to_branch_with_time(
             header, adjusted_time=replay_adjusted_time,
             max_future_seconds=max_future_seconds,
         )
