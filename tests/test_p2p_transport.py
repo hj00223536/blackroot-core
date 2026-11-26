@@ -41,6 +41,28 @@ class PeerConnectionTests(unittest.IsolatedAsyncioTestCase):
             local_version=version(101),
         )
 
+    def test_rejects_boolean_minimum_protocol_version(self):
+        with self.assertRaisesRegex(ValueError, "positive integer"):
+            PeerConnection(
+                asyncio.StreamReader(),
+                FakeWriter(),
+                magic=MAGIC,
+                local_version=version(101),
+                min_protocol_version=True,
+            )
+
+    def test_rejects_non_finite_or_boolean_timeouts(self):
+        for timeout in (float("nan"), float("inf"), float("-inf"), True, 0, -1):
+            with self.subTest(timeout=timeout):
+                with self.assertRaisesRegex(ValueError, "finite positive"):
+                    PeerConnection(
+                        asyncio.StreamReader(),
+                        FakeWriter(),
+                        magic=MAGIC,
+                        local_version=version(101),
+                        handshake_timeout=timeout,
+                    )
+
     async def test_version_verack_handshake_completes(self):
         await self.peer.send("version", encode_version(version(101)))
         self.peer.handshake.mark_local_version_sent()
