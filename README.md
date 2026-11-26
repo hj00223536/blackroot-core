@@ -4,21 +4,20 @@
 
 BLACKROOT is an experimental independent UTXO-chain design. This repository contains reference consensus helpers and prototype components. It is not a production full node, wallet, miner, explorer, audited protocol, or public mainnet.
 
-## Proposed monetary and consensus parameters
+## Owner-approved monetary design
 
 - Native coin name: BLACKROOT
 - Ticker: BRT (provisional; availability and trademark status not established)
 - UTXO transaction model
-- Proof of Work using double SHA-256 (SHA-256d)
-- Target block interval: 600 seconds
-- Proposed difficulty adjustment interval: 2,016 blocks; normative boundary behavior is not finalized
-- Initial block subsidy: 50 BROOT
-- Halving interval: 210,000 blocks
-- Monetary precision: 100,000,000 atomic units per BROOT
-- No premine or founder allocation is proposed
-- Maximum supply ceiling: 21,000,000 BROOT
+- Proof of Work using double SHA-256 (SHA-256d), subject to independent protocol review
+- Target block interval: 600 seconds (provisional)
+- Difficulty adjustment interval: 2,016 blocks; normative boundary behavior is not finalized
+- Monetary precision: 100,000,000 atomic units per BRT
+- Founder genesis allocation: 20,000,000 BRT, intended to be spendable and not time-locked
+- Mining allocation: 20,000,000 BRT, scheduled at 10 BRT per block for heights 1 through 2,000,000 inclusive
+- Maximum proposed supply: 40,000,000 BRT
 
-With integer atomic-unit halving, total issuance is slightly below 21 million BROOT. These are design proposals, not yet frozen mainnet parameters or a promise of value.
+The owner-approved subsidy schedule is integrated into the reference consensus helper and is undergoing CI validation. The founder allocation has **not** yet been created in a spendable genesis output. The 40,000,000 BRT limit is not a claim that this amount currently exists or is held in a wallet.
 
 ## Repository map
 
@@ -43,11 +42,11 @@ Requires Python 3.10+.
 
 Do not use this prototype to store value, accept deposits, advertise an investment, or mine a public network. It is not a functioning public cryptocurrency network. A secure launch requires a complete and frozen protocol, independently reviewed full-node implementation, interoperable consensus tests, secure wallet and key management, P2P and DoS protections, reproducible signed releases, external security review, public testnet operation, incident response, and jurisdiction-specific legal clearance.
 
-No genesis hash, network identifier, address prefix, ports, DNS seeds, exchange listing, market price, or launch date is established by this repository.
+No mainnet genesis, exchange listing, market price, or launch date is established by this repository. Earlier network identity/address/port proposals remain provisional until collisions, interoperability and protocol rules are reviewed.
 
 ## Testnet launch status
 
-BLACKROOT has **not launched a public testnet**. A loopback-only local node CLI and strict JSON configuration loader now exist, but the testnet protocol and genesis are not approved/frozen, block-body sync and full consensus are incomplete, and no public operating infrastructure exists. See [Testnet launch gates](docs/testnet-launch-gates.md) for the verified blockers and required sequence. Testnet coins, if a future testnet is operated, will have no monetary value.
+BLACKROOT has **not launched a public testnet**. A loopback-only local node CLI and strict JSON configuration loader exist, but the testnet protocol and genesis are not approved/frozen, block-body sync and full consensus are incomplete, and no public operating infrastructure exists. See [Testnet launch gates](docs/testnet-launch-gates.md) for the verified blockers and required sequence. Testnet coins, if a future testnet is operated, will have no monetary value.
 
 ## Mainnet launch status
 
