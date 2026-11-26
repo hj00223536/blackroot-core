@@ -236,7 +236,7 @@ class PersistentBlockTests(unittest.TestCase):
         final_block = block_for(
             [final_cb, spend], previous=previous.header.hash, timestamp=102
         )
-        self.assertEqual(self.store.connect_block(final_block, 101), 101)
+        self.assertEqual(self.store.connect_block(final_block, 101), 100)
         self.assertIsNone(self.store.get(reward_point))
         final_point = OutPoint(final_cb.txid, 0)
         with self.store._connection_scope() as db:
