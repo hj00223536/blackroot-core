@@ -29,7 +29,7 @@ The owner approved this boundary formula and the stated difficulty parameters on
 The in-memory HeaderChain stores headers by hash, permits extending any known
 parent through add_to_branch, accumulates per-header work, and selects the
 branch with greatest cumulative work (with a deterministic raw-hash tie-break).
-The owner has not approved the chain-selection tie-break or reorganization policy.
+The owner has not approved the chain-selection tie-break or reorganization policy. A regression found and fixed a mismatch where the P2P fork-body downloader ignored an equal-work branch selected by the in-memory hash tie-break; the UTXO reorganization and P2P body-discovery paths now both follow the selected equal-work branch in prototype tests. This is implementation consistency, not owner approval of the tie-break.
 best_chain() returns the selected header path, and reorganization(old_tip_hash)
 reports headers to disconnect in tip-first order and headers to connect in
 fork-first order.
