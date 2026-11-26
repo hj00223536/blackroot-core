@@ -40,6 +40,9 @@ customer funds.
 
 ## Genesis issuance authorization gate
 
+Use the [genesis activation package checklist](genesis-activation-package-checklist.md) and [trust-anchor governance proposal](genesis-trust-anchor-governance-proposal.md) as review aids. They are proposals only and do not satisfy any approval, trust-anchor, or issuance gate.
+
+
 - [ ] Review and freeze the public manifest format in [genesis-manifest-spec.md](genesis-manifest-spec.md), including canonicalization and digest test vectors.
 - [ ] Record explicit owner approval for the exact manifest digest and founder locking script; keep all private key material outside source control.
 - [ ] Implement a one-time initializer that verifies the frozen genesis transaction and atomically commits the genesis identity, exact founder output, initialization marker, and auditable issuance record.
