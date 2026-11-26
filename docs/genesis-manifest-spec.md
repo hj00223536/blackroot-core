@@ -50,7 +50,7 @@ A future initializer must fail closed unless all checks pass:
 4. Confirm the selected output exists and its value and script bytes exactly match the manifest.
 5. Confirm the genesis block hash, network identifier, monetary cap, and mining schedule match the locally frozen network configuration.
 6. Confirm the founder output plus the maximum scheduled mining issuance does not exceed the total supply cap.
-7. Confirm the approval record exists in the reviewed release/governance history and explicitly approves this exact manifest digest.
+7. Verify a detached, cryptographically authenticated owner approval record under the separately pinned trust configuration described in [genesis-approval-record-spec.md](genesis-approval-record-spec.md). A non-empty text placeholder is not approval.
 8. Confirm the database is genuinely fresh: no blocks, active-chain state, UTXOs, previous initialization marker, bootstrap issuance, or conflicting chain metadata.
 9. Commit genesis identity, the exact genesis UTXO set, immutable initialization record, and issuance evidence atomically in one database transaction.
 10. On reopen, verify the stored record and genesis data against the same frozen manifest; never reissue or silently repair disagreement.
@@ -63,7 +63,7 @@ An exact repeated initialization may be idempotent only when the persisted manif
 - Never place private keys, seed phrases, passwords, or signing secrets in the manifest, repository, issues, CI variables, or logs.
 - Only the public locking script may be published, after explicit owner review and confirmation that it is the intended receive condition.
 - Do not send funds to an address derived from prototype cryptography. The current custom P2PKH verifier is not independently audited and must not protect real funds.
-- A public manifest digest is not a signature and does not establish owner identity by itself.
+- A public manifest digest is not a signature and does not establish owner identity by itself. The current non-empty `approval_record` string is only a structural placeholder; the detached signature proposal is not implemented.
 
 ## 6. Required tests before implementation is accepted
 
