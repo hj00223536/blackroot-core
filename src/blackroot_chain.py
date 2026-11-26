@@ -233,10 +233,13 @@ class HeaderChain:
         original_nodes = self._nodes.copy()
         original_best_hash = self._best_hash
         accepted = []
+        batch_adjusted_time = adjusted_time
+        if batch_adjusted_time is None and headers and self.adjusted_time_provider is not None:
+            batch_adjusted_time = self.adjusted_time_provider()
         try:
             for header in headers:
                 accepted.append(self.add_to_branch(
-                    header, adjusted_time=adjusted_time,
+                    header, adjusted_time=batch_adjusted_time,
                     max_future_seconds=max_future_seconds,
                 ))
         except Exception:
