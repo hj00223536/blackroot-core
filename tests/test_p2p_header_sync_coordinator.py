@@ -88,6 +88,16 @@ class PeerHeaderSyncTests(unittest.IsolatedAsyncioTestCase):
                 self.chain, protocol_version=70001, adjusted_time=lambda: 100_000
             )
 
+    def test_persistent_header_sync_requires_chain_clock_provider(self):
+        clockless_chain = HeaderChain(POW_LIMIT, self.genesis)
+        with self.assertRaisesRegex(ValueError, "persistent peer header sync requires"):
+            PeerHeaderSync(
+                clockless_chain,
+                protocol_version=70001,
+                adjusted_time=lambda: 100_000,
+                on_headers_validated=lambda candidate: None,
+            )
+
     async def test_header_sync_fails_closed_without_clock_provider(self):
         clockless_chain = HeaderChain(POW_LIMIT, self.genesis)
         sync = PeerHeaderSync(clockless_chain, protocol_version=70001)
