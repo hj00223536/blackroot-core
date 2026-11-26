@@ -415,6 +415,25 @@ store.apply(tx)
                 ("3",),
             )
 
+    def test_schema_v5_rejects_missing_bootstrap_issuance_metadata(self):
+        with _managed_sqlite(self.db_path) as db:
+            db.execute("DELETE FROM metadata WHERE key='bootstrap_issued_sats'")
+        with self.assertRaisesRegex(
+            RuntimeError, "missing bootstrap issuance metadata"
+        ):
+            UTXOStore(self.db_path)
+
+    def test_schema_v5_rejects_malformed_bootstrap_issuance_metadata(self):
+        with _managed_sqlite(self.db_path) as db:
+            db.execute(
+                "UPDATE metadata SET value='not-an-integer' "
+                "WHERE key='bootstrap_issued_sats'"
+            )
+        with self.assertRaisesRegex(
+            RuntimeError, "bootstrap issuance metadata is malformed"
+        ):
+            UTXOStore(self.db_path)
+
     def test_unknown_future_schema_rejection_preserves_existing_database(self):
         with _managed_sqlite(self.db_path) as db:
             db.execute(
