@@ -345,6 +345,31 @@ class BlockValidationTests(unittest.TestCase):
                 tuple(transactions),
             )
 
+    def test_approved_mining_subsidy_is_enforced_at_emission_boundaries(self):
+        from src.blackroot_monetary import LAST_MINING_HEIGHT
+
+        final_reward = make_coinbase(block_subsidy(LAST_MINING_HEIGHT))
+        validate_block_transactions(
+            make_block([final_reward]), {}, LAST_MINING_HEIGHT
+        )
+
+        overpaid_final = make_coinbase(block_subsidy(LAST_MINING_HEIGHT) + 1)
+        with self.assertRaisesRegex(ValueError, "coinbase reward exceeds"):
+            validate_block_transactions(
+                make_block([overpaid_final]), {}, LAST_MINING_HEIGHT
+            )
+
+        after_emission = make_coinbase(1)
+        with self.assertRaisesRegex(ValueError, "coinbase reward exceeds"):
+            validate_block_transactions(
+                make_block([after_emission]), {}, LAST_MINING_HEIGHT + 1
+            )
+
+        zero_reward = make_coinbase(0)
+        validate_block_transactions(
+            make_block([zero_reward]), {}, LAST_MINING_HEIGHT + 1
+        )
+
     def test_rejects_invalid_height(self):
         coinbase = make_coinbase(1)
         with self.assertRaisesRegex(ValueError, "height"):
