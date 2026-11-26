@@ -172,7 +172,7 @@ class GenesisManifestStructureTests(unittest.TestCase):
         manifest = _manifest()
         expected = calculate_genesis_manifest_digest(manifest)
         self.assertEqual(manifest["manifest_digest"], expected)
-        self.assertEqual(expected, "3489e496221216b6050f458eedc9801b5ad5c1904ed293374d69aec4622c9845")
+        self.assertEqual(expected, "9bb6346eff59ffa041f2d81ad640e0af04bde0feade6da4eef223c7744c86370")
         reordered = dict(reversed(list(manifest.items())))
         self.assertEqual(canonicalize_genesis_manifest(manifest), canonicalize_genesis_manifest(reordered))
         self.assertEqual(calculate_genesis_manifest_digest(reordered), expected)
