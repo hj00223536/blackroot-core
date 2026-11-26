@@ -2,7 +2,6 @@ import unittest
 
 from src.blackroot_consensus import (
     COIN,
-    HALVING_INTERVAL,
     MAX_MONEY,
     block_subsidy,
     check_proof_of_work,
@@ -11,34 +10,37 @@ from src.blackroot_consensus import (
     serialize_header,
     sha256d,
 )
+from src.blackroot_monetary import (
+    BLOCK_SUBSIDY,
+    LAST_MINING_HEIGHT,
+    MINING_ALLOCATION,
+    mining_issuance_through_height,
+)
 
 
 class SubsidyTests(unittest.TestCase):
-    def test_initial_and_halving_subsidies(self):
-        self.assertEqual(block_subsidy(0), 50 * COIN)
-        self.assertEqual(block_subsidy(HALVING_INTERVAL - 1), 50 * COIN)
-        self.assertEqual(block_subsidy(HALVING_INTERVAL), 25 * COIN)
-        self.assertEqual(block_subsidy(2 * HALVING_INTERVAL), 1_250_000_000)
-        self.assertEqual(block_subsidy(64 * HALVING_INTERVAL), 0)
+    def test_fixed_subsidy_and_boundaries(self):
+        self.assertEqual(block_subsidy(0), 0)
+        self.assertEqual(block_subsidy(1), 10 * COIN)
+        self.assertEqual(block_subsidy(LAST_MINING_HEIGHT), 10 * COIN)
+        self.assertEqual(block_subsidy(LAST_MINING_HEIGHT + 1), 0)
+        self.assertEqual(BLOCK_SUBSIDY, 10 * COIN)
 
     def test_invalid_height(self):
         for height in (-1, 1.5, True):
             with self.assertRaises(ValueError):
                 block_subsidy(height)
 
-
-    def test_full_scheduled_issuance_stays_below_max_money(self):
-        # Each halving epoch contains exactly HALVING_INTERVAL block heights.
-        # Integer truncation eventually makes the subsidy zero.
-        total_issuance = sum(
-            HALVING_INTERVAL * block_subsidy(epoch * HALVING_INTERVAL)
-            for epoch in range(64)
+    def test_full_scheduled_mining_issuance_equals_mining_allocation(self):
+        self.assertEqual(
+            mining_issuance_through_height(LAST_MINING_HEIGHT),
+            MINING_ALLOCATION,
         )
-        self.assertEqual(total_issuance, 2_099_999_997_690_000)
-        self.assertEqual(total_issuance, 20_999_999 * COIN + 97_690_000)
-        self.assertLess(total_issuance, MAX_MONEY)
-        self.assertEqual(block_subsidy(32 * HALVING_INTERVAL), 1)
-        self.assertEqual(block_subsidy(33 * HALVING_INTERVAL), 0)
+        self.assertEqual(MAX_MONEY, 40_000_000 * COIN)
+        self.assertEqual(
+            mining_issuance_through_height(LAST_MINING_HEIGHT) + 20_000_000 * COIN,
+            MAX_MONEY,
+        )
 
 
 class HashAndHeaderTests(unittest.TestCase):
@@ -74,8 +76,6 @@ class TargetAndPowTests(unittest.TestCase):
         self.assertFalse(check_proof_of_work(header, 0x207FFFFF, 1))
 
     def test_reject_compact_target_overflow_encodings(self):
-        # Bitcoin-style SetCompact overflow boundaries: exponent 35 always
-        # overflows for a non-zero mantissa; exponent 34 overflows above 0xff.
         for bits in (0x23000001, 0x22000100, 0x21010001):
             with self.subTest(bits=hex(bits)):
                 with self.assertRaises(ValueError):
@@ -102,7 +102,6 @@ class RetargetAndWorkTests(unittest.TestCase):
 
     def test_retarget_clamps_fast_and_slow_timespans(self):
         from src.blackroot_consensus import retarget_compact
-        # Start below the pow limit so slower timespans can increase target.
         bits = 0x1F3FFFFF
         limit = decode_compact_target(0x207FFFFF)
         previous_target = decode_compact_target(bits)
@@ -113,8 +112,6 @@ class RetargetAndWorkTests(unittest.TestCase):
         double_bits = retarget_compact(bits, target_span * 2, limit, target_span)
         exact_four_x_bits = retarget_compact(bits, target_span * 4, limit, target_span)
         four_x_bits = retarget_compact(bits, target_span * 20, limit, target_span)
-        # Fixed expected encodings independently derived from the specified
-        # integer formula and compact-target truncation.
         self.assertEqual(quarter_bits, 0x1F0FFFFF)
         self.assertEqual(exact_quarter_bits, quarter_bits)
         self.assertEqual(nominal_bits, 0x1F3FFFFF)
@@ -128,28 +125,19 @@ class RetargetAndWorkTests(unittest.TestCase):
         self.assertLessEqual(decode_compact_target(double_bits), previous_target * 2)
         self.assertLessEqual(decode_compact_target(four_x_bits), min(previous_target * 4, limit))
 
-
     def test_retarget_caps_new_target_at_pow_limit(self):
         from src.blackroot_consensus import retarget_compact
-
         limit_bits = 0x207FFFFF
         limit = decode_compact_target(limit_bits)
         harder_bits = 0x1F3FFFFF
-
-        # A four-times-slower period would exceed the configured limit when
-        # starting from an already-easy target; the result must be capped.
         self.assertEqual(
             retarget_compact(limit_bits, 2016 * 600 * 4, limit),
             limit_bits,
         )
-        # A previous target outside this network's limit is invalid input.
         with self.assertRaisesRegex(ValueError, "previous target exceeds"):
             retarget_compact(limit_bits, 2016 * 600, limit - 1)
-
-        # A valid harder target may retarget upward, but never above the cap.
         result = retarget_compact(harder_bits, 2016 * 600 * 4, limit)
         self.assertLessEqual(decode_compact_target(result), limit)
-
 
     def test_retarget_rejects_bad_inputs(self):
         from src.blackroot_consensus import retarget_compact
