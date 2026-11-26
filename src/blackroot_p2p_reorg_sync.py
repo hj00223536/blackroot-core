@@ -69,7 +69,7 @@ class MultiPeerReorganizationSync:
             return None
         if best_node.header.hash == active[1]:
             return None
-        if self.missing_best_branch_bodies() or self.pool.pending_hashes:
+        if self.missing_best_branch_bodies():
             return None
         _disconnect, connect = self.chain.reorganization(active[1])
         if not connect:
