@@ -60,6 +60,11 @@ class MultiPeerReorganizationSync:
         """Request all currently missing bodies; return hash-to-peer assignments."""
         requested = {}
         for block_hash in self.missing_best_branch_bodies():
+            # Header announcements and inventory messages can both trigger
+            # this method. Keep the shared pool idempotent instead of assigning
+            # the same body twice.
+            if self.pool.assigned_peer(block_hash) is not None:
+                continue
             available = [
                 peer_id for peer_id, peer in peers.items()
                 if getattr(peer, "connected", False)
