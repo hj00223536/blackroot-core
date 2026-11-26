@@ -93,6 +93,29 @@ class MultiPeerReorganizationSyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.sync.pool.pending_hashes, ())
         self.store.verify_integrity()
 
+    async def test_stale_requests_for_old_fork_do_not_block_complete_best_branch(self):
+        await self.sync.request_missing_bodies(self.peers)
+        stale_hashes = set(self.sync.pool.pending_hashes)
+        self.assertTrue(stale_hashes)
+
+        branch_one = mined_block(1, self.genesis.header.hash, 10)
+        self.chain.add_to_branch(branch_one.header)
+        branch_two = mined_block(2, branch_one.header.hash, 11)
+        self.chain.add_to_branch(branch_two.header)
+        branch_three = mined_block(3, branch_two.header.hash, 12)
+        self.chain.add_to_branch(branch_three.header)
+        self.assertEqual(self.chain.best_hash, branch_three.header.hash)
+
+        for block in (branch_one, branch_two, branch_three):
+            self.store.store_block_body(block)
+
+        assignments = await self.sync.request_missing_bodies(self.peers)
+
+        self.assertEqual(assignments, {})
+        self.assertEqual(self.store.tip(), (3, branch_three.header.hash))
+        self.assertEqual(set(self.sync.pool.pending_hashes), stale_hashes)
+        self.store.verify_integrity()
+
     def test_strict_lifecycle_mode_rejects_unmarked_store(self):
         with self.assertRaisesRegex(ValueError, "lifecycle adapter"):
             MultiPeerReorganizationSync(
