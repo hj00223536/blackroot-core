@@ -194,22 +194,25 @@ def validate_genesis_manifest_structure(
     """
     if not isinstance(manifest, Mapping):
         raise TypeError("manifest must be a mapping")
-    if set(manifest) != _REQUIRED_FIELDS:
-        missing = sorted(_REQUIRED_FIELDS - set(manifest))
-        unknown = sorted(set(manifest) - _REQUIRED_FIELDS)
+    # Snapshot caller-controlled input once so validation and digest checks
+    # cannot observe different values from a mutable Mapping.
+    manifest_snapshot = dict(manifest)
+    if set(manifest_snapshot) != _REQUIRED_FIELDS:
+        missing = sorted(_REQUIRED_FIELDS - set(manifest_snapshot))
+        unknown = sorted(set(manifest_snapshot) - _REQUIRED_FIELDS)
         raise ValueError(f"manifest fields mismatch (missing={missing}, unknown={unknown})")
-    if _require_uint(manifest["manifest_version"], "manifest_version") != 1:
+    if _require_uint(manifest_snapshot["manifest_version"], "manifest_version") != 1:
         raise ValueError("unsupported manifest_version")
 
-    digest = _require_lower_hex(manifest["manifest_digest"], "manifest_digest", exact_length=64)
-    calculated_digest = calculate_genesis_manifest_digest(manifest)
+    digest = _require_lower_hex(manifest_snapshot["manifest_digest"], "manifest_digest", exact_length=64)
+    calculated_digest = calculate_genesis_manifest_digest(manifest_snapshot)
     if digest != calculated_digest:
         raise ValueError("manifest_digest does not match canonical manifest contents")
-    network_id = _require_lower_hex(manifest["network_id"], "network_id", exact_length=64)
-    block_hash = _require_lower_hex(manifest["genesis_block_hash"], "genesis_block_hash", exact_length=64)
-    tx_hex = _require_lower_hex(manifest["genesis_coinbase_tx"], "genesis_coinbase_tx")
-    schedule_id = _require_lower_hex(manifest["mining_schedule_id"], "mining_schedule_id", exact_length=64)
-    script_hex = _require_lower_hex(manifest["founder_script_pub_key"], "founder_script_pub_key")
+    network_id = _require_lower_hex(manifest_snapshot["network_id"], "network_id", exact_length=64)
+    block_hash = _require_lower_hex(manifest_snapshot["genesis_block_hash"], "genesis_block_hash", exact_length=64)
+    tx_hex = _require_lower_hex(manifest_snapshot["genesis_coinbase_tx"], "genesis_coinbase_tx")
+    schedule_id = _require_lower_hex(manifest_snapshot["mining_schedule_id"], "mining_schedule_id", exact_length=64)
+    script_hex = _require_lower_hex(manifest_snapshot["founder_script_pub_key"], "founder_script_pub_key")
 
     if network_id != expected_network_id:
         raise ValueError("manifest network_id does not match frozen configuration")
@@ -227,10 +230,10 @@ def validate_genesis_manifest_structure(
     if coinbase.display_txid != expected_genesis_txid:
         raise ValueError("genesis coinbase txid does not match frozen configuration")
 
-    output_index = _require_uint(manifest["founder_output_index"], "founder_output_index")
+    output_index = _require_uint(manifest_snapshot["founder_output_index"], "founder_output_index")
     if output_index >= len(coinbase.outputs):
         raise ValueError("founder_output_index is outside the coinbase outputs")
-    amount = _require_uint(manifest["founder_amount_sats"], "founder_amount_sats")
+    amount = _require_uint(manifest_snapshot["founder_amount_sats"], "founder_amount_sats")
     if amount != expected_founder_amount_sats:
         raise ValueError("founder amount does not match frozen monetary policy")
     script = bytes.fromhex(script_hex)
@@ -238,14 +241,14 @@ def validate_genesis_manifest_structure(
     if output.value != amount or output.script_pubkey != script:
         raise ValueError("founder output value or locking script does not match manifest")
 
-    supply_cap = _require_uint(manifest["total_supply_cap_sats"], "total_supply_cap_sats")
+    supply_cap = _require_uint(manifest_snapshot["total_supply_cap_sats"], "total_supply_cap_sats")
     if supply_cap != expected_total_supply_cap_sats:
         raise ValueError("manifest supply cap does not match frozen monetary policy")
     mining_max = _require_uint(maximum_mining_issuance_sats, "maximum_mining_issuance_sats")
     if amount + mining_max != supply_cap:
         raise ValueError("founder allocation plus maximum mining issuance must equal supply cap")
 
-    approval_record = manifest["approval_record"]
+    approval_record = manifest_snapshot["approval_record"]
     if not isinstance(approval_record, str) or not approval_record.strip() or len(approval_record) > 512:
         raise ValueError("approval_record must be a non-empty reviewed-record reference")
 
