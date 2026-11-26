@@ -38,6 +38,16 @@ customer funds.
 - [ ] Establish reproducible builds, signed releases, dependency pinning,
   vulnerability response, monitoring, backups, and operational runbooks.
 
+## Genesis issuance authorization gate
+
+- [ ] Review and freeze the public manifest format in [genesis-manifest-spec.md](genesis-manifest-spec.md), including canonicalization and digest test vectors.
+- [ ] Record explicit owner approval for the exact manifest digest and founder locking script; keep all private key material outside source control.
+- [ ] Implement a one-time initializer that verifies the frozen genesis transaction and atomically commits the genesis identity, exact founder output, initialization marker, and auditable issuance record.
+- [ ] Prove exact reopen is idempotent and every altered manifest, duplicate issuance, partial database, or post-activation attempt fails without mutation.
+- [ ] Independently reproduce final genesis and issuance vectors in a separately maintained client before any launch.
+
+The current genesis candidate has no founder output. The manifest document is a proposal only and does not create a balance or authorize issuance.
+
 ## Blocking launch and governance requirements
 
 - [ ] Obtain written advice from qualified Iraqi counsel on the proposed
