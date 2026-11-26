@@ -61,6 +61,24 @@ class GenesisPackageInventoryTests(unittest.TestCase):
         result = audit_genesis_package_inventory(files, expected_sha256=pins(files))
         self.assertIn("checksums.txt", result)
 
+    def test_per_file_and_total_size_limits(self):
+        files = package()
+        files["manifest.json"] = b"x" * 2_000_001
+        with self.assertRaisesRegex(ValueError, "per-file size limit"):
+            audit_genesis_package_inventory(files, expected_sha256=pins(files))
+
+        files = package()
+        files["manifest.json"] = b"x" * 2_000_000
+        files["approval.json"] = b"y" * 2_000_000
+        files["trust-anchors.json"] = b"z" * 1_000_001
+        with self.assertRaisesRegex(ValueError, "total size limit"):
+            audit_genesis_package_inventory(files, expected_sha256=pins(files))
+
+        files = package()
+        files["manifest.json"] = b"x" * 2_000_000
+        result = audit_genesis_package_inventory(files, expected_sha256=pins(files))
+        self.assertEqual(result["manifest.json"], hashlib.sha256(files["manifest.json"]).hexdigest())
+
     def test_non_string_inventory_names_rejected_cleanly(self):
         files = package()
         files[7] = b"unexpected"
