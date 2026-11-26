@@ -812,6 +812,7 @@ def snapshot_legacy_node_databases(
     utxo_path: str | Path,
     recovery_journal_path: str | Path,
     snapshot_directory: str | Path,
+    *, adjusted_time_provider=None,
 ) -> dict:
     """Preflight and snapshot all legacy stores as separate SQLite databases.
 
@@ -858,6 +859,7 @@ def snapshot_legacy_node_databases(
             destinations["header"],
             destinations["utxo"],
             destinations["journal"],
+            adjusted_time_provider=adjusted_time_provider,
         )
         return {
             "status": "snapshots_validated",
@@ -886,6 +888,7 @@ def validate_snapshot_set_consistency(
     header_snapshot_path: str | Path,
     utxo_snapshot_path: str | Path,
     recovery_journal_snapshot_path: str | Path,
+    *, adjusted_time_provider=None,
 ) -> dict:
     """Cross-check active UTXO block headers against the replay source snapshot.
 
@@ -950,7 +953,10 @@ def validate_snapshot_set_consistency(
 
         # Replay every stored branch using the same header-DAG consensus checks
         # as PersistentHeaderStore, and compare stored height/work metadata.
-        replayed = HeaderChain(pow_limit, genesis_header)
+        replayed = HeaderChain(
+            pow_limit, genesis_header,
+            adjusted_time_provider=adjusted_time_provider,
+        )
         genesis_work = replayed.node(genesis_hash).chainwork
         genesis_rows = 0
         for row in header_rows:
