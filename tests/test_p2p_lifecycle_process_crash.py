@@ -87,7 +87,7 @@ manager = PeerManager(
 )
 runtime = BlackrootNodeRuntime(
     state, manager, protocol_version=1, request_timeout=1,
-    adjusted_time=lambda: 1_800_000_100,
+    adjusted_time=state.headers.adjusted_time_provider,
 )
 original = UTXOStore._advance_provenance
 def crash_after_provenance_step(block, parent, height, created_mtp):
