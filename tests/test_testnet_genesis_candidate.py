@@ -4,6 +4,7 @@ from src.blackroot_blocks import Block, COINBASE_INDEX, ZERO_TXID
 from src.blackroot_chain import BlockHeader
 from src.blackroot_consensus import check_proof_of_work, decode_compact_target
 from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput, merkle_root
+from src.blackroot_monetary import FOUNDER_ALLOCATION, block_subsidy
 
 
 class TestnetGenesisCandidateVectorTests(unittest.TestCase):
@@ -23,6 +24,8 @@ class TestnetGenesisCandidateVectorTests(unittest.TestCase):
         # not the founder allocation and not a spendable genesis balance.
         self.assertEqual(len(coinbase.outputs), 1)
         self.assertEqual(coinbase.outputs[0], TxOutput(0, bytes.fromhex("6a")))
+        self.assertNotEqual(coinbase.outputs[0].value, FOUNDER_ALLOCATION)
+        self.assertEqual(block_subsidy(0), 0)
         self.assertEqual(len(coinbase.serialize()), 63)
         self.assertEqual(
             coinbase.serialize().hex(),
