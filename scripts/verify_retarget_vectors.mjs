@@ -60,6 +60,13 @@ assert.equal(retarget(previousBits, span * 20, limit), 0x2000ffff);
 assert.equal(retarget(0x207fffff, 2015 * 600, powLimit), 0x207fefbd);
 assert.equal(retarget(0x207fffff, 2016 * 600, powLimit), 0x207fffff);
 assert.equal(retarget(0x207fffff, 2017 * 600, powLimit), 0x207fffff);
+// Integer-floor rounding and the zero-target fail-closed edge.
+const floorTarget = decodeCompact(previousBits) * 333n / 1_000n;
+assert.equal(retarget(previousBits, 333, limit, 1_000), encodeCompact(floorTarget));
+assert.throws(
+  () => retarget(0x01010000, 1, powLimit, 4),
+  /positive uint256/,
+);
 assert.equal(decodeCompact(encodeCompact(decodeCompact(0x207fffff))), decodeCompact(0x207fffff));
 
 console.log("Independent Node.js retarget arithmetic vectors: PASS");
