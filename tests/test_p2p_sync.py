@@ -21,7 +21,7 @@ def mine(previous, timestamp, *, nonce_start=0):
 class P2PHeaderAcceptanceTests(unittest.TestCase):
     def setUp(self):
         self.genesis = mine(ZERO_HASH, 1)
-        self.chain = HeaderChain(POW_LIMIT, self.genesis)
+        self.chain = HeaderChain(POW_LIMIT, self.genesis, adjusted_time_provider=lambda: 1_000_000)
 
     def test_accepts_valid_contiguous_batch(self):
         first = mine(self.genesis.hash, 2)
