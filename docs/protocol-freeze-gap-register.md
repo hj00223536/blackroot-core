@@ -15,7 +15,7 @@ This register converts the current prototype observations into explicit decision
 | PF-05 | Time validity | Median of up to 11 parent-chain timestamps; future bound depends on supplied adjusted time and defaults to 7,200 seconds | Specify MTP, mandatory clock provider, peer-time adjustment and identical enforcement at every entry point | OPEN |
 | PF-06 | Chain selection | Greatest cumulative work; deterministic raw-hash tie-break for equal work | Freeze tie-break, reorg policy/limits and recovery semantics; cross-client vectors | OPEN |
 | PF-07 | Transaction and scripts | Legacy serialization and a limited strict P2PKH/SIGHASH_ALL subset are implemented | Normative transaction format, supported script language, sighash modes, locktime/sequence, coinbase maturity, size and count limits | OPEN |
-| PF-08 | Genesis issuance | Current genesis candidate has zero-value OP_RETURN; height-zero mining subsidy is zero | Securely generate founder key outside source control; bind exact 20,000,000 BRT output to fixed genesis identity; verify spendability and serialization independently | OPEN |
+| PF-08 | Genesis issuance and owner approval | Current genesis candidate has zero-value OP_RETURN; manifest validator checks a digest and structure, but its `approval_record` remains a non-authenticating text placeholder | Pin an independently reviewed owner public-key trust anchor; verify a detached signature over the exact manifest digest and scope; securely generate founder key outside source control; bind the exact founder output to fixed genesis identity and verify spendability independently. See [genesis-approval-record-spec.md](genesis-approval-record-spec.md) | OPEN |
 | PF-08A | Bootstrap authorization | `add_genesis_output()` is a trusted pre-chain storage primitive; static AST regression tests scan direct references and common literal-string reflection patterns in current `src/*.py` files, but do not create an authorization boundary. Tests now explicitly assert that both existing and zero-valued `bootstrap_issued_sats` counters are not genesis-initialization markers; the counter is mutable accounting metadata, not an issuance ledger. | Replace the primitive with a one-time genesis initializer that verifies an owner-approved immutable manifest and commits genesis identity, exact outputs, an immutable initialization record, and auditable issuance evidence atomically; prove network-facing code cannot acquire its capability | OPEN |
 
 The proposed public manifest format and fail-closed validation requirements are documented in [genesis-manifest-spec.md](genesis-manifest-spec.md). This is a review specification only; no founder output or initializer is implemented.
@@ -75,7 +75,7 @@ PF-07 has a detailed [transaction and script policy proposal](transaction-script
 - [Browser wallet security plan](browser-wallet-security-plan.md)
 
 
-- [Time-validity policy proposal](time-validity-policy-proposal.md)
+- [Genesis approval record proposal](genesis-approval-record-spec.md)\n- [Time-validity policy proposal](time-validity-policy-proposal.md)
 - [Wallet readiness audit](wallet-readiness-audit.md)
 - [Browser wallet security test matrix](browser-wallet-test-matrix.md)
 - [Browser wallet cryptography dependency decision](browser-wallet-cryptography-decision.md)
