@@ -80,7 +80,7 @@ class ThreeNodeLiveBlockBodySyncTests(unittest.IsolatedAsyncioTestCase):
             source_header_sync = PeerHeaderSync(
                 source_state.headers.chain,
                 protocol_version=1,
-                adjusted_time=lambda: int(time.time()),
+                adjusted_time=source_state.headers.adjusted_time_provider,
             )
 
             def source_handler_factory(peer):
