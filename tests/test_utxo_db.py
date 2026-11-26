@@ -10,6 +10,7 @@ from pathlib import Path
 from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput
 from src.blackroot_utxo_db import UTXOStore
 from src.blackroot_sqlite import SQLiteTransactionCoordinator
+from src.blackroot_monetary import TOTAL_SUPPLY_CAP
 
 
 @contextmanager
@@ -328,6 +329,30 @@ store.apply(tx)
         with self.assertRaises(Exception):
             self.store.add_genesis_output(self.funding, TxOutput(900, b"duplicate"))
         self.assertEqual(self.store.count(), 1)
+
+    def test_bootstrap_issuance_cap_is_cumulative_and_atomic(self):
+        final_outpoint = OutPoint(bytes.fromhex("61" * 32), 0)
+        self.store.add_genesis_output(
+            final_outpoint,
+            TxOutput(TOTAL_SUPPLY_CAP - 900, b"cap-boundary"),
+        )
+        with _managed_sqlite(self.db_path) as db:
+            issued = db.execute(
+                "SELECT value FROM metadata WHERE key='bootstrap_issued_sats'"
+            ).fetchone()[0]
+        self.assertEqual(int(issued), TOTAL_SUPPLY_CAP)
+        before_count = self.store.count()
+        with self.assertRaisesRegex(ValueError, "cumulative bootstrap issuance exceeds total supply cap"):
+            self.store.add_genesis_output(
+                OutPoint(bytes.fromhex("62" * 32), 0),
+                TxOutput(1, b"over-cap"),
+            )
+        self.assertEqual(self.store.count(), before_count)
+        with _managed_sqlite(self.db_path) as db:
+            after = db.execute(
+                "SELECT value FROM metadata WHERE key='bootstrap_issued_sats'"
+            ).fetchone()[0]
+        self.assertEqual(int(after), TOTAL_SUPPLY_CAP)
 
 
     def test_refuses_unsafe_schema_v1_database_with_live_utxos(self):
