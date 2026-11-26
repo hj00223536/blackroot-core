@@ -16,7 +16,7 @@ from .blackroot_transactions import Transaction
 
 
 
-_DOMAIN_SEPARATOR = b"BLACKROOT-GENESIS-MANIFEST-V1\\x00"
+_DOMAIN_SEPARATOR = b"BLACKROOT-GENESIS-MANIFEST-V1\x00"
 _MAX_SAFE_INTEGER = (1 << 53) - 1
 
 
