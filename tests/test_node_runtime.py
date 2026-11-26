@@ -114,6 +114,105 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, "coordinated-reorg")
         self.assertEqual(calls, ["reorganize_best"])
 
+    async def test_p2p_fork_download_uses_persistent_node_recovery_boundary(self):
+        from src.blackroot_consensus import block_subsidy
+        from src.blackroot_p2p_inventory import decode_inventory, INV_TYPE_BLOCK
+
+        def coinbase(height):
+            return Transaction(
+                1,
+                (TxInput(
+                    OutPoint(ZERO_TXID, COINBASE_INDEX),
+                    height.to_bytes(2, "little"),
+                ),),
+                (TxOutput(block_subsidy(height), b"miner"),),
+            )
+
+        def mined(height, previous, timestamp):
+            tx = coinbase(height)
+            root = merkle_root([tx.txid])
+            for nonce in range(10000):
+                header = BlockHeader(1, previous, root, timestamp, BITS, nonce)
+                if check_proof_of_work(header.serialize(), BITS, POW_LIMIT):
+                    return Block(header, (tx,))
+            raise AssertionError("nonce search exhausted")
+
+        genesis = self.state.headers.chain.get(0)
+        self.state.connect_best_block(genesis_block(), 0)
+        old = mined(1, genesis.hash, 2)
+        self.state.headers.chain.add(old.header)
+        self.state.connect_best_block(old, 1)
+
+        fork_one = mined(1, genesis.hash, 3)
+        self.state.headers.chain.add_to_branch(fork_one.header)
+        fork_two = mined(2, fork_one.header.hash, 4)
+        self.state.headers.chain.add_to_branch(fork_two.header)
+        bodies = {
+            fork_one.header.hash: fork_one.serialize(),
+            fork_two.header.hash: fork_two.serialize(),
+        }
+        served = set()
+
+        def remote_factory(peer):
+            async def handler(command, payload):
+                if command != "getdata":
+                    return
+                for item in decode_inventory(payload):
+                    if item.kind == INV_TYPE_BLOCK and item.item_hash in bodies:
+                        served.add(item.item_hash)
+                        await peer.send("block", bodies[item.item_hash])
+            return handler
+
+        remote_manager = PeerManager(
+            magic=MAGIC,
+            local_version=VersionMessage(
+                1, 0, 1_800_000_010, 909, 0, "/blackroot:runtime-fork-source/"
+            ),
+            max_peers=2,
+            handshake_timeout=2,
+            idle_timeout=5,
+            on_peer_message_factory=remote_factory,
+        )
+        await remote_manager.start_server("127.0.0.1", 0)
+        try:
+            host, port, *_ = remote_manager.sockets[0].getsockname()
+            peer = await self.runtime.connect(host, port)
+            await wait_for_peer_handshake(peer, timeout=2)
+            assignments = await self.runtime.sync.reorg.request_missing_bodies(
+                self.runtime.sync._peers()
+            )
+            self.assertEqual(
+                set(assignments), {fork_one.header.hash, fork_two.header.hash}
+            )
+
+            async def wait_for_activation():
+                while self.state.utxos.tip() != (2, fork_two.header.hash):
+                    await asyncio.sleep(0.01)
+
+            await asyncio.wait_for(wait_for_activation(), timeout=5)
+            self.assertEqual(served, {fork_one.header.hash, fork_two.header.hash})
+            self.assertFalse(self.state.recovery_journal.pending())
+            self.state.utxos.verify_integrity()
+
+            # Verify the P2P-triggered reorganization survives a clean reopen.
+            await self.runtime.close()
+            self.state.close()
+            root = Path(self.temp.name)
+            reopened = PersistentNodeState(
+                root / "headers.sqlite",
+                root / "utxos.sqlite",
+                POW_LIMIT,
+                genesis,
+                adjusted_time_provider=lambda: 1_800_000_100,
+            )
+            self.addCleanup(reopened.close)
+            self.assertEqual(reopened.utxos.tip(), (2, fork_two.header.hash))
+            self.assertEqual(reopened.headers.chain.tip.hash, fork_two.header.hash)
+            self.assertFalse(reopened.recovery_journal.pending())
+            reopened.utxos.verify_integrity()
+        finally:
+            await remote_manager.close()
+
     async def test_runtime_binds_sync_callbacks_and_starts_listener(self):
         self.assertIs(
             self.runtime.manager.on_peer_message_factory.__self__,
