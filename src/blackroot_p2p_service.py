@@ -31,7 +31,8 @@ class P2PSyncService:
     ) -> None:
         if not isinstance(chain, HeaderChain):
             raise TypeError("chain must be a HeaderChain")
-        if (not isinstance(request_timeout, (int, float)) or isinstance(request_timeout, bool)\n                or not math.isfinite(request_timeout) or request_timeout <= 0):
+        if (not isinstance(request_timeout, (int, float)) or isinstance(request_timeout, bool)
+                or not math.isfinite(request_timeout) or request_timeout <= 0):
             raise ValueError("request_timeout must be positive")
         self.manager = manager
         self.chain = chain
