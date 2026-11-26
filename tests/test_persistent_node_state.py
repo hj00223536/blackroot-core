@@ -100,6 +100,26 @@ class PersistentNodeStateTests(unittest.TestCase):
         finally:
             reopened.close()
 
+
+    def test_coordinated_clock_provider_admits_and_replays_non_genesis_headers(self):
+        state = self.coordinated_state()
+        candidate = make_block(self.genesis_block.header.hash, 1, 2)
+        try:
+            state.add_header(candidate.header)
+            self.assertEqual(state.headers.chain.height, 1)
+        finally:
+            state.close()
+
+        reopened = self.coordinated_state()
+        try:
+            self.assertEqual(reopened.headers.chain.height, 1)
+            self.assertEqual(
+                reopened.headers.chain.get(1).hash,
+                candidate.header.hash,
+            )
+        finally:
+            reopened.close()
+
     def test_coordinated_header_addition_is_published_after_commit(self):
         state = self.coordinated_state()
         try:
