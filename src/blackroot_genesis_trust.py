@@ -15,7 +15,7 @@ from .blackroot_genesis_manifest import (
     parse_genesis_manifest_json,
 )
 
-_DOMAIN = b"BLACKROOT-TRUST-CONFIG-V1\\x00"
+_DOMAIN = b"BLACKROOT-TRUST-CONFIG-V1\x00"
 _FIELDS = frozenset({
     "config_version", "network_id", "sequence", "previous_config_digest",
     "keys", "config_digest",
