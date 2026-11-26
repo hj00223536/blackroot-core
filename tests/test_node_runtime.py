@@ -86,6 +86,18 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.state.utxos.tip(), (0, block.header.hash))
         self.assertFalse(self.state.recovery_journal.pending())
 
+    async def test_persistent_p2p_service_rejects_raw_utxo_store(self):
+        from src.blackroot_p2p_service import P2PSyncService
+
+        with self.assertRaisesRegex(ValueError, "requires a node-state lifecycle adapter"):
+            P2PSyncService(
+                self.runtime.manager,
+                self.state.headers.chain,
+                self.state.utxos,
+                protocol_version=1,
+                require_node_state_lifecycle=True,
+            )
+
     async def test_runtime_sync_store_rejects_foreign_header_chain(self):
         from src.blackroot_chain import HeaderChain
 
