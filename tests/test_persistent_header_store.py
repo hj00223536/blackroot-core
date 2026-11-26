@@ -80,6 +80,14 @@ class PersistentHeaderStoreTests(unittest.TestCase):
         self.assertEqual([h.hash for h in connect], [side_one.hash, side_two.hash])
 
 
+    def test_add_to_branch_rejects_caller_supplied_time_override(self):
+        store = self.open_store()
+        child = mine(self.genesis.hash, 2)
+        with self.assertRaisesRegex(ValueError, "must use its configured adjusted-time provider"):
+            store.add_to_branch(child, adjusted_time=1_000_000)
+        self.assertEqual(store.chain.height, 0)
+        self.assertIsNone(store.chain.node(child.hash))
+
     def test_side_branch_rebuild_uses_one_clock_sample_per_admission(self):
         clock_calls = []
         store = PersistentHeaderStore(
