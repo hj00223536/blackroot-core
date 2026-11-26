@@ -90,7 +90,7 @@ class MultiPeerReorganizationSyncTests(unittest.IsolatedAsyncioTestCase):
         )
         chain.add(self.old.header)
         candidate = None
-        for timestamp in range(3, 200):
+        for timestamp in range(3, 1003):
             possible = mined_block(1, self.genesis.header.hash, timestamp)
             if possible.header.hash < self.old.header.hash:
                 candidate = possible
