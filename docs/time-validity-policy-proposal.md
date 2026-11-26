@@ -64,7 +64,7 @@ Focused tests currently cover unsolicited and mismatched bodies, wrong-peer fork
 1. This is a source-level audit of the inspected public P2P and persistent-state paths, not proof that every import, bootstrap, snapshot, migration, or future API is covered. Inventory all call sites of low-level `connect_block()` and `reorganize()`; those methods explicitly do not authenticate header PoW/difficulty/ancestry themselves.
 2. Ensure production-facing code cannot call those low-level storage primitives without a validated header-chain boundary. Add negative tests for each discovered caller and for coordinated-database rollback across header, body archive, UTXO, and recovery-journal writes.
 3. Define deterministic replay semantics separately from live future-time admission. The current host-clock callback is provisional and is not a peer-adjusted network-time algorithm.
-4. Keep block size, transaction/script subset, retarget timing, network identity, and all other provisional consensus parameters un-frozen until owner approval, complete vectors, an independently maintained implementation, and external review.
+4. Keep block size, transaction/script subset, network identity, and all other unapproved consensus parameters un-frozen until owner approval, complete vectors, an independently maintained implementation, and external review. The owner approved the documented difficulty-adjustment parameters and first-boundary convention on 2026-11-26; independent implementation and external consensus review remain required.
 
 This audit note changes documentation only; it does not change consensus or runtime behavior and does not authorize public Testnet/Mainnet launch.
 
