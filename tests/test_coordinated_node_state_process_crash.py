@@ -50,7 +50,7 @@ def make_block(previous, height, timestamp):
     return Block(mine(previous, merkle_root([tx.txid]), timestamp), (tx,))
 
 genesis = make_block(bytes(32), 0, 1)
-state = PersistentNodeState.open_coordinated(root / "node.sqlite", limit, genesis.header)
+state = PersistentNodeState.open_coordinated(root / "node.sqlite", limit, genesis.header, adjusted_time_provider=lambda: 1_000_000)
 candidate = make_block(genesis.header.hash, 1, 2)
 if mode in ("during_transaction", "after_commit"):
     state.add_header(candidate.header, adjusted_time=2)
@@ -139,9 +139,7 @@ class CoordinatedNodeStateProcessCrashTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             genesis = make_block(ZERO_HASH, 0, 1)
-            initial = PersistentNodeState.open_coordinated(
-                root / "node.sqlite", POW_LIMIT, genesis.header
-            )
+            initial = PersistentNodeState.open_coordinated(root / "node.sqlite", POW_LIMIT, genesis.header, adjusted_time_provider=lambda: 1_000_000)
             initial.connect_best_block(genesis, 0)
             initial.close()
 
@@ -158,9 +156,7 @@ class CoordinatedNodeStateProcessCrashTests(unittest.TestCase):
                 msg=f"child stdout={completed.stdout!r} stderr={completed.stderr!r}",
             )
 
-            reopened = PersistentNodeState.open_coordinated(
-                root / "node.sqlite", POW_LIMIT, genesis.header
-            )
+            reopened = PersistentNodeState.open_coordinated(root / "node.sqlite", POW_LIMIT, genesis.header, adjusted_time_provider=lambda: 1_000_000)
             try:
                 candidate = make_block(genesis.header.hash, 1, 2)
                 self.assertFalse(reopened.recovery_journal.pending())
@@ -187,9 +183,7 @@ class CoordinatedNodeStateProcessCrashTests(unittest.TestCase):
                 completed.returncode, 77,
                 msg=f"child stdout={completed.stdout!r} stderr={completed.stderr!r}",
             )
-            reopened = PersistentNodeState.open_coordinated(
-                root / "node.sqlite", POW_LIMIT, genesis.header
-            )
+            reopened = PersistentNodeState.open_coordinated(root / "node.sqlite", POW_LIMIT, genesis.header, adjusted_time_provider=lambda: 1_000_000)
             try:
                 old = make_block(genesis.header.hash, 1, 2)
                 side_one = make_block(genesis.header.hash, 1, 3)
@@ -216,9 +210,7 @@ class CoordinatedNodeStateProcessCrashTests(unittest.TestCase):
                 completed.returncode, 80,
                 msg=f"child stdout={completed.stdout!r} stderr={completed.stderr!r}",
             )
-            reopened = PersistentNodeState.open_coordinated(
-                root / "node.sqlite", POW_LIMIT, genesis.header
-            )
+            reopened = PersistentNodeState.open_coordinated(root / "node.sqlite", POW_LIMIT, genesis.header, adjusted_time_provider=lambda: 1_000_000)
             try:
                 old = make_block(genesis.header.hash, 1, 2)
                 side_one = make_block(genesis.header.hash, 1, 3)
@@ -284,7 +276,7 @@ attempted.write_text("opening coordinated state while writer holds lock")
 deadline = time.monotonic() + 25
 while True:
     try:
-        state = PersistentNodeState.open_coordinated(root / "node.sqlite", limit, genesis_header)
+        state = PersistentNodeState.open_coordinated(root / "node.sqlite", limit, genesis_header, adjusted_time_provider=lambda: 1_000_000)
         break
     except sqlite3.OperationalError as exc:
         if "locked" not in str(exc).lower() or time.monotonic() >= deadline:
@@ -335,9 +327,7 @@ finally:
             from src.blackroot_consensus import decode_compact_target
             from src.blackroot_node_state import PersistentNodeState
             genesis = make_block(ZERO_HASH, 0, 1)
-            reopened = PersistentNodeState.open_coordinated(
-                root / "node.sqlite", POW_LIMIT, genesis.header
-            )
+            reopened = PersistentNodeState.open_coordinated(root / "node.sqlite", POW_LIMIT, genesis.header, adjusted_time_provider=lambda: 1_000_000)
             try:
                 side_one = make_block(genesis.header.hash, 1, 3)
                 side_two = make_block(side_one.header.hash, 2, 4)
@@ -363,9 +353,7 @@ finally:
                 completed.returncode, 78,
                 msg=f"child stdout={completed.stdout!r} stderr={completed.stderr!r}",
             )
-            reopened = PersistentNodeState.open_coordinated(
-                root / "node.sqlite", POW_LIMIT, genesis.header
-            )
+            reopened = PersistentNodeState.open_coordinated(root / "node.sqlite", POW_LIMIT, genesis.header, adjusted_time_provider=lambda: 1_000_000)
             try:
                 side_one = make_block(genesis.header.hash, 1, 3)
                 side_two = make_block(side_one.header.hash, 2, 4)
