@@ -120,6 +120,37 @@ class P2PSyncServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.service.blocks.pool.pending_hashes, ())
         self.assertEqual(self.service.blocks.tracker.pending_hashes, ())
 
+    async def test_empty_utxo_store_requests_only_genesis_then_resumes_ordered_sync(self):
+        genesis = genesis_block()
+        child = None
+        for nonce in range(10000):
+            header = BlockHeader(
+                1, genesis.header.hash, genesis.header.merkle_root,
+                2, MAGIC_BITS, nonce,
+            )
+            if check_proof_of_work(header.serialize(), MAGIC_BITS, POW_LIMIT):
+                child = Block(header, genesis.transactions)
+                break
+        self.assertIsNotNone(child)
+        self.chain.add(child.header)
+        self.store.tip.return_value = None
+        handler = self.manager.on_peer_message_factory(self.peer_a)
+
+        await handler("inv", encode_inventory([InventoryVector(2, child.header.hash)]))
+        self.assertEqual(self.service.blocks.pool.pending_hashes, ())
+
+        await handler("inv", encode_inventory([InventoryVector(2, genesis.header.hash)]))
+        self.assertIs(self.service.blocks.pool.assigned_peer(genesis.header.hash), self.peer_a)
+        self.store.tip.side_effect = [
+            (0, genesis.header.hash),
+            (0, genesis.header.hash),
+        ]
+        await handler("block", genesis.serialize())
+
+        self.assertEqual(self.service.blocks.pool.pending_hashes, ())
+        self.assertIsNotNone(self.service.reorg.pool.assigned_peer(child.header.hash))
+        self.assertEqual(self.peer_a.sent[-1][0], "getdata")
+
     async def test_header_sync_does_not_start_body_sync_before_genesis_bootstrap(self):
         self.store.tip.return_value = None
         handler = self.manager.on_peer_message_factory(self.peer_a)
