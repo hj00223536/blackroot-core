@@ -65,6 +65,39 @@ class P2PSyncServiceTests(unittest.IsolatedAsyncioTestCase):
                 adjusted_time=lambda: 100_000, persist_headers=lambda: None,
             )
 
+    async def test_persistent_header_sync_rolls_back_memory_when_persistence_fails(self):
+        clock = lambda: 100_000
+        chain = HeaderChain(
+            POW_LIMIT, self.chain.get(0), adjusted_time_provider=clock
+        )
+
+        def fail_persistence(candidate):
+            raise OSError("disk write failed")
+
+        service = P2PSyncService(
+            self.manager, chain, self.store, protocol_version=1,
+            persist_headers=fail_persistence,
+        )
+        candidate = None
+        for nonce in range(10_000):
+            header = BlockHeader(
+                1, chain.best_hash, bytes([2]) * 32, 2, MAGIC_BITS, nonce
+            )
+            if check_proof_of_work(header.serialize(), MAGIC_BITS, POW_LIMIT):
+                candidate = header
+                break
+        self.assertIsNotNone(candidate)
+        before_nodes = chain.nodes
+        before_tip = chain.best_hash
+        handler = self.manager.on_peer_message_factory(self.peer_a)
+
+        with self.assertRaisesRegex(OSError, "disk write failed"):
+            await handler("headers", encode_headers([candidate]))
+
+        self.assertEqual(chain.nodes, before_nodes)
+        self.assertEqual(chain.best_hash, before_tip)
+        self.assertIsNone(chain.node(candidate.hash))
+
     def test_persistent_header_sync_rejects_different_clock_provider(self):
         clock = lambda: 100_000
         chain = HeaderChain(
