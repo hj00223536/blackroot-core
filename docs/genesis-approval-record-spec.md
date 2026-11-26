@@ -53,7 +53,7 @@ A plain GitHub commit, issue comment, label, text string, or hash is not a crypt
 
 ## Current implementation boundary
 
-The repository now contains a standalone Ed25519 detached-record verifier in `src/blackroot_genesis_approval.py` and regression tests in `tests/test_genesis_approval.py`. It verifies exact record fields, network ID, manifest digest, fixed scope, algorithm, key identifier, revocation list, and signature against caller-supplied trusted raw public keys. The test key is public RFC 8032 test material only. The verifier is **not yet wired into genesis manifest validation or any initializer**. The existing manifest `approval_record` remains a text placeholder. No owner trust anchor is configured, no real approval exists, and no issuance is authorized.
+The repository now contains a standalone Ed25519 detached-record verifier in `src/blackroot_genesis_approval.py` and regression tests in `tests/test_genesis_approval.py`. It verifies exact record fields, network ID, manifest digest, fixed scope, algorithm, key identifier, revocation list, and signature against caller-supplied trusted raw public keys. The test key is public RFC 8032 test material only. The verifier is **not yet wired into genesis manifest validation or any initializer**. The existing manifest `approval_record` remains a text placeholder. No owner trust anchor is configured, no real approval exists, and no issuance is authorized. The test suite also includes the published RFC 8032 empty-message Ed25519 verification vector, in addition to BLACKROOT-specific positive and negative cases.
 
 ## Release gate
 
