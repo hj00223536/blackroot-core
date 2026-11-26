@@ -629,7 +629,7 @@ class UTXOStore:
         header_chain: HeaderChain,
         replacement_blocks: dict[bytes, Block] | None = None,
     ) -> tuple[int, bytes]:
-        """Apply the HeaderChain-selected best branch to this UTXO store.
+        """Apply the HeaderChain-selected best branch to this UTXO store, including its deterministic equal-work tie-break.
 
         The active database tip must already exist in the supplied header DAG.
         Every connecting body must be supplied by its exact header hash and its
