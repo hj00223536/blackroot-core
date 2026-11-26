@@ -12,6 +12,7 @@ non-genesis header unless the explicit test-only bypass is enabled.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable
 
 from .blackroot_consensus import (DIFFICULTY_INTERVAL, TARGET_SPACING, block_work, check_proof_of_work, decode_compact_target, encode_compact_target, format_hash, retarget_compact, serialize_header, sha256d)
 
@@ -54,7 +55,10 @@ class HeaderChain:
     def __init__(
         self, pow_limit: int, genesis: BlockHeader, *,
         allow_unchecked_time_for_tests: bool = False,
+        adjusted_time_provider: Callable[[], int] | None = None,
     ):
+        if adjusted_time_provider is not None and not callable(adjusted_time_provider):
+            raise TypeError("adjusted_time_provider must be callable")
         if not isinstance(allow_unchecked_time_for_tests, bool):
             raise TypeError("allow_unchecked_time_for_tests must be a boolean")
         if not isinstance(pow_limit, int) or isinstance(pow_limit, bool) or pow_limit <= 0:
@@ -63,6 +67,7 @@ class HeaderChain:
             raise ValueError("genesis previous hash must be all zeroes")
         self.pow_limit = pow_limit
         self.allow_unchecked_time_for_tests = allow_unchecked_time_for_tests
+        self.adjusted_time_provider = adjusted_time_provider
         self._nodes: dict[bytes, HeaderNode] = {}
         self._best_hash: bytes | None = None
         self.add_to_branch(genesis)
@@ -167,6 +172,8 @@ class HeaderChain:
         if not isinstance(max_future_seconds, int) or isinstance(max_future_seconds, bool) or max_future_seconds < 0:
             raise ValueError("max_future_seconds must be a non-negative integer")
         is_genesis = header.prev_hash == ZERO_HASH
+        if adjusted_time is None and not is_genesis and self.adjusted_time_provider is not None:
+            adjusted_time = self.adjusted_time_provider()
         if adjusted_time is None:
             if not is_genesis and not self.allow_unchecked_time_for_tests:
                 raise ValueError("adjusted_time is required for non-genesis headers")
