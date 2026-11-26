@@ -56,6 +56,32 @@ class MultiPeerReorganizationSync:
             if self.store.load_block_body(header.hash) is None
         )
 
+    def _activate_if_complete(self):
+        """Activate an already-complete selected branch without waiting for another body."""
+        active = self.store.tip()
+        if active is None:
+            return None
+        active_node = self.chain.node(active[1])
+        best_node = self.chain.node(self.chain.best_hash)
+        if active_node is None or active_node.height != active[0]:
+            raise ValueError("active UTXO tip is inconsistent with header DAG")
+        if best_node is None or best_node.chainwork < active_node.chainwork:
+            return None
+        if best_node.header.hash == active[1]:
+            return None
+        if self.missing_best_branch_bodies() or self.pool.pending_hashes:
+            return None
+        _disconnect, connect = self.chain.reorganization(active[1])
+        if not connect:
+            return None
+        try:
+            return self.store.reorganize_to_best(self.chain)
+        except ValueError:
+            # A merkle-valid body can still fail transaction, script, or
+            # reward validation. Do not leave rejected branch bodies archived.
+            self.store.discard_block_bodies(tuple(header.hash for header in connect))
+            raise
+
     async def request_missing_bodies(self, peers: Mapping[object, object]) -> dict[bytes, object]:
         """Request all currently missing bodies; return hash-to-peer assignments."""
         requested = {}
@@ -80,6 +106,10 @@ class MultiPeerReorganizationSync:
                 raise
             self._requested_at[block_hash] = time.monotonic()
             requested[block_hash] = peer_id
+        # The complete best branch may already be archived (for example after
+        # header selection changes). In that case there is no body response to
+        # trigger activation, so perform the same guarded activation here.
+        self._activate_if_complete()
         return requested
 
     def accept_block(self, peer_id: object, payload: bytes):
@@ -106,20 +136,7 @@ class MultiPeerReorganizationSync:
             self._requested_at.pop(block_hash, None)
             raise
         self._requested_at.pop(block_hash, None)
-        if not self.missing_best_branch_bodies() and not self.pool.pending_hashes:
-            active = self.store.tip()
-            if active is None:
-                raise ValueError("cannot activate a fork before the UTXO chain is initialized")
-            _disconnect, connect = self.chain.reorganization(active[1])
-            try:
-                return self.store.reorganize_to_best(self.chain)
-            except ValueError:
-                # A merkle-valid body can still fail transaction, script, or
-                # reward validation. Do not leave rejected branch bodies in
-                # the persistent archive where they could be retried forever.
-                self.store.discard_block_bodies(tuple(header.hash for header in connect))
-                raise
-        return None
+        return self._activate_if_complete()
 
     def expire_requests(self, timeout: float, *, now: float | None = None) -> tuple[bytes, ...]:
         """Release body requests older than timeout, using a monotonic clock."""
