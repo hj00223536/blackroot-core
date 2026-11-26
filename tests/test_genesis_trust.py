@@ -138,7 +138,7 @@ class TrustBoundApprovalIntegrationTests(unittest.TestCase):
             coinbase=None,
             founder_output_index=0,
             founder_amount_sats=1,
-            founder_script_pub_key=b"\\x51",
+            founder_script_pub_key=b"\x51",
             total_supply_cap_sats=2,
             mining_schedule_id="44" * 32,
             approval_record="detached",
@@ -187,7 +187,7 @@ class TrustBoundApprovalIntegrationTests(unittest.TestCase):
         )
 
     def test_revoked_key_cannot_approve(self):
-        with self.assertRaisesRegex(ValueError, "not present in trusted"):
+        with self.assertRaisesRegex(ValueError, "revoked"):
             verify_approval_with_validated_trust(
                 self.manifest, json.dumps(self.approval),
                 self.make_validated_trust(status="revoked"),
