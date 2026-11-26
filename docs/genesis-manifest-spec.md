@@ -81,3 +81,9 @@ An exact repeated initialization may be idempotent only when the persisted manif
 ## 7. Activation gate
 
 This proposal remains OPEN until the owner-approved monetary policy, network identity, final genesis transaction, founder public locking script, canonicalization rules, approval record, implementation, independent client vectors, and external security review are complete. Even then, a separate explicit release decision is required before any public testnet or mainnet launch.
+
+## Prototype validator status (2026-11-26)
+
+A fail-closed structural checker now exists at `src/blackroot_genesis_manifest.py`, with regression tests in `tests/test_genesis_manifest.py`. It checks the exact field set and basic types, canonical lowercase hex, coinbase transaction decoding/round-trip, the expected transaction ID supplied by frozen configuration, founder output index/value/script, network/genesis/schedule identifiers supplied by frozen configuration, and the founder-plus-mining supply arithmetic.
+
+**This checker is not sufficient to authorize issuance.** It does not calculate or verify the RFC 8785 manifest digest, authenticate the approval record, derive the genesis block hash from a full header and Merkle commitment, establish that the supplied expected constants are themselves frozen/approved, or write database state. The tests use synthetic public values and a dummy locking script; they are not a real founder address or spendability test. Do not connect this structural checker to a node startup path or treat a passing result as owner approval.
