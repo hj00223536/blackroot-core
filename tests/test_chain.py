@@ -250,6 +250,21 @@ class HeaderChainTests(unittest.TestCase):
         self.assertEqual(chain.height, 1)
         self.assertEqual(calls, [1, 7_201])
 
+
+    def test_batch_samples_injected_clock_once_for_all_headers(self):
+        genesis = mine_header(ZERO_HASH, 1)
+        calls = []
+        chain = HeaderChain(
+            POW_LIMIT,
+            genesis,
+            adjusted_time_provider=lambda: calls.append(10_000) or 10_000,
+        )
+        first = mine_header(genesis.hash, 2)
+        second = mine_header(first.hash, 3)
+        chain.add_batch([first, second])
+        self.assertEqual(chain.height, 2)
+        self.assertEqual(calls, [10_000])
+
     def test_injected_clock_provider_invalid_value_fails_closed(self):
         genesis = mine_header(ZERO_HASH, 1)
         chain = HeaderChain(POW_LIMIT, genesis, adjusted_time_provider=lambda: -1)
