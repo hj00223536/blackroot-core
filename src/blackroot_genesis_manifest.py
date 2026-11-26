@@ -1,16 +1,95 @@
 """Fail-closed structural checks for a proposed public genesis manifest.
 
 This module is NOT an issuance initializer or an approval/authentication system.
-It deliberately does not calculate the RFC 8785 manifest digest, verify a
-governance signature, or write database state. Those gates remain unimplemented.
+It calculates the restricted JCS digest, but does not authenticate approval,
+freeze network constants, or write database state.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
 from typing import Mapping
 
 from .blackroot_blocks import is_coinbase
 from .blackroot_transactions import Transaction
+
+
+
+_DOMAIN_SEPARATOR = b"BLACKROOT-GENESIS-MANIFEST-V1\\x00"
+_MAX_SAFE_INTEGER = (1 << 53) - 1
+
+
+def _reject_duplicate_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        result[key] = value
+    return result
+
+
+def parse_genesis_manifest_json(raw: str) -> dict[str, object]:
+    """Parse strict JSON text, rejecting duplicate keys and floating-point values."""
+    if not isinstance(raw, str):
+        raise TypeError("manifest JSON must be text")
+    try:
+        parsed = json.loads(
+            raw,
+            object_pairs_hook=_reject_duplicate_keys,
+            parse_float=lambda _value: (_ for _ in ()).throw(ValueError("floating-point values are forbidden")),
+            parse_constant=lambda value: (_ for _ in ()).throw(ValueError(f"invalid JSON constant: {value}")),
+        )
+    except (json.JSONDecodeError, UnicodeError) as exc:
+        raise ValueError("manifest JSON is invalid") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError("manifest JSON root must be an object")
+    return parsed
+
+
+def _jcs_string(value: str) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _jcs_encode(value: object) -> str:
+    """Encode the manifest's restricted JCS data model (no floating-point numbers)."""
+    if value is None:
+        return "null"
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    if isinstance(value, int):
+        if abs(value) > _MAX_SAFE_INTEGER:
+            raise ValueError("manifest integer exceeds the interoperable JCS safe range")
+        return str(value)
+    if isinstance(value, float):
+        raise ValueError("floating-point values are forbidden in the manifest")
+    if isinstance(value, str):
+        return _jcs_string(value)
+    if isinstance(value, list):
+        return "[" + ",".join(_jcs_encode(item) for item in value) + "]"
+    if isinstance(value, dict):
+        if not all(isinstance(key, str) for key in value):
+            raise ValueError("manifest object keys must be strings")
+        keys = sorted(value, key=lambda item: item.encode("utf-16-be"))
+        return "{" + ",".join(_jcs_string(key) + ":" + _jcs_encode(value[key]) for key in keys) + "}"
+    raise ValueError(f"unsupported manifest JSON value type: {type(value).__name__}")
+
+
+def canonicalize_genesis_manifest(manifest: Mapping[str, object]) -> bytes:
+    """Return UTF-8 JCS bytes after excluding the self-referential digest."""
+    if not isinstance(manifest, Mapping):
+        raise TypeError("manifest must be a mapping")
+    payload = dict(manifest)
+    payload.pop("manifest_digest", None)
+    return _jcs_encode(payload).encode("utf-8")
+
+
+def calculate_genesis_manifest_digest(manifest: Mapping[str, object]) -> str:
+    """Calculate the domain-separated SHA-256 digest of a manifest."""
+    return hashlib.sha256(_DOMAIN_SEPARATOR + canonicalize_genesis_manifest(manifest)).hexdigest()
+
 
 _REQUIRED_FIELDS = frozenset({
     "manifest_version",
@@ -54,8 +133,8 @@ def _require_lower_hex(value: object, field: str, *, exact_length: int | None = 
 
 
 def _require_uint(value: object, field: str) -> int:
-    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-        raise ValueError(f"{field} must be a non-negative integer")
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0 or value > _MAX_SAFE_INTEGER:
+        raise ValueError(f"{field} must be a non-negative safe integer")
     return value
 
 
@@ -74,8 +153,8 @@ def validate_genesis_manifest_structure(
 
     The expected values must come from independently reviewed, frozen network
     configuration. This function does not authenticate that configuration,
-    calculate manifest_digest, verify approval_record, validate a genesis
-    header/Merkle commitment, or authorize a database write.
+    authenticate approval_record, validate a genesis header/Merkle commitment,
+    or authorize a database write.
     """
     if not isinstance(manifest, Mapping):
         raise TypeError("manifest must be a mapping")
@@ -87,6 +166,9 @@ def validate_genesis_manifest_structure(
         raise ValueError("unsupported manifest_version")
 
     digest = _require_lower_hex(manifest["manifest_digest"], "manifest_digest", exact_length=64)
+    calculated_digest = calculate_genesis_manifest_digest(manifest)
+    if digest != calculated_digest:
+        raise ValueError("manifest_digest does not match canonical manifest contents")
     network_id = _require_lower_hex(manifest["network_id"], "network_id", exact_length=64)
     block_hash = _require_lower_hex(manifest["genesis_block_hash"], "genesis_block_hash", exact_length=64)
     tx_hex = _require_lower_hex(manifest["genesis_coinbase_tx"], "genesis_coinbase_tx")
