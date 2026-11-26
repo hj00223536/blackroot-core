@@ -44,6 +44,7 @@ class PeerHeaderSync:
         protocol_version: int,
         adjusted_time: Callable[[], int] | None = None,
         max_future_seconds: int = 7_200,
+        on_headers_validated: Callable[[HeaderChain], None] | None = None,
     ) -> None:
         if not isinstance(chain, HeaderChain):
             raise TypeError("chain must be a HeaderChain")
@@ -60,10 +61,13 @@ class PeerHeaderSync:
             )
         if not isinstance(max_future_seconds, int) or isinstance(max_future_seconds, bool) or max_future_seconds < 0:
             raise ValueError("max_future_seconds must be non-negative")
+        if on_headers_validated is not None and not callable(on_headers_validated):
+            raise TypeError("on_headers_validated must be callable")
         self.chain = chain
         self.protocol_version = protocol_version
         self.adjusted_time = adjusted_time
         self.max_future_seconds = max_future_seconds
+        self.on_headers_validated = on_headers_validated
         self._last_locator: tuple[bytes, ...] = ()
 
     def _now(self) -> int:
@@ -120,6 +124,7 @@ class PeerHeaderSync:
                 payload,
                 adjusted_time=self._now(),
                 max_future_seconds=self.max_future_seconds,
+                on_commit=self.on_headers_validated,
             )
             # A full batch may indicate more headers are available.
             if len(accepted) == MAX_HEADERS_PER_MESSAGE:
