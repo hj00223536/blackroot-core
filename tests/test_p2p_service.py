@@ -58,6 +58,24 @@ class P2PSyncServiceTests(unittest.IsolatedAsyncioTestCase):
             adjusted_time=lambda: 100_000,
         )
 
+    def test_persistent_header_sync_requires_chain_clock_provider(self):
+        with self.assertRaisesRegex(ValueError, "requires the header chain's adjusted-time provider"):
+            P2PSyncService(
+                self.manager, self.chain, self.store, protocol_version=1,
+                adjusted_time=lambda: 100_000, persist_headers=lambda: None,
+            )
+
+    def test_persistent_header_sync_rejects_different_clock_provider(self):
+        clock = lambda: 100_000
+        chain = HeaderChain(
+            POW_LIMIT, self.chain.get(0), adjusted_time_provider=clock
+        )
+        with self.assertRaisesRegex(ValueError, "clock must match the header chain provider"):
+            P2PSyncService(
+                self.manager, chain, self.store, protocol_version=1,
+                adjusted_time=lambda: 100_000, persist_headers=lambda: None,
+            )
+
     def test_request_timeout_rejects_non_finite_and_invalid_values(self):
         for invalid in (float("nan"), float("inf"), float("-inf"), True, 0, -1, "30"):
             with self.subTest(request_timeout=invalid):
