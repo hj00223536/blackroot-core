@@ -60,6 +60,17 @@ class P2PSyncService:
         self.adjusted_time = adjusted_time
         if persist_headers is not None and not callable(persist_headers):
             raise TypeError("persist_headers must be callable")
+        if persist_headers is not None:
+            chain_adjusted_time = chain.adjusted_time_provider
+            if not callable(chain_adjusted_time):
+                raise ValueError(
+                    "persistent P2P header sync requires the header chain's adjusted-time provider"
+                )
+            if adjusted_time is not None and adjusted_time is not chain_adjusted_time:
+                raise ValueError(
+                    "persistent P2P header sync clock must match the header chain provider"
+                )
+            adjusted_time = chain_adjusted_time
         self.persist_headers = persist_headers
 
     def _peers(self) -> dict[object, object]:
