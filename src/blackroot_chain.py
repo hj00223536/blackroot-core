@@ -171,6 +171,20 @@ class HeaderChain:
         self, header: BlockHeader, *, adjusted_time: int | None = None,
         max_future_seconds: int = 7_200,
     ) -> str:
+        if self.adjusted_time_provider is not None and adjusted_time is not None:
+            raise ValueError(
+                "header chain must use its configured adjusted-time provider"
+            )
+        return self._add_to_branch_with_time(
+            header,
+            adjusted_time=adjusted_time,
+            max_future_seconds=max_future_seconds,
+        )
+
+    def _add_to_branch_with_time(
+        self, header: BlockHeader, *, adjusted_time: int | None = None,
+        max_future_seconds: int = 7_200,
+    ) -> str:
         if not isinstance(header, BlockHeader):
             raise TypeError("header must be a BlockHeader")
         if not isinstance(max_future_seconds, int) or isinstance(max_future_seconds, bool) or max_future_seconds < 0:
@@ -235,6 +249,10 @@ class HeaderChain:
         """
         if not isinstance(headers, list):
             raise TypeError("headers must be a list")
+        if self.adjusted_time_provider is not None and adjusted_time is not None:
+            raise ValueError(
+                "header chain must use its configured adjusted-time provider"
+            )
         if on_commit is not None and not callable(on_commit):
             raise TypeError("on_commit must be callable")
         original_nodes = self._nodes.copy()
@@ -245,7 +263,7 @@ class HeaderChain:
             batch_adjusted_time = self.adjusted_time_provider()
         try:
             for header in headers:
-                accepted.append(self.add_to_branch(
+                accepted.append(self._add_to_branch_with_time(
                     header, adjusted_time=batch_adjusted_time,
                     max_future_seconds=max_future_seconds,
                 ))
