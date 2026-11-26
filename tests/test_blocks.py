@@ -73,6 +73,17 @@ class BlockValidationTests(unittest.TestCase):
         self.assertEqual(decoded, block)
         self.assertEqual(decoded.header.hash, block.header.hash)
 
+    def test_block_header_uint32_version_round_trips_high_bit(self):
+        coinbase = make_coinbase(1)
+        header = BlockHeader(
+            0x80000000, bytes(32), merkle_root([coinbase.txid]),
+            1, 0x207fffff, 0,
+        )
+        block = Block(header, (coinbase,))
+        decoded = Block.deserialize(block.serialize())
+        self.assertEqual(decoded.header.version, 0x80000000)
+        self.assertEqual(decoded.serialize(), block.serialize())
+
     def test_block_deserializer_rejects_truncation_and_trailing_bytes(self):
         block = make_block([make_coinbase(1)])
         raw = block.serialize()
