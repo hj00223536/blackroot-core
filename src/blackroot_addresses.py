@@ -31,8 +31,6 @@ def b58encode(raw: bytes) -> str:
 def b58decode(text: str) -> bytes:
     if not isinstance(text, str):
         raise TypeError("Base58 value must be text")
-    if not text:
-        raise ValueError("Base58 value must not be empty")
     number = 0
     for char in text:
         try:
