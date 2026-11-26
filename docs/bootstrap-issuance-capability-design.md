@@ -28,6 +28,23 @@ The AST regression test only prevents direct references in the current `src/*.py
 - On startup, verify the stored initialized-state marker and genesis identity against the frozen network configuration.
 - Provide tests for fresh initialization, exact idempotent reopen, altered manifest rejection, duplicate issuance rejection, over-cap rejection, post-activation rejection, and proof that P2P/RPC/network paths cannot acquire or invoke the initialization capability.
 
+## Required initialization state model (design constraint)
+
+The current schema-v5 metadata contains `bootstrap_issued_sats`, but that counter is not an initialization authorization record. The implementation must not infer that a database is safely initialized merely because the counter exists or equals zero.
+
+A future initializer should atomically persist a distinct, immutable initialization record with at least:
+
+- schema/version identifier for the manifest format;
+- frozen network identifier and genesis block hash;
+- exact genesis coinbase transaction bytes (or a canonical digest plus independently checked bytes);
+- founder output index, value, and locking-script bytes;
+- manifest digest and explicit initialization-complete marker;
+- cumulative bootstrap issuance derived from the exact committed outputs.
+
+The record and all genesis UTXO rows must be committed in the same database transaction. Startup must fail closed if the marker exists but any committed field, genesis identity, or issuance total disagrees. If no marker exists, initialization may proceed only after proving the database has no blocks, UTXOs, bootstrap issuance, or conflicting chain metadata. A partially populated or legacy database must not be silently repaired by issuing the founder output.
+
+The manifest is public consensus input, not a wallet backup: it must never contain a private key, seed phrase, password, or signing secret. Its digest is an integrity identifier, not proof of owner identity by itself; owner approval must be recorded through the project's reviewed release/governance process before the manifest is accepted.
+
 ## Acceptance tests required before implementation is considered complete
 
 - A network-facing test harness cannot call or obtain the initializer capability.
