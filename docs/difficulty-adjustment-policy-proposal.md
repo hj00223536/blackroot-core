@@ -39,6 +39,7 @@ Retarget timestamps and previous difficulty must be read from the candidate's ow
 
 - Python reference helper: src/blackroot_consensus.py, function retarget_compact.
 - Header-chain boundary selection: src/blackroot_chain.py, method HeaderChain.expected_bits.
+- Header-chain construction now rejects proof-of-work limits outside the positive uint256 range, matching the standalone PoW helper; regression coverage is in tests/test_chain.py.
 - Python regression coverage: tests/test_consensus.py and tests/test_chain.py.
 - Independent Node.js arithmetic verifier: scripts/verify_retarget_vectors.mjs.
 - CI runs the independent Node.js verifier alongside the other cross-language vectors.
