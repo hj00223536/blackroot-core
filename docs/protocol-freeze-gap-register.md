@@ -74,3 +74,4 @@ PF-07 has a detailed [transaction and script policy proposal](transaction-script
 
 - [Time-validity policy proposal](time-validity-policy-proposal.md)
 - [Wallet readiness audit](wallet-readiness-audit.md)
+- [Browser wallet security test matrix](browser-wallet-test-matrix.md)
