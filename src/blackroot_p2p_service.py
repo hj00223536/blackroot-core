@@ -112,13 +112,6 @@ class P2PSyncService:
                             # missing bodies from the active tip to the selected
                             # best header, avoiding out-of-order direct connects.
                             await self.reorg.request_missing_bodies(peers)
-                        else:
-                            # Once initialized, the fork synchronizer owns all
-                            # missing bodies from the active tip to the selected
-                            # best header. Avoid a second independent request
-                            # pool that could deliver an out-of-order block to
-                            # the direct-extension connector.
-                            await self.reorg.request_missing_bodies(peers)
                 if unknown_headers:
                     await self._header_sync[peer].request_headers(peer)
             elif command == "block":
