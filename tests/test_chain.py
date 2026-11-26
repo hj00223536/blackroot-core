@@ -287,12 +287,15 @@ class HeaderChainTests(unittest.TestCase):
             )
             chain.add_to_branch(side_parent)
 
-            if height == DIFFICULTY_INTERVAL - 2:
-                # Parent height 2014 checks candidate height 2015, which is not a retarget boundary.
-                self.assertEqual(
-                    chain.expected_bits(main_parent.hash, DIFFICULTY_INTERVAL - 1),
-                    BITS,
-                )
+        # The ancestor at height 2014 checks candidate height 2015,
+        # which is not a retarget boundary and must inherit its parent bits.
+        parent_2014_hash = chain._ancestor_hash(
+            main_parent.hash, DIFFICULTY_INTERVAL - 2
+        )
+        self.assertEqual(
+            chain.expected_bits(parent_2014_hash, DIFFICULTY_INTERVAL - 1),
+            BITS,
+        )
 
         target_span = DIFFICULTY_INTERVAL * 600
         main_elapsed = main_parent.timestamp - genesis.timestamp
