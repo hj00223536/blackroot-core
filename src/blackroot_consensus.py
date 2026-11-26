@@ -9,22 +9,15 @@ from __future__ import annotations
 import hashlib
 import struct
 
-COIN = 100_000_000
-INITIAL_SUBSIDY = 50 * COIN
-HALVING_INTERVAL = 210_000
+from .blackroot_monetary import (
+    BLOCK_SUBSIDY as INITIAL_SUBSIDY,
+    COIN,
+    MAX_MONEY,
+    block_subsidy,
+)
+
 TARGET_SPACING = 600
 DIFFICULTY_INTERVAL = 2_016
-MAX_MONEY = 21_000_000 * COIN
-
-
-def block_subsidy(height: int) -> int:
-    """Return scheduled block subsidy in atomic units for a non-negative height."""
-    if not isinstance(height, int) or isinstance(height, bool) or height < 0:
-        raise ValueError("height must be a non-negative integer")
-    halvings = height // HALVING_INTERVAL
-    if halvings >= 64:
-        return 0
-    return INITIAL_SUBSIDY >> halvings
 
 
 def sha256d(data: bytes) -> bytes:
