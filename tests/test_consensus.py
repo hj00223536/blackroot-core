@@ -139,6 +139,34 @@ class RetargetAndWorkTests(unittest.TestCase):
         result = retarget_compact(harder_bits, 2016 * 600 * 4, limit)
         self.assertLessEqual(decode_compact_target(result), limit)
 
+    def test_retarget_uses_integer_floor_before_compact_encoding(self):
+        from src.blackroot_consensus import encode_compact_target, retarget_compact
+
+        bits = 0x1F3FFFFF
+        previous_target = decode_compact_target(bits)
+        target_span = 1_000
+        actual_timespan = 333
+        expected_target = previous_target * actual_timespan // target_span
+        expected_bits = encode_compact_target(expected_target)
+
+        self.assertEqual(
+            retarget_compact(bits, actual_timespan, decode_compact_target(0x207FFFFF), target_span),
+            expected_bits,
+        )
+
+    def test_retarget_fails_closed_if_integer_floor_would_make_zero_target(self):
+        from src.blackroot_consensus import retarget_compact
+
+        # A deliberately tiny synthetic target exercises the arithmetic edge.
+        # Current behavior rejects a zero result rather than inventing a minimum.
+        with self.assertRaisesRegex(ValueError, "target must be a positive uint256"):
+            retarget_compact(
+                0x01010000,
+                actual_timespan=1,
+                pow_limit=decode_compact_target(0x207FFFFF),
+                target_timespan=4,
+            )
+
     def test_retarget_rejects_bad_inputs(self):
         from src.blackroot_consensus import retarget_compact
         bits = 0x207FFFFF
