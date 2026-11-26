@@ -6,6 +6,9 @@ must invoke retry_expired from its own supervised event loop.
 """
 from __future__ import annotations
 
+import asyncio
+import math
+
 from .blackroot_node_state import PersistentNodeState
 from .blackroot_p2p_manager import PeerManager
 from .blackroot_p2p_service import P2PSyncService
@@ -39,6 +42,7 @@ class BlackrootNodeRuntime:
             persist_headers=state.persist_synced_headers,
         )
         self._closed = False
+        self._retry_task: asyncio.Task | None = None
 
     @property
     def peer_count(self) -> int:
@@ -70,6 +74,40 @@ class BlackrootNodeRuntime:
         self._ensure_open()
         return await self.sync.retry_expired(now=now)
 
+    async def start_retry_loop(self, *, interval: float = 1.0) -> None:
+        """Start one supervised periodic retry loop for expired block requests."""
+        self._ensure_open()
+        if (isinstance(interval, bool) or not isinstance(interval, (int, float))
+                or not math.isfinite(interval) or interval <= 0):
+            raise ValueError("interval must be a finite positive number")
+        if self._retry_task is not None and not self._retry_task.done():
+            return
+        self._retry_task = asyncio.create_task(
+            self._run_retry_loop(float(interval)),
+            name="blackroot-block-request-retry",
+        )
+
+    async def _run_retry_loop(self, interval: float) -> None:
+        try:
+            while not self._closed:
+                await asyncio.sleep(interval)
+                if not self._closed:
+                    await self.sync.retry_expired()
+        except asyncio.CancelledError:
+            raise
+
+    async def stop_retry_loop(self) -> None:
+        """Cancel and await the retry loop without closing persistent state."""
+        task = self._retry_task
+        self._retry_task = None
+        if task is None:
+            return
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
     def _ensure_open(self) -> None:
         if self._closed:
             raise RuntimeError("node runtime is closed")
@@ -79,4 +117,5 @@ class BlackrootNodeRuntime:
         if self._closed:
             return
         self._closed = True
+        await self.stop_retry_loop()
         await self.manager.close()
