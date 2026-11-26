@@ -97,11 +97,22 @@ class P2PSyncService:
                     if node is None:
                         unknown_headers = True
                     elif self.chain.get(node.height).hash == item.item_hash:
-                        try:
-                            await self.blocks.request_block(item.item_hash, self._peers())
-                        except ValueError as exc:
-                            if "already has an assigned source" not in str(exc) and "already outstanding" not in str(exc):
-                                raise
+                        peers = self._peers()
+                        if self.store.tip() is None:
+                            # Genesis bootstrap is the only ordinary-body
+                            # path before a persistent active UTXO tip exists.
+                            try:
+                                await self.blocks.request_block(item.item_hash, peers)
+                            except ValueError as exc:
+                                if "already has an assigned source" not in str(exc) and "already outstanding" not in str(exc):
+                                    raise
+                        else:
+                            # Once initialized, the fork synchronizer owns all
+                            # missing bodies from the active tip to the selected
+                            # best header. Avoid a second independent request
+                            # pool that could deliver an out-of-order block to
+                            # the direct-extension connector.
+                            await self.reorg.request_missing_bodies(peers)
                 if unknown_headers:
                     await self._header_sync[peer].request_headers(peer)
             elif command == "block":
