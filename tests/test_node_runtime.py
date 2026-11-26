@@ -5,7 +5,7 @@ from pathlib import Path
 
 from src.blackroot_blocks import Block, COINBASE_INDEX, ZERO_TXID
 from src.blackroot_chain import BlockHeader, ZERO_HASH
-from src.blackroot_consensus import check_proof_of_work, decode_compact_target
+from src.blackroot_consensus import COIN, check_proof_of_work, decode_compact_target
 from src.blackroot_node_runtime import BlackrootNodeRuntime
 from src.blackroot_node import wait_for_peer_handshake
 from src.blackroot_node_state import PersistentNodeState
@@ -22,7 +22,7 @@ def genesis_block():
     tx = Transaction(
         1,
         (TxInput(OutPoint(ZERO_TXID, COINBASE_INDEX), b"\\x01\\x01"),),
-        (TxOutput(1, b"miner"),),
+        (TxOutput(20_000_000 * COIN, b"miner"),),
     )
     for nonce in range(10_000):
         header = BlockHeader(1, ZERO_HASH, merkle_root([tx.txid]), 1, BITS, nonce)
