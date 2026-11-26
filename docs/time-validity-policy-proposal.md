@@ -7,9 +7,9 @@ This document records the current header-chain behavior and the decisions requir
 ## Current prototype behavior
 
 - A candidate header timestamp must be strictly greater than the median timestamp of up to the 11 headers ending at its parent (MTP).
-- A future-time check is performed only when the caller supplies `adjusted_time`.
+- Network-mode header admission now fails closed when `adjusted_time` is omitted for a non-genesis header; the explicit `allow_unchecked_time_for_tests=True` constructor option exists only for offline fixtures.
 - The current helper default for `max_future_seconds` is 7,200 seconds (two hours).
-- The header-chain object does not obtain, authenticate, or require a network-adjusted clock itself. A caller can therefore omit the future-time check unless the production integration makes it mandatory.
+- The header-chain object still does not obtain or authenticate a network-adjusted clock. Callers must supply a trusted value through `add`, `add_to_branch`, or `add_batch`; production clock sourcing and peer-time adjustment remain unresolved.
 - The in-memory header DAG does not establish a peer-time sampling or clock-synchronization policy.
 
 These are prototype facts, not a complete network time policy.
@@ -22,7 +22,7 @@ These are prototype facts, not a complete network time policy.
 | MTP comparison | Require candidate timestamp strictly greater than MTP | Existing prototype behavior; requires normative specification |
 | Future-time limit | Two hours beyond a network-adjusted reference time | Candidate only; owner and protocol review required |
 | Clock source | Inject a trusted network-adjusted time provider into every block/header acceptance path | Required architecture; provider and trust model not selected |
-| Missing clock | Fail closed for network operation rather than silently skipping the future bound | Safety recommendation; not implemented as a global invariant |
+| Missing clock | Fail closed for network operation rather than silently skipping the future bound | Implemented in header admission by default; explicit test-only bypass remains |
 | Peer-time adjustment | Define sampling, outlier rejection, maximum adjustment and behavior with too few peers | OPEN |
 | Local clock failure | Define startup, drift, rollback and loss-of-connectivity behavior | OPEN |
 | Historical validation | Specify deterministic handling of future-time checks during initial sync and reindex | OPEN |
@@ -38,7 +38,7 @@ These are prototype facts, not a complete network time policy.
 
 ## Stop conditions
 
-- Do not call timestamp validation production-ready while the future-time check is optional.
+- Do not call timestamp validation production-ready until every production ingress supplies an authenticated network-adjusted clock and the test-only bypass is unreachable from production configuration.
 - Do not choose a peer-time algorithm or claim it is secure without specification, adversarial tests and review.
 - Do not expose a public testnet until all time-validity decisions and enforcement paths are resolved.
 - This proposal does not authorize changing existing consensus constants or launching a network.
