@@ -14,7 +14,7 @@ from .blackroot_genesis_manifest import ValidatedGenesisManifest
 _RECORD_VERSION = 1
 _REQUIRED_FIELDS = frozenset({
     "record_version",
-    "initialization_complete",
+    "record_kind",
     "network_id",
     "genesis_block_hash",
     "manifest_digest",
@@ -36,7 +36,7 @@ def build_genesis_initialization_record(
     tx = validated_manifest.coinbase
     return {
         "record_version": _RECORD_VERSION,
-        "initialization_complete": True,
+        "record_kind": "genesis-integrity-snapshot-v1",
         "network_id": validated_manifest.network_id,
         "genesis_block_hash": validated_manifest.genesis_block_hash,
         "manifest_digest": validated_manifest.manifest_digest,
