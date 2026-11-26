@@ -6,6 +6,23 @@ from pathlib import Path
 BOOTSTRAP_ISSUER = "add_genesis_output"
 
 
+def static_string_value(node):
+    """Return a statically known string for simple literal expressions."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left = static_string_value(node.left)
+        right = static_string_value(node.right)
+        if left is not None and right is not None:
+            return left + right
+    if isinstance(node, ast.JoinedStr) and all(
+        isinstance(part, ast.Constant) and isinstance(part.value, str)
+        for part in node.values
+    ):
+        return "".join(part.value for part in node.values)
+    return None
+
+
 def find_bootstrap_issuer_references(source: str, source_name: str = "<source>"):
     """Find common static references to the trusted bootstrap storage primitive."""
     tree = ast.parse(source, filename=source_name)
@@ -21,9 +38,9 @@ def find_bootstrap_issuer_references(source: str, source_name: str = "<source>")
             references.append((source_name, node.lineno))
         elif isinstance(node, ast.Name) and node.id == BOOTSTRAP_ISSUER:
             references.append((source_name, node.lineno))
-        elif isinstance(node, ast.Constant) and node.value == BOOTSTRAP_ISSUER:
-            # Catch string-based lookup through vars(), __dict__, globals(),
-            # getattr(), or other reflective APIs, not only named built-ins.
+        elif static_string_value(node) == BOOTSTRAP_ISSUER:
+            # Catch literal and constant-foldable string lookup through vars(),
+            # __dict__, globals(), getattr(), or other reflective APIs.
             references.append((source_name, node.lineno))
 
         if isinstance(node, (ast.Import, ast.ImportFrom)):
@@ -56,6 +73,8 @@ class BootstrapIssuanceBoundaryTests(unittest.TestCase):
             'setattr(store, "add_genesis_output", replacement)',
             'store.__dict__["add_genesis_output"](outpoint, output)',
             'globals()["add_genesis_output"]',
+            'getattr(store, "add_" + "genesis_output")',
+            'getattr(store, f"add_genesis_output")',
         )
         for source in samples:
             with self.subTest(source=source):
