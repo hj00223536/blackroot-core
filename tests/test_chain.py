@@ -102,7 +102,7 @@ class HeaderChainTests(unittest.TestCase):
 
         node_b.add_to_branch(side_one)
         node_b.add_to_branch(side_two)
-        node_b.add(old_branch)
+        node_b.add_to_branch(old_branch)
 
         node_c.add(old_branch)
         node_c.add_to_branch(side_one)
