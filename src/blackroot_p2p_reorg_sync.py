@@ -1,4 +1,4 @@
-"""Download missing best-fork bodies and activate a higher-work branch.
+"""Download missing best-fork bodies and activate the HeaderChain-selected best branch.
 
 Headers are assumed to have passed HeaderChain validation already. Bodies are
 requested from connected peers, checked against their exact header and Merkle
