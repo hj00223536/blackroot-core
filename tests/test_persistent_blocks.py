@@ -478,6 +478,27 @@ class PersistentBlockTests(unittest.TestCase):
         self.assertEqual(self.store.issued_subsidy(), block_subsidy(1))
         self.store.verify_integrity()
 
+    def test_bootstrap_outputs_count_toward_total_supply_cap_atomically(self):
+        from src.blackroot_monetary import FOUNDER_ALLOCATION, MINING_ALLOCATION, TOTAL_SUPPLY_CAP
+
+        self.store.add_genesis_output(
+            OutPoint(bytes.fromhex("66" * 32), 0),
+            TxOutput(FOUNDER_ALLOCATION, b"founder"),
+        )
+        self.store.add_genesis_output(
+            OutPoint(bytes.fromhex("77" * 32), 0),
+            TxOutput(MINING_ALLOCATION, b"bootstrap"),
+        )
+        self.assertEqual(self.store.issued_total(), TOTAL_SUPPLY_CAP)
+        with self.assertRaisesRegex(ValueError, "bootstrap issuance exceeds"):
+            self.store.add_genesis_output(
+                OutPoint(bytes.fromhex("88" * 32), 0),
+                TxOutput(1, b"excess"),
+            )
+        self.assertEqual(self.store.issued_total(), TOTAL_SUPPLY_CAP)
+        self.assertEqual(self.store.count(), 2)
+        self.store.verify_integrity()
+
     def test_disconnect_rejects_empty_chain(self):
         with self.assertRaisesRegex(ValueError, "empty chain"):
             self.store.disconnect_tip(bytes.fromhex("44" * 32))
