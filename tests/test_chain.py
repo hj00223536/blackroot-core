@@ -23,6 +23,13 @@ def mine_header(prev_hash, timestamp, bits=BITS, pow_limit=POW_LIMIT):
 
 
 class HeaderChainTests(unittest.TestCase):
+    def test_constructor_rejects_pow_limits_outside_uint256(self):
+        genesis = mine_header(ZERO_HASH, 1)
+        for invalid_limit in (0, -1, 1 << 256, True, 1.5):
+            with self.subTest(pow_limit=invalid_limit):
+                with self.assertRaisesRegex(ValueError, "positive uint256"):
+                    HeaderChain(invalid_limit, genesis, allow_unchecked_time_for_tests=True)
+
     def test_accepts_linked_headers(self):
         genesis = mine_header(ZERO_HASH, 1)
         chain = HeaderChain(POW_LIMIT, genesis, allow_unchecked_time_for_tests=True)
