@@ -22,8 +22,8 @@ FOUNDER_SCRIPT = bytes.fromhex("76a914" + "55" * 20 + "88ac")
 def validated_manifest():
     tx = Transaction(
         1,
-        (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
-        (TxOutput(0, b"\\x6a"), TxOutput(FOUNDER_ALLOCATION, FOUNDER_SCRIPT)),
+        (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\x01\x01"),),
+        (TxOutput(0, b"\x6a"), TxOutput(FOUNDER_ALLOCATION, FOUNDER_SCRIPT)),
         0,
     )
     value = {
