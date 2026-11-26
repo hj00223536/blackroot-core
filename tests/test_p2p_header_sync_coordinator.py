@@ -85,6 +85,28 @@ class PeerHeaderSyncTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ValueError, "non-negative integer"):
             await sync.handle_message(FakePeer(), "headers", encode_headers([]))
 
+    async def test_header_sync_clock_provider_exception_does_not_mutate_chain(self):
+        def broken_clock():
+            raise RuntimeError("clock unavailable")
+
+        sync = PeerHeaderSync(
+            self.chain, protocol_version=70001, adjusted_time=broken_clock
+        )
+        candidate = mine(self.genesis.hash, 2)
+        before_nodes = self.chain.nodes
+        before_tip = self.chain.best_hash
+        before_work = self.chain.chainwork
+
+        with self.assertRaisesRegex(RuntimeError, "clock unavailable"):
+            await sync.handle_message(
+                FakePeer(), "headers", encode_headers([candidate])
+            )
+
+        self.assertEqual(self.chain.nodes, before_nodes)
+        self.assertEqual(self.chain.best_hash, before_tip)
+        self.assertEqual(self.chain.chainwork, before_work)
+        self.assertIsNone(self.chain.node(candidate.hash))
+
     async def test_header_at_exact_future_time_boundary_is_accepted(self):
         boundary = mine(self.genesis.hash, 107_200)
 
