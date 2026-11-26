@@ -44,3 +44,5 @@ jobs:
         run: node scripts/verify_p2pkh_vectors.mjs
       - name: Verify independent Base58Check address vectors
         run: node scripts/verify_address_vectors.mjs
+      - name: Verify independent compact-target retarget vectors
+        run: node scripts/verify_retarget_vectors.mjs
