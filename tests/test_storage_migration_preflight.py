@@ -491,6 +491,7 @@ class SQLiteSnapshotTests(unittest.TestCase):
             snapshots_dir / "blackroot-journal-snapshot.sqlite",
             staged,
             batch_size=2,
+            adjusted_time_provider=lambda: 1_000_000,
         )
         self.assertEqual(imported["status"], "coordinated_staging_database_created")
         artifact = inspect_staged_import_artifact(staged)
