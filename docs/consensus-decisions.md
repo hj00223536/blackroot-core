@@ -22,6 +22,8 @@ This document records behavior currently present in the prototype so that test r
 | Maximum supply | The current integer schedule sums to 20,999,999.9769 BRT, below the nominal 21,000,000 BRT cap | Decide whether this small unissued remainder is intentional |
 | Script support | Strict legacy P2PKH/SIGHASH_ALL subset; unsupported scripts and sighash modes rejected | Define full transaction/script language or explicitly freeze a limited language |
 
+| Genesis UTXO time provenance | Persistent UTXO storage currently serializes missing creation-MTP metadata as integer zero | Define genesis-output spendability and a nullable/explicitly tagged MTP representation before time-based relative locks can be considered production-safe |
+
 ## Required protocol decisions before testnet activation
 
 1. **First retarget period:** choose and document the exact start/end block timestamps used at each boundary. Include vectors at heights 2,015, 2,016, 2,017 and across a reorganization.
