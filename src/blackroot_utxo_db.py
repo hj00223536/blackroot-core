@@ -172,6 +172,9 @@ class UTXOStore:
                     PRIMARY KEY(height, txid, output_index)
                 ) WITHOUT ROWID
             """)
+            db.execute(
+                "INSERT OR IGNORE INTO metadata(key, value) VALUES('bootstrap_issued_sats', '0')"
+            )
             db.execute("""
                 CREATE TABLE IF NOT EXISTS block_undo_created (
                     height INTEGER NOT NULL REFERENCES blocks(height) ON DELETE CASCADE,
@@ -264,9 +267,18 @@ class UTXOStore:
         with self._write_scope() as db:
             if db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0]:
                 raise RuntimeError("bootstrap outputs cannot be added after chain activation")
+            bootstrap_issued = int(db.execute(
+                "SELECT value FROM metadata WHERE key='bootstrap_issued_sats'"
+            ).fetchone()[0])
+            if bootstrap_issued + output.value > TOTAL_SUPPLY_CAP:
+                raise ValueError("cumulative bootstrap issuance exceeds total supply cap")
             db.execute(
                 "INSERT INTO utxos(txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp) VALUES(?, ?, ?, ?, 0, 0, NULL)",
                 (outpoint.txid, outpoint.index, output.value, output.script_pubkey),
+            )
+            db.execute(
+                "UPDATE metadata SET value=? WHERE key='bootstrap_issued_sats'",
+                (str(bootstrap_issued + output.value),),
             )
 
     def get(self, outpoint: OutPoint) -> TxOutput | None:
@@ -320,8 +332,14 @@ class UTXOStore:
             if integrity != [("ok",)]:
                 raise RuntimeError(f"UTXO SQLite integrity check failed: {integrity!r}")
             issued = db.execute("SELECT COALESCE(SUM(subsidy_issued), 0) FROM blocks").fetchone()[0]
-            if issued < 0 or issued > TOTAL_SUPPLY_CAP:
-                raise RuntimeError("persisted cumulative subsidy issuance exceeds total supply cap")
+            try:
+                bootstrap_issued = int(db.execute(
+                    "SELECT value FROM metadata WHERE key='bootstrap_issued_sats'"
+                ).fetchone()[0])
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError("persisted bootstrap issuance metadata is malformed") from exc
+            if bootstrap_issued < 0 or issued < 0 or bootstrap_issued + issued > TOTAL_SUPPLY_CAP:
+                raise RuntimeError("persisted cumulative issuance exceeds total supply cap")
             issuance_rows = db.execute(
                 "SELECT b.total_fees, b.subsidy_issued, t.raw_transaction "
                 "FROM blocks b JOIN block_transactions t ON t.height=b.height AND t.position=0 "
@@ -393,6 +411,17 @@ class UTXOStore:
         with self._connection_scope() as db:
             row = db.execute("SELECT COALESCE(SUM(subsidy_issued), 0) FROM blocks").fetchone()
         return row[0]
+
+    def issued_total(self) -> int:
+        """Return all persisted issuance, including trusted pre-chain bootstrap outputs."""
+        with self._connection_scope() as db:
+            bootstrap = int(db.execute(
+                "SELECT value FROM metadata WHERE key='bootstrap_issued_sats'"
+            ).fetchone()[0])
+            subsidy = db.execute(
+                "SELECT COALESCE(SUM(subsidy_issued), 0) FROM blocks"
+            ).fetchone()[0]
+        return bootstrap + subsidy
 
     def tip(self) -> tuple[int, bytes] | None:
         """Return the stored tip height and hash, or None."""
@@ -520,7 +549,8 @@ class UTXOStore:
             coinbase_total = sum(output.value for output in block.transactions[0].outputs)
             subsidy_issued = max(0, coinbase_total - fees)
             already_issued = db.execute("SELECT COALESCE(SUM(subsidy_issued), 0) FROM blocks").fetchone()[0]
-            if already_issued + subsidy_issued > TOTAL_SUPPLY_CAP:
+            bootstrap_issued = int(db.execute("SELECT value FROM metadata WHERE key='bootstrap_issued_sats'").fetchone()[0])
+            if bootstrap_issued + already_issued + subsidy_issued > TOTAL_SUPPLY_CAP:
                 raise ValueError("cumulative subsidy issuance exceeds total supply cap")
             created_mtp = median_time_past
             updated_provenance = self._advance_provenance(block, provenance, height, created_mtp)
@@ -733,7 +763,8 @@ class UTXOStore:
                 coinbase_total = sum(output.value for output in block.transactions[0].outputs)
                 subsidy_issued = max(0, coinbase_total - fees)
                 already_issued = db.execute("SELECT COALESCE(SUM(subsidy_issued), 0) FROM blocks").fetchone()[0]
-                if already_issued + subsidy_issued > TOTAL_SUPPLY_CAP:
+                bootstrap_issued = int(db.execute("SELECT value FROM metadata WHERE key='bootstrap_issued_sats'").fetchone()[0])
+                if bootstrap_issued + already_issued + subsidy_issued > TOTAL_SUPPLY_CAP:
                     raise ValueError("cumulative subsidy issuance exceeds total supply cap")
                 created_mtp = median_time_past
                 updated_provenance = self._advance_provenance(block, provenance, height, created_mtp)
