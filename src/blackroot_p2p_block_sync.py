@@ -64,10 +64,12 @@ class BlockBodyRequestTracker:
 
     def expire(self, timeout: float, *, now: float | None = None) -> tuple[bytes, ...]:
         """Remove and return requests whose age reached timeout seconds."""
-        if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))\n                or not math.isfinite(timeout) or timeout <= 0):
+        if (isinstance(timeout, bool) or not isinstance(timeout, (int, float))
+                or not math.isfinite(timeout) or timeout <= 0):
             raise ValueError("timeout must be a positive number")
         current = self._clock() if now is None else now
-        if (isinstance(current, bool) or not isinstance(current, (int, float))\n                or not math.isfinite(current)):
+        if (isinstance(current, bool) or not isinstance(current, (int, float))
+                or not math.isfinite(current)):
             raise ValueError("now must be a number")
         expired = tuple(
             block_hash for block_hash, (_, requested_at) in self._pending.items()
