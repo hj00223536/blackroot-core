@@ -64,12 +64,14 @@ class PersistentNodeStateTests(unittest.TestCase):
             self.root / "utxos.sqlite",
             POW_LIMIT,
             self.genesis_block.header,
+            adjusted_time_provider=lambda: 1_000_000,
         )
 
     def coordinated_state(self, database=None):
         path = self.root / "coordinated.sqlite" if database is None else database
         return PersistentNodeState.open_coordinated(
-            path, POW_LIMIT, self.genesis_block.header
+            path, POW_LIMIT, self.genesis_block.header,
+            adjusted_time_provider=lambda: 1_000_000,
         )
 
     def test_coordinated_mode_uses_one_database_for_all_node_stores(self):
