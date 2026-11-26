@@ -4,13 +4,75 @@ import unittest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 from cryptography.hazmat.primitives import serialization
 
-from src.blackroot_genesis_approval import (approval_message, parse_genesis_approval_record_json, verify_genesis_approval_record)
+from src.blackroot_genesis_approval import (approval_message, parse_genesis_approval_record_json, verify_genesis_approval_record, verify_validated_genesis_manifest_approval)
+from src.blackroot_genesis_manifest import ValidatedGenesisManifest
 
 
 # RFC 8032 test vector seed/public key; public test material only.
 _SEED = bytes.fromhex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
 _NETWORK = "11" * 32
 _DIGEST = "22" * 32
+
+
+class ValidatedManifestApprovalBindingTests(unittest.TestCase):
+    def test_detached_record_is_bound_to_validated_manifest(self):
+        private = Ed25519PrivateKey.from_private_bytes(_SEED)
+        public = private.public_key().public_bytes(
+            serialization.Encoding.Raw, serialization.PublicFormat.Raw
+        )
+        key_id = hashlib.sha256(public).hexdigest()
+        validated = ValidatedGenesisManifest(
+            manifest_digest=_DIGEST,
+            network_id=_NETWORK,
+            genesis_block_hash="33" * 32,
+            coinbase=None,
+            founder_output_index=1,
+            founder_amount_sats=2_000_000_000_000_000,
+            founder_script_pub_key=b"\x51",
+            total_supply_cap_sats=4_000_000_000_000_000,
+            mining_schedule_id="44" * 32,
+            approval_record="detached-record-reference",
+        )
+        record = {
+            "record_version": 1,
+            "network_id": _NETWORK,
+            "manifest_digest": _DIGEST,
+            "approval_scope": "genesis-founder-allocation",
+            "signing_key_id": key_id,
+            "signature_algorithm": "Ed25519",
+            "signature": private.sign(approval_message(_NETWORK, _DIGEST)).hex(),
+        }
+        import json
+        encoded = json.dumps(record, separators=(",", ":"))
+        self.assertEqual(
+            verify_validated_genesis_manifest_approval(
+                validated, encoded, trusted_public_keys={key_id: public}
+            ),
+            key_id,
+        )
+
+        altered = dict(record, manifest_digest="55" * 32)
+        with self.assertRaisesRegex(ValueError, "manifest_digest"):
+            verify_validated_genesis_manifest_approval(
+                validated, json.dumps(altered), trusted_public_keys={key_id: public}
+            )
+
+    def test_binding_rejects_unvalidated_object_and_bad_json(self):
+        with self.assertRaises(TypeError):
+            verify_validated_genesis_manifest_approval(
+                object(), "{}", trusted_public_keys={}
+            )
+        validated = ValidatedGenesisManifest(
+            manifest_digest=_DIGEST, network_id=_NETWORK,
+            genesis_block_hash="33" * 32, coinbase=None,
+            founder_output_index=1, founder_amount_sats=1,
+            founder_script_pub_key=b"\x51", total_supply_cap_sats=2,
+            mining_schedule_id="44" * 32, approval_record="reference",
+        )
+        with self.assertRaisesRegex(ValueError, "approval JSON is invalid"):
+            verify_validated_genesis_manifest_approval(
+                validated, "{", trusted_public_keys={}
+            )
 
 
 class Ed25519PublishedVectorTests(unittest.TestCase):
