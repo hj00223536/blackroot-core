@@ -957,6 +957,10 @@ def validate_snapshot_set_consistency(
             pow_limit, genesis_header,
             adjusted_time_provider=adjusted_time_provider,
         )
+        replay_adjusted_time = (
+            adjusted_time_provider()
+            if adjusted_time_provider is not None else None
+        )
         genesis_work = replayed.node(genesis_hash).chainwork
         genesis_rows = 0
         for row in header_rows:
@@ -971,7 +975,7 @@ def validate_snapshot_set_consistency(
                     raise RuntimeError("header genesis metadata mismatch during replay")
                 continue
             try:
-                replayed.add_to_branch(header)
+                replayed.add_to_branch(header, adjusted_time=replay_adjusted_time)
             except (TypeError, ValueError) as exc:
                 raise RuntimeError(
                     f"header snapshot replay rejected {block_hash.hex()}: {exc}"
