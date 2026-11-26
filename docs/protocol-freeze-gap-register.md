@@ -10,8 +10,8 @@ This register converts the current prototype observations into explicit decision
 |---|---|---|---|---|
 | PF-01 | Header serialization | 80-byte header prototype with little-endian integer fields and SHA-256d | Normative byte-level format, version handling, immutable vectors reproduced independently | OPEN |
 | PF-02 | Proof of work | Compact-target decoding and PoW checks exist | Freeze PoW limit, canonical compact encoding, target comparison and genesis rules | OPEN |
-| PF-03 | First difficulty period | Retarget currently occurs at candidate heights divisible by 2,016; first interval uses parent height 2,015 timestamp minus genesis timestamp | Explicitly approve or change first-period boundary; vectors at heights 2,015–2,017 and reorg cases | OPEN |
-| PF-04 | Difficulty arithmetic | Timespan currently clamped to 1/4–4x the nominal 2,016 × 600 seconds; integer division precedes compact encoding. A standalone Node.js 22 verifier now reproduces clamp and first-boundary arithmetic fixtures in CI | Freeze constants, rounding/truncation, limit capping and edge-case vectors; obtain independent external implementation and protocol review | OPEN |
+| PF-03 | First difficulty period | Owner approved the proposed 2,016-block boundary convention and first interval at candidate height 2,016 | Independent implementation and external consensus review; freeze only after review | OWNER-APPROVED / REVIEW OPEN |
+| PF-04 | Difficulty arithmetic | Owner approved 600-second target spacing, 2,016-block interval, 1/4–4x clamp, integer floor division, network-limit cap and canonical compact encoding | Independent implementation and external consensus review; network-specific PoW limit and remaining timestamp rules still require decisions | OWNER-APPROVED / REVIEW OPEN |
 | PF-05 | Time validity | Median of up to 11 parent-chain timestamps; future bound depends on supplied adjusted time and defaults to 7,200 seconds | Specify MTP, mandatory clock provider, peer-time adjustment and identical enforcement at every entry point | OPEN |
 | PF-06 | Chain selection | Greatest cumulative work; deterministic raw-hash tie-break for equal work | Freeze tie-break, reorg policy/limits and recovery semantics; cross-client vectors | OPEN |
 | PF-07 | Transaction and scripts | Legacy serialization and a limited strict P2PKH/SIGHASH_ALL subset are implemented | Normative transaction format, supported script language, sighash modes, locktime/sequence, coinbase maturity, size and count limits | OPEN |
@@ -30,15 +30,15 @@ The v1 manifest format and fail-closed validation requirements are documented in
 
 ## Monetary rules already selected (not a launch authorization)
 
-- Founder allocation intended: 20,000,000 BRT, separate from mining subsidy.
-- Mining schedule: 10 BRT at each height 1 through 2,000,000 inclusive; zero at height 0 and after height 2,000,000.
+- Owner approved the proposed founder allocation of 20,000,000 BRT, separate from mining subsidy; no founder output has been created.
+- Owner approved the mining schedule: 10 BRT at each height 1 through 2,000,000 inclusive; zero at height 0 and after height 2,000,000.
 - Maximum scheduled mining issuance: 20,000,000 BRT.
-- Proposed total ceiling: 40,000,000 BRT.
+- Owner-approved total supply ceiling: 40,000,000 BRT.
 - Fees are transfers of existing value and are not new issuance.
 - Persistent schema-v5 accounting records scheduled active-chain subsidy budgets and trusted bootstrap issuance; this accounting does not itself mint the founder allocation.
 - Founder output remains absent. No founder balance, usable receive address, cash liquidity, market price or exchange listing is established.
 
-Difficulty adjustment has a separate [policy proposal](difficulty-adjustment-policy-proposal.md). Its first-boundary convention remains subject to explicit owner approval and independent review. Standalone proof-of-work validation, the retarget helper, and HeaderChain construction now consistently reject proof-of-work limits outside the positive uint256 range; focused regression tests cover zero, negative, oversized, boolean, and non-integer values. This hardening does not freeze the network pow limit or approve the retarget convention.
+Difficulty adjustment is documented in the [policy proposal](difficulty-adjustment-policy-proposal.md). The owner approved its stated parameters and first-boundary convention on 2026-11-26; independent implementation and external consensus review remain mandatory before protocol freeze. Standalone proof-of-work validation, the retarget helper, and HeaderChain construction now consistently reject proof-of-work limits outside the positive uint256 range; focused regression tests cover zero, negative, oversized, boolean, and non-integer values. This hardening does not freeze the network pow limit or approve the retarget convention.
 
 PF-07 has a detailed [transaction and script policy proposal](transaction-script-policy-proposal.md). The current verifier is a restricted P2PKH prototype, not a complete Script engine, and has not received independent cryptographic review.
 
