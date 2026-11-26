@@ -18,10 +18,11 @@ from .blackroot_blocks import Block, validate_block_transactions
 from .blackroot_chain import HeaderChain
 from .blackroot_maturity import UTXOProvenance
 from .blackroot_sqlite import SQLiteTransactionConnection
+from .blackroot_monetary import TOTAL_SUPPLY_CAP
 
 
 class UTXOStore:
-    SCHEMA_VERSION = 4
+    SCHEMA_VERSION = 5
 
     def __init__(
         self,
@@ -109,7 +110,16 @@ class UTXOStore:
                     (str(self.SCHEMA_VERSION),),
                 )
             elif row[0] != str(self.SCHEMA_VERSION):
-                if row[0] == "1":
+                if row[0] == "4":
+                    blocks_exist = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='blocks'").fetchone()
+                    live = db.execute("SELECT COUNT(*) FROM utxos").fetchone()[0]
+                    block_count = db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0] if blocks_exist else 0
+                    if live or block_count:
+                        raise RuntimeError("schema-v4 migration requires a verified reindex from genesis to reconstruct cumulative issuance")
+                    if blocks_exist:
+                        db.execute("ALTER TABLE blocks ADD COLUMN subsidy_issued INTEGER NOT NULL DEFAULT 0 CHECK(subsidy_issued >= 0)")
+                    db.execute("UPDATE metadata SET value=? WHERE key='schema_version'", (str(self.SCHEMA_VERSION),))
+                elif row[0] == "1":
                     blocks_exist = db.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='blocks'").fetchone()
                     live = db.execute("SELECT COUNT(*) FROM utxos").fetchone()[0]
                     block_count = db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0] if blocks_exist else 0
@@ -128,7 +138,8 @@ class UTXOStore:
                     prev_hash BLOB NOT NULL CHECK(length(prev_hash) = 32),
                     header BLOB NOT NULL,
                     tx_count INTEGER NOT NULL CHECK(tx_count > 0),
-                    total_fees INTEGER NOT NULL CHECK(total_fees >= 0)
+                    total_fees INTEGER NOT NULL CHECK(total_fees >= 0),
+                    subsidy_issued INTEGER NOT NULL CHECK(subsidy_issued >= 0)
                 )
             """)
             db.execute("""
@@ -307,6 +318,9 @@ class UTXOStore:
             integrity = db.execute("PRAGMA integrity_check").fetchall()
             if integrity != [("ok",)]:
                 raise RuntimeError(f"UTXO SQLite integrity check failed: {integrity!r}")
+            issued = db.execute("SELECT COALESCE(SUM(subsidy_issued), 0) FROM blocks").fetchone()[0]
+            if issued < 0 or issued > TOTAL_SUPPLY_CAP:
+                raise RuntimeError("persisted cumulative subsidy issuance exceeds total supply cap")
             blocks = db.execute(
                 "SELECT height, block_hash, prev_hash, tx_count FROM blocks ORDER BY height"
             ).fetchall()
@@ -359,6 +373,12 @@ class UTXOStore:
                 raise RuntimeError(
                     f"UTXO SQLite foreign-key check failed: {foreign_key_errors!r}"
                 )
+
+    def issued_subsidy(self) -> int:
+        """Return cumulative newly issued subsidy on the active persisted chain."""
+        with self._connection_scope() as db:
+            row = db.execute("SELECT COALESCE(SUM(subsidy_issued), 0) FROM blocks").fetchone()
+        return row[0]
 
     def tip(self) -> tuple[int, bytes] | None:
         """Return the stored tip height and hash, or None."""
@@ -483,16 +503,21 @@ class UTXOStore:
             updated, fees = validate_block_transactions(
                 block, parent, height, provenance, median_time_past
             )
+            coinbase_total = sum(output.value for output in block.transactions[0].outputs)
+            subsidy_issued = max(0, coinbase_total - fees)
+            already_issued = db.execute("SELECT COALESCE(SUM(subsidy_issued), 0) FROM blocks").fetchone()[0]
+            if already_issued + subsidy_issued > TOTAL_SUPPLY_CAP:
+                raise ValueError("cumulative subsidy issuance exceeds total supply cap")
             created_mtp = median_time_past
             updated_provenance = self._advance_provenance(block, provenance, height, created_mtp)
             if set(updated) != set(updated_provenance):
                 raise RuntimeError("UTXO/provenance state diverged")
 
             db.execute(
-                "INSERT INTO blocks(height, block_hash, prev_hash, header, tx_count, total_fees) "
-                "VALUES(?, ?, ?, ?, ?, ?)",
+                "INSERT INTO blocks(height, block_hash, prev_hash, header, tx_count, total_fees, subsidy_issued) "
+                "VALUES(?, ?, ?, ?, ?, ?, ?)",
                 (height, block.header.hash, block.header.prev_hash,
-                 block.header.serialize(), len(block.transactions), fees),
+                 block.header.serialize(), len(block.transactions), fees, subsidy_issued),
             )
 
             # Record inverse operations before committing the new UTXO set.
@@ -691,16 +716,21 @@ class UTXOStore:
                 updated, fees = validate_block_transactions(
                     block, parent, height, provenance, median_time_past
                 )
+                coinbase_total = sum(output.value for output in block.transactions[0].outputs)
+                subsidy_issued = max(0, coinbase_total - fees)
+                already_issued = db.execute("SELECT COALESCE(SUM(subsidy_issued), 0) FROM blocks").fetchone()[0]
+                if already_issued + subsidy_issued > TOTAL_SUPPLY_CAP:
+                    raise ValueError("cumulative subsidy issuance exceeds total supply cap")
                 created_mtp = median_time_past
                 updated_provenance = self._advance_provenance(block, provenance, height, created_mtp)
                 if set(updated) != set(updated_provenance):
                     raise RuntimeError("UTXO/provenance state diverged")
 
                 db.execute(
-                    "INSERT INTO blocks(height, block_hash, prev_hash, header, tx_count, total_fees) "
-                    "VALUES(?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO blocks(height, block_hash, prev_hash, header, tx_count, total_fees, subsidy_issued) "
+                    "VALUES(?, ?, ?, ?, ?, ?, ?)",
                     (height, block.header.hash, block.header.prev_hash,
-                     block.header.serialize(), len(block.transactions), fees),
+                     block.header.serialize(), len(block.transactions), fees, subsidy_issued),
                 )
                 for tx in block.transactions[1:]:
                     for txin in tx.inputs:
