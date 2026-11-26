@@ -226,6 +226,7 @@ class HeaderChain:
     def add_batch(
         self, headers: list[BlockHeader], *, adjusted_time: int | None = None,
         max_future_seconds: int = 7_200,
+        on_commit: Callable[["HeaderChain"], None] | None = None,
     ) -> list[str]:
         """Validate and add a contiguous header batch atomically.
 
@@ -234,6 +235,8 @@ class HeaderChain:
         """
         if not isinstance(headers, list):
             raise TypeError("headers must be a list")
+        if on_commit is not None and not callable(on_commit):
+            raise TypeError("on_commit must be callable")
         original_nodes = self._nodes.copy()
         original_best_hash = self._best_hash
         accepted = []
@@ -246,6 +249,8 @@ class HeaderChain:
                     header, adjusted_time=batch_adjusted_time,
                     max_future_seconds=max_future_seconds,
                 ))
+            if on_commit is not None:
+                on_commit(self)
         except Exception:
             self._nodes = original_nodes
             self._best_hash = original_best_hash
