@@ -2,9 +2,8 @@
 
 This module validates header linkage, proof of work, canonical compact targets,
 parent median-time-past, fixed 2016-block difficulty retargets, and cumulative-
-work branch selection. A future-time bound is checked only when the caller
-supplies ``adjusted_time``; callers must provide a trusted network-adjusted
-clock value to enforce that policy.
+work branch selection. Non-genesis headers require an explicit network-adjusted
+time unless the caller opts into the clearly named test-only unchecked mode.
 
 This is not production consensus: it does not validate block bodies, scripts,
 UTXOs, or persistent branch state, and it does not itself obtain or require a
@@ -52,12 +51,18 @@ class HeaderNode:
 class HeaderChain:
     """Header DAG selecting the greatest cumulative-work branch."""
 
-    def __init__(self, pow_limit: int, genesis: BlockHeader):
+    def __init__(
+        self, pow_limit: int, genesis: BlockHeader, *,
+        allow_unchecked_time_for_tests: bool = False,
+    ):
+        if not isinstance(allow_unchecked_time_for_tests, bool):
+            raise TypeError("allow_unchecked_time_for_tests must be a boolean")
         if not isinstance(pow_limit, int) or isinstance(pow_limit, bool) or pow_limit <= 0:
             raise ValueError("pow_limit must be a positive integer")
         if not isinstance(genesis, BlockHeader) or genesis.prev_hash != ZERO_HASH:
             raise ValueError("genesis previous hash must be all zeroes")
         self.pow_limit = pow_limit
+        self.allow_unchecked_time_for_tests = allow_unchecked_time_for_tests
         self._nodes: dict[bytes, HeaderNode] = {}
         self._best_hash: bytes | None = None
         self.add_to_branch(genesis)
@@ -153,11 +158,15 @@ class HeaderChain:
     ) -> str:
         if not isinstance(header, BlockHeader):
             raise TypeError("header must be a BlockHeader")
-        if adjusted_time is not None:
+        if not isinstance(max_future_seconds, int) or isinstance(max_future_seconds, bool) or max_future_seconds < 0:
+            raise ValueError("max_future_seconds must be a non-negative integer")
+        is_genesis = header.prev_hash == ZERO_HASH
+        if adjusted_time is None:
+            if not is_genesis and not self.allow_unchecked_time_for_tests:
+                raise ValueError("adjusted_time is required for non-genesis headers")
+        else:
             if not isinstance(adjusted_time, int) or isinstance(adjusted_time, bool) or adjusted_time < 0:
                 raise ValueError("adjusted_time must be a non-negative integer")
-            if not isinstance(max_future_seconds, int) or isinstance(max_future_seconds, bool) or max_future_seconds < 0:
-                raise ValueError("max_future_seconds must be a non-negative integer")
             if header.timestamp > adjusted_time + max_future_seconds:
                 raise ValueError("header timestamp exceeds network-adjusted future-time limit")
         block_hash = header.hash
