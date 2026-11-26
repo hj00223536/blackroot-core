@@ -312,11 +312,12 @@ Path(result).write_text(outcome)
         switched = self.store.reorganize_to_best(headers)
         self.assertEqual(switched, (1, selected_hash))
         self.assertEqual(self.store.tip(), switched)
+        selected_block = next(
+            block for block in candidates
+            if block.header.hash == selected_hash
+        )
         self.assertIsNotNone(
-            self.store.get(OutPoint(headers.node(selected_hash).header.merkle_root, 0))
-            if False else self.store.get(
-                OutPoint(next(block for block in candidates if block.header.hash == selected_hash).transactions[0].txid, 0)
-            )
+            self.store.get(OutPoint(selected_block.transactions[0].txid, 0))
         )
         self.store.verify_integrity()
 
