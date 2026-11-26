@@ -130,10 +130,16 @@ class PeerHeaderSync:
             # When the chain owns a configured clock, let HeaderChain sample it
             # exactly once for the atomic batch. Standalone sync chains use the
             # coordinator's explicitly supplied clock instead.
-            adjusted_time = (
-                None if self.chain.adjusted_time_provider is not None
-                else self._now()
-            )
+            if self.chain.adjusted_time_provider is not None:
+                # Empty batches do not reach HeaderChain's batch clock sampling;
+                # validate the configured provider explicitly in that case.
+                from .blackroot_p2p_headers import decode_headers
+                decoded_headers = decode_headers(payload)
+                adjusted_time = None
+                if not decoded_headers:
+                    self._now()
+            else:
+                adjusted_time = self._now()
             accepted = accept_headers_payload(
                 self.chain,
                 payload,
