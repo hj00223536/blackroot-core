@@ -28,6 +28,8 @@ This plan records the owner's selected direction: an independent blockchain name
 - [ ] Document known limitations and threat model.
 
 ### Stage 1 — Protocol freeze
+
+The detailed open decisions and required evidence are tracked in [Protocol-freeze gap register](protocol-freeze-gap-register.md). All listed protocol decisions remain open until normative rules and independent vectors are approved.
 - [ ] Normative specification covering serialization, transaction/script rules, signatures, block validation, retargeting, time rules, fees, upgrades, network magic, address encoding, and limits.
 - [x] Owner-approved monetary schedule specified: 20,000,000 BRT founder allocation plus 20,000,000 BRT mining allocation at 10 BRT per block for heights 1–2,000,000.
 - [ ] Founder genesis output, spendability, exact serialization, and independent vectors implemented and reviewed. Current genesis remains a zero-value OP_RETURN; no founder coins are issued.
