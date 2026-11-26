@@ -629,7 +629,7 @@ class UTXOStore:
         header_chain: HeaderChain,
         replacement_blocks: dict[bytes, Block] | None = None,
     ) -> tuple[int, bytes]:
-        """Apply the HeaderChain's strictly-higher-work best branch to this UTXO store.
+        """Apply the HeaderChain-selected best branch to this UTXO store.
 
         The active database tip must already exist in the supplied header DAG.
         Every connecting body must be supplied by its exact header hash and its
@@ -657,9 +657,13 @@ class UTXOStore:
         best_node = header_chain.node(best_hash)
         if best_node is None:
             raise ValueError("header chain has no best tip")
-        if best_node.chainwork <= active_node.chainwork:
+        if best_hash == active_hash or best_node.chainwork < active_node.chainwork:
             return active
 
+        # HeaderChain uses a deterministic hash tie-break when cumulative work
+        # is equal. Keep the persistent UTXO tip aligned with that selected
+        # branch; refusing equal-work switches here would leave header and UTXO
+        # best-chain views inconsistent.
         disconnect_headers, connect_headers = header_chain.reorganization(active_hash)
         if not connect_headers:
             return active
