@@ -9,7 +9,7 @@ This document records the current header-chain behavior and the decisions requir
 - A candidate header timestamp must be strictly greater than the median timestamp of up to the 11 headers ending at its parent (MTP).
 - Network-mode header admission now fails closed when `adjusted_time` is omitted for a non-genesis header; the explicit `allow_unchecked_time_for_tests=True` constructor option exists only for offline fixtures.
 - The current helper default for `max_future_seconds` is 7,200 seconds (two hours).
-- The header-chain object still does not obtain or authenticate a network-adjusted clock. Callers must supply a trusted value through `add`, `add_to_branch`, or `add_batch`; production clock sourcing and peer-time adjustment remain unresolved.
+- `HeaderChain` now accepts an injected `adjusted_time_provider` callable. When configured, normal non-genesis admission obtains its reference time from that provider. The chain still cannot authenticate the provider or decide how peer time is sampled; production clock sourcing and peer-time adjustment remain unresolved. Explicit `adjusted_time` remains available for deterministic validation and batch admission.
 - The in-memory header DAG does not establish a peer-time sampling or clock-synchronization policy.
 
 These are prototype facts, not a complete network time policy.
@@ -31,8 +31,8 @@ These are prototype facts, not a complete network time policy.
 
 1. Every externally reachable header acceptance path must enforce the same frozen time rules.
 2. A caller must not be able to bypass the future-time bound by omitting an optional argument.
-3. The clock provider must be explicit, testable and isolated from consensus arithmetic.
-4. Tests must cover timestamps equal to MTP, one second above MTP, exactly at the future bound, one second beyond it, missing clock, negative/invalid clock values and clock rollback.
+3. The clock provider must be explicit, testable and isolated from consensus arithmetic. The prototype now supports injection, but production wiring and trust policy are still open.
+4. Tests must cover timestamps equal to MTP, one second above MTP, exactly at the future bound, one second beyond it, missing clock, provider-returned invalid values, provider failures and clock rollback.
 5. Reorganization and batch insertion must apply the same rules atomically to every header.
 6. Independent clients must reproduce the normative boundary vectors.
 
