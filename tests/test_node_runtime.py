@@ -40,6 +40,7 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.state = PersistentNodeState(
             root / "headers.sqlite", root / "utxos.sqlite",
             POW_LIMIT, genesis.header,
+            adjusted_time_provider=lambda: 1_800_000_100,
         )
         manager = PeerManager(
             magic=MAGIC,
@@ -87,6 +88,7 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
             root / "utxos.sqlite",
             POW_LIMIT,
             genesis,
+            adjusted_time_provider=lambda: 1_800_000_100,
         )
         self.assertEqual(
             reopened_state.utxos.tip(),
@@ -135,6 +137,7 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
             root / "remote-utxos.sqlite",
             POW_LIMIT,
             genesis,
+            adjusted_time_provider=lambda: 1_800_000_100,
         )
         remote_manager = PeerManager(
             magic=MAGIC,
