@@ -73,15 +73,18 @@ def validate_genesis_manifest_v2(
     """
     if not isinstance(manifest, Mapping):
         raise TypeError("manifest must be a mapping")
-    if set(manifest) != _REQUIRED_FIELDS_V2:
-        missing = sorted(_REQUIRED_FIELDS_V2 - set(manifest))
-        unknown = sorted(set(manifest) - _REQUIRED_FIELDS_V2)
+    # Snapshot caller-controlled mappings once; all subsequent checks use the
+    # same values rather than re-reading a potentially changing Mapping.
+    manifest_snapshot = dict(manifest)
+    if set(manifest_snapshot) != _REQUIRED_FIELDS_V2:
+        missing = sorted(_REQUIRED_FIELDS_V2 - set(manifest_snapshot))
+        unknown = sorted(set(manifest_snapshot) - _REQUIRED_FIELDS_V2)
         raise ValueError(f"v2 manifest fields mismatch (missing={missing}, unknown={unknown})")
-    if _require_uint(manifest["manifest_version"], "manifest_version") != 2:
+    if _require_uint(manifest_snapshot["manifest_version"], "manifest_version") != 2:
         raise ValueError("unsupported manifest_version for v2")
 
     digest = _require_lower_hex(manifest["manifest_digest"], "manifest_digest", exact_length=64)
-    if digest != calculate_genesis_manifest_v2_digest(manifest):
+    if digest != calculate_genesis_manifest_v2_digest(manifest_snapshot):
         raise ValueError("manifest_digest does not match canonical v2 contents")
 
     network_id = _require_lower_hex(manifest["network_id"], "network_id", exact_length=64)
