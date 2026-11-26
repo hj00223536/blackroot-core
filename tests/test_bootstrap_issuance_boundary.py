@@ -21,6 +21,10 @@ def find_bootstrap_issuer_references(source: str, source_name: str = "<source>")
             references.append((source_name, node.lineno))
         elif isinstance(node, ast.Name) and node.id == BOOTSTRAP_ISSUER:
             references.append((source_name, node.lineno))
+        elif isinstance(node, ast.Constant) and node.value == BOOTSTRAP_ISSUER:
+            # Catch string-based lookup through vars(), __dict__, globals(),
+            # getattr(), or other reflective APIs, not only named built-ins.
+            references.append((source_name, node.lineno))
 
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             for imported in node.names:
@@ -50,6 +54,9 @@ class BootstrapIssuanceBoundaryTests(unittest.TestCase):
             'issuer = getattr(store, "add_genesis_output")',
             'hasattr(store, "add_genesis_output")',
             'setattr(store, "add_genesis_output", replacement)',
+            'store.__dict__["add_genesis_output"](outpoint, output)',
+            'globals()["add_genesis_output"]',
+            'getattr(store, "add_" + "genesis_output")',
         )
         for source in samples:
             with self.subTest(source=source):
