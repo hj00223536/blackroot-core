@@ -1,7 +1,6 @@
 # Difficulty adjustment and chainwork prototype
 
-**Status:** proposed Bitcoin-style rule and reference helpers; not activated
-as a network consensus rule.
+**Status:** owner-approved difficulty parameters and boundary convention; independent implementation and external review remain open. Not activated as a network consensus rule.
 
 ## Parameters proposed
 
@@ -23,17 +22,14 @@ for a candidate at height 2,016 it samples block 2,015 and block 0: 2,015
 elapsed timestamp intervals are compared with the nominal 2,016 * 600-second
 target timespan. A regression test pins this exact behavior.
 
-This records what the prototype currently does; it does not approve the rule
-for a network. A normative protocol must explicitly decide whether to preserve
-this boundary formula, and define median-time-past rules, future timestamp
-limits, genesis behavior, minimum-difficulty exceptions, and whether test
-networks use special rules. These details are consensus-critical.
+The owner approved this boundary formula and the stated difficulty parameters on 2026-11-26. This approval does not settle median-time-past rules, future timestamp limits, genesis behavior, minimum-difficulty exceptions, or whether test networks use special rules. These remain separate consensus-critical decisions.
 
 ## Current in-memory HeaderChain behavior
 
 The in-memory HeaderChain stores headers by hash, permits extending any known
 parent through add_to_branch, accumulates per-header work, and selects the
 branch with greatest cumulative work (with a deterministic raw-hash tie-break).
+The owner has not approved the chain-selection tie-break or reorganization policy.
 best_chain() returns the selected header path, and reorganization(old_tip_hash)
 reports headers to disconnect in tip-first order and headers to connect in
 fork-first order.
