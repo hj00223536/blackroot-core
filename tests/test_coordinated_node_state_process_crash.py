@@ -53,17 +53,17 @@ genesis = make_block(bytes(32), 0, 1)
 state = PersistentNodeState.open_coordinated(root / "node.sqlite", limit, genesis.header, adjusted_time_provider=lambda: 1_000_000)
 candidate = make_block(genesis.header.hash, 1, 2)
 if mode in ("during_transaction", "after_commit"):
-    state.add_header(candidate.header, adjusted_time=2)
+    state.add_header(candidate.header)
 
 if mode in ("reorg_after_intent", "reorg_during_transaction", "reorg_after_commit", "reorg_crash_with_waiter"):
     state.connect_best_block(genesis, 0)
     old = make_block(genesis.header.hash, 1, 2)
-    state.add_header(old.header, adjusted_time=2)
+    state.add_header(old.header)
     state.connect_best_block(old, 1)
     side_one = make_block(genesis.header.hash, 1, 3)
-    state.add_header(side_one.header, adjusted_time=3)
+    state.add_header(side_one.header)
     side_two = make_block(side_one.header.hash, 2, 4)
-    state.add_header(side_two.header, adjusted_time=4)
+    state.add_header(side_two.header)
     replacements = {side_one.header.hash: side_one, side_two.header.hash: side_two}
     if mode == "reorg_after_intent":
         original_prepare = state.recovery_journal.prepare
