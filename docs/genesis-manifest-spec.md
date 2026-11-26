@@ -32,13 +32,13 @@ The amount above is a proposal-level conversion using 100,000,000 atomic units p
 
 ## 3. Canonical digest
 
-Before implementation, the project must freeze a canonical serialization rule. The proposed choice is RFC 8785 JSON Canonicalization Scheme (JCS), UTF-8, with duplicate object keys rejected and no floating-point values.
+The prototype now implements a restricted RFC 8785-style JSON Canonicalization Scheme (JCS) encoder for the manifest's string/integer-only schema, UTF-8 output, UTF-16 key ordering, duplicate-key rejection in the strict JSON parser, and rejection of floating-point and out-of-safe-range integers. This implementation is provisional until cross-language RFC 8785 test vectors and an independent implementation agree.
 
 Compute the manifest identifier as:
 
 `SHA256(UTF8("BLACKROOT-GENESIS-MANIFEST-V1\\0") || JCS(manifest_without_digest))`
 
-The digest field itself is excluded from the hashed object. The exact domain-separation bytes, JCS version, lowercase-hex rules, and test vectors must be frozen before any production code relies on this formula. A digest detects changes; it does not prove who approved the manifest.
+The digest field itself is excluded from the hashed object. The prototype domain-separation bytes are ASCII `BLACKROOT-GENESIS-MANIFEST-V1` followed by one NUL byte. The exact domain-separation bytes, JCS version, lowercase-hex rules, and cross-language test vectors must still be frozen before production relies on this formula. A digest detects changes; it does not prove who approved the manifest.
 
 ## 4. Validation requirements
 
@@ -86,4 +86,4 @@ This proposal remains OPEN until the owner-approved monetary policy, network ide
 
 A fail-closed structural checker now exists at `src/blackroot_genesis_manifest.py`, with regression tests in `tests/test_genesis_manifest.py`. It checks the exact field set and basic types, canonical lowercase hex, coinbase transaction decoding/round-trip, the expected transaction ID supplied by frozen configuration, founder output index/value/script, network/genesis/schedule identifiers supplied by frozen configuration, and the founder-plus-mining supply arithmetic.
 
-**This checker is not sufficient to authorize issuance.** It does not calculate or verify the RFC 8785 manifest digest, authenticate the approval record, derive the genesis block hash from a full header and Merkle commitment, establish that the supplied expected constants are themselves frozen/approved, or write database state. The tests use synthetic public values and a dummy locking script; they are not a real founder address or spendability test. Do not connect this structural checker to a node startup path or treat a passing result as owner approval.
+**This checker is not sufficient to authorize issuance.** It now calculates and checks a domain-separated digest using a restricted JCS encoder and rejects duplicate JSON keys through its strict parser. It still does not authenticate the approval record, derive the genesis block hash from a full header and Merkle commitment, establish that the supplied expected constants are themselves frozen/approved, or write database state. Cross-language canonicalization vectors and an independent implementation remain outstanding. The tests use synthetic public values and a dummy locking script; they are not a real founder address or spendability test. Do not connect this structural checker to a node startup path or treat a passing result as owner approval.
