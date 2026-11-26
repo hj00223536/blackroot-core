@@ -476,10 +476,12 @@ class SQLiteSnapshotTests(unittest.TestCase):
 
         snapshots_dir = self.root / "real-store-snapshots"
         snapshots_dir.mkdir()
+        snapshot_clock_calls = []
         snapshot_report = snapshot_legacy_node_databases(
             header_path, utxo_path, journal_path, snapshots_dir,
-            adjusted_time_provider=lambda: 1_000_000,
+            adjusted_time_provider=lambda: snapshot_clock_calls.append(1_000_000) or 1_000_000,
         )
+        self.assertEqual(snapshot_clock_calls, [1_000_000])
         self.assertEqual(snapshot_report["status"], "snapshots_validated")
 
         staged = self.root / "real-store-coordinated.sqlite"
