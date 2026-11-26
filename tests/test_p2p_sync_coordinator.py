@@ -131,6 +131,23 @@ class PeerSyncCoordinatorTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ConnectionError, "handshake"):
             await self.coordinator.handle_message(self.peer, "inv", encode_inventory([]))
 
+    async def test_strict_persistent_mode_rejects_unmarked_store(self):
+        coordinator = PeerSyncCoordinator(
+            self.header_sync, require_node_state_lifecycle=True
+        )
+        with self.assertRaisesRegex(ValueError, "lifecycle adapter"):
+            coordinator.attach_store(self.store)
+
+    async def test_strict_persistent_mode_accepts_marked_adapter(self):
+        adapter = Mock()
+        adapter._blackroot_node_state_lifecycle = True
+        adapter.connect_validated_block.return_value = 0
+        coordinator = PeerSyncCoordinator(
+            self.header_sync, require_node_state_lifecycle=True
+        )
+        coordinator.attach_store(adapter)
+        self.assertIs(coordinator.store, adapter)
+
 
 if __name__ == "__main__":
     unittest.main()
