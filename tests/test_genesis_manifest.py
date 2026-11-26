@@ -205,21 +205,21 @@ class GenesisManifestStructureTests(unittest.TestCase):
         encoded = _jcs_encode(value).encode("utf-8")
         self.assertEqual(encoded, '{"text":"café 雪 😀"}'.encode("utf-8"))
 
-        controls = _jcs_encode({"control": "\\u0000\\b\\t\\n\\f\\r"})
-        self.assertEqual(controls, '{"control":"\\\\u0000\\\\b\\\\t\\\\n\\\\f\\\\r"}')
+        controls = _jcs_encode({"control": "\u0000\b\t\n\f\r"})
+        self.assertEqual(controls, '{"control":"\\u0000\\b\\t\\n\\f\\r"}')
 
         # JCS sorts property names by UTF-16 code units, not Unicode scalar value.
-        ordered = _jcs_encode({"\\ue000": 1, "😀": 2})
-        self.assertEqual(ordered, '{"😀":2,"\\ue000":1}')
+        ordered = _jcs_encode({"\ue000": 1, "😀": 2})
+        self.assertEqual(ordered, '{"😀":2,"\ue000":1}')
 
         with self.assertRaisesRegex(ValueError, "surrogates"):
-            _jcs_encode("unpaired-\\ud800")
+            _jcs_encode("unpaired-\ud800")
         with self.assertRaisesRegex(ValueError, "surrogates"):
-            _jcs_encode({"bad-\\udfff": 1})
+            _jcs_encode({"bad-\udfff": 1})
         with self.assertRaisesRegex(ValueError, "surrogates"):
-            canonicalize_genesis_manifest({"manifest_digest": "00" * 32, "value": "x\\ud800"})
+            canonicalize_genesis_manifest({"manifest_digest": "00" * 32, "value": "x\ud800"})
 
-        parsed = parse_genesis_manifest_json('{"value":"\\\\ud800"}')
+        parsed = parse_genesis_manifest_json('{"value":"\\ud800"}')
         with self.assertRaisesRegex(ValueError, "surrogates"):
             _jcs_encode(parsed)
 
