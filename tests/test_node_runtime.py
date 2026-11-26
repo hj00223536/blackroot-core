@@ -68,6 +68,7 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_runtime_requires_persistent_state_clock_provider(self):
         root = Path(self.temp.name) / "missing-clock"
+        root.mkdir()
         state = PersistentNodeState(
             root / "headers.sqlite", root / "utxos.sqlite",
             POW_LIMIT, self.state.headers.chain.get(0),
