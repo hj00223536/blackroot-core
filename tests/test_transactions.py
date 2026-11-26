@@ -51,6 +51,12 @@ class TransactionTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "non-canonical"):
             Transaction.deserialize(noncanonical)
 
+    def test_deserializer_rejects_input_count_that_cannot_fit_transaction_limit(self):
+        # 100,000 minimum-size inputs alone exceed the 4 MB transaction cap.
+        raw = (1).to_bytes(4, "little", signed=True) + compact_size(100_000)
+        with self.assertRaisesRegex(ValueError, "exceeds prototype size limit"):
+            Transaction.deserialize(raw)
+
     def test_serialization_and_txid_are_deterministic(self):
         tx = Transaction(
             1,
