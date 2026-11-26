@@ -82,6 +82,28 @@ class MultiPeerReorganizationSyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.tip(), second_result)
         self.assertEqual(self.sync.pool.pending_hashes, ())
 
+    async def test_equal_work_tie_break_requests_body_for_selected_fork(self):
+        chain = HeaderChain(
+            POW_LIMIT,
+            self.genesis.header,
+            adjusted_time_provider=lambda: 1_000_000,
+        )
+        chain.add(self.old.header)
+        candidate = None
+        for timestamp in range(3, 200):
+            possible = mined_block(1, self.genesis.header.hash, timestamp)
+            if possible.header.hash < self.old.header.hash:
+                candidate = possible
+                break
+        self.assertIsNotNone(candidate, "expected to find a lower-hash equal-work fork")
+        chain.add_to_branch(candidate.header)
+        self.assertEqual(chain.best_hash, candidate.header.hash)
+        sync = MultiPeerReorganizationSync(chain, self.store)
+        self.assertEqual(
+            sync.missing_best_branch_bodies(),
+            (candidate.header.hash,),
+        )
+
     async def test_unassigned_peer_cannot_supply_fork_body(self):
         assignments = await self.sync.request_missing_bodies(self.peers)
         block = self.fork_one
