@@ -11,6 +11,32 @@ def version():
     return VersionMessage(1, 0, 1_800_000_000, 42, 0, "/blackroot:test/")
 
 
+class PeerManagerConfigurationTests(unittest.TestCase):
+    def test_rejects_non_finite_boolean_and_non_positive_timeouts(self):
+        for name in ("connect_timeout", "handshake_timeout", "idle_timeout"):
+            for value in (True, float("nan"), float("inf"), float("-inf"), 0, -1):
+                with self.subTest(name=name, value=value):
+                    with self.assertRaisesRegex(ValueError, "finite positive"):
+                        PeerManager(magic=MAGIC, local_version=version(), **{name: value})
+
+    def test_rejects_invalid_payload_limits(self):
+        for value in (True, -1, "100", 2**32):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "max_payload"):
+                    PeerManager(magic=MAGIC, local_version=version(), max_payload=value)
+
+    def test_rejects_invalid_minimum_protocol_version(self):
+        for value in (True, 0, -1, "1"):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(ValueError, "minimum protocol"):
+                    PeerManager(magic=MAGIC, local_version=version(), min_protocol_version=value)
+
+    def test_rejects_non_callable_handlers(self):
+        for kwargs in ({"on_message": 1}, {"on_peer_error": 1}):
+            with self.subTest(kwargs=kwargs), self.assertRaises(TypeError):
+                PeerManager(magic=MAGIC, local_version=version(), **kwargs)
+
+
 class PeerManagerTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
         self.server_manager = PeerManager(
