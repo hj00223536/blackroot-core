@@ -76,7 +76,7 @@ class Block:
             raise ValueError("truncated block header or transaction count")
         if len(raw) > MAX_BLOCK_SIZE:
             raise ValueError("serialized block exceeds provisional size limit")
-        version, prev_hash, root, timestamp, bits, nonce = struct.unpack("<i32s32sIII", raw[:80])
+        version, prev_hash, root, timestamp, bits, nonce = struct.unpack("<I32s32sIII", raw[:80])
         header = BlockHeader(version, prev_hash, root, timestamp, bits, nonce)
         count, offset = _read_compact_size(raw, 80)
         if not 1 <= count <= MAX_BLOCK_TRANSACTIONS:
