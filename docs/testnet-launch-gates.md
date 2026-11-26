@@ -2,6 +2,8 @@
 
 **Status: NOT LAUNCHED. No public Testnet endpoint or genesis block is currently published.**
 
+The [protocol-freeze gap register](protocol-freeze-gap-register.md) is the controlling checklist for unresolved consensus and network-identity decisions. Every applicable item must be resolved and independently verified before this gate list can be considered complete.
+
 This document is an engineering gate list, not a launch announcement. A testnet must use valueless test coins and must never be presented as a mainnet, investment, exchange asset, or place to deposit funds.
 
 ## What exists in this repository
