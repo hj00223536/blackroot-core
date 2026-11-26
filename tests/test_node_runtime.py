@@ -22,7 +22,7 @@ def genesis_block():
     tx = Transaction(
         1,
         (TxInput(OutPoint(ZERO_TXID, COINBASE_INDEX), b"\\x01\\x01"),),
-        (TxOutput(20_000_000 * COIN, b"miner"),),
+        (TxOutput(0, bytes.fromhex("6a")),),
     )
     for nonce in range(10_000):
         header = BlockHeader(1, ZERO_HASH, merkle_root([tx.txid]), 1, BITS, nonce)
