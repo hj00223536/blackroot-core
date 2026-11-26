@@ -33,6 +33,18 @@ _REQUIRED_FIELDS_V2 = frozenset({
 })
 
 
+def parse_genesis_manifest_v2_json(raw: str) -> dict[str, object]:
+    """Strictly parse a v2 JSON document and reject wrong-version/schema input."""
+    parsed = parse_genesis_manifest_json(raw)
+    if set(parsed) != _REQUIRED_FIELDS_V2:
+        missing = sorted(_REQUIRED_FIELDS_V2 - set(parsed))
+        unknown = sorted(set(parsed) - _REQUIRED_FIELDS_V2)
+        raise ValueError(f"v2 manifest fields mismatch (missing={missing}, unknown={unknown})")
+    if _require_uint(parsed["manifest_version"], "manifest_version") != 2:
+        raise ValueError("unsupported manifest_version for v2")
+    return parsed
+
+
 def calculate_genesis_manifest_v2_digest(manifest: Mapping[str, object]) -> str:
     """Hash canonical v2 fields, excluding the self-referential digest."""
     if not isinstance(manifest, Mapping):
