@@ -73,6 +73,30 @@ class PeerConnectionTests(unittest.IsolatedAsyncioTestCase):
         self.peer.handshake.receive_verack(b"")
         self.assertTrue(self.peer.connected)
 
+    async def test_rejects_oversized_version_before_reading_payload(self):
+        reader = asyncio.StreamReader()
+        reader.feed_data(
+            MAGIC + b"version" + bytes(5) + struct.pack("<I", 291) + bytes(4)
+        )
+        with self.assertRaisesRegex(PeerProtocolError, "version payload exceeds"):
+            await self.peer._read_message()
+        self.assertEqual(len(reader._buffer), 0)
+
+    async def test_rejects_wrong_control_payload_length_before_reading_body(self):
+        for command, length in (("verack", 1), ("ping", 7), ("pong", 9)):
+            with self.subTest(command=command, length=length):
+                reader = asyncio.StreamReader()
+                command_field = command.encode("ascii").ljust(12, b"\\x00")
+                reader.feed_data(
+                    MAGIC + command_field + struct.pack("<I", length) + bytes(4)
+                )
+                peer = PeerConnection(
+                    reader, FakeWriter(), magic=MAGIC, local_version=version(101)
+                )
+                with self.assertRaisesRegex(PeerProtocolError, "payload must be exactly"):
+                    await peer._read_message()
+                self.assertEqual(len(reader._buffer), 0)
+
     async def test_rejects_application_message_before_handshake(self):
         with self.assertRaisesRegex(PeerProtocolError, "before handshake"):
             await self.peer.handle_message("ping", struct.pack("<Q", 7))
