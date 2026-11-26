@@ -6,6 +6,8 @@ or transaction/UTXO validation.
 """
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from .blackroot_chain import HeaderChain
 from .blackroot_p2p_headers import decode_headers
 
@@ -16,7 +18,7 @@ def accept_headers_payload(
     *,
     adjusted_time: int | None = None,
     max_future_seconds: int = 7_200,
-    on_commit=None,
+    on_commit: Callable[[HeaderChain], None] | None = None,
 ) -> list[str]:
     """Decode and consensus-check a peer headers payload as one atomic batch."""
     if not isinstance(chain, HeaderChain):
