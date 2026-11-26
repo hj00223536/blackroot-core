@@ -76,17 +76,35 @@ def validate_trust_configuration(
     The pins must come from an independently reviewed release policy. This
     function cannot authenticate their provenance and never chooses defaults.
     """
-    if not isinstance(config, Mapping) or set(config) != _FIELDS:
+    if not isinstance(config, Mapping):
         raise ValueError("trust configuration fields mismatch")
-    if type(config["config_version"]) is not int or config["config_version"] != 1:
+    # Snapshot the top-level mapping and its mutable nested key/scope
+    # collections before validation so one call observes one stable input.
+    config_snapshot = dict(config)
+    raw_keys = config_snapshot.get("keys")
+    if isinstance(raw_keys, list):
+        copied_keys = []
+        for entry in raw_keys:
+            if isinstance(entry, Mapping):
+                entry_snapshot = dict(entry)
+                scopes_snapshot = entry_snapshot.get("scopes")
+                if isinstance(scopes_snapshot, list):
+                    entry_snapshot["scopes"] = list(scopes_snapshot)
+                copied_keys.append(entry_snapshot)
+            else:
+                copied_keys.append(entry)
+        config_snapshot["keys"] = copied_keys
+    if set(config_snapshot) != _FIELDS:
+        raise ValueError("trust configuration fields mismatch")
+    if type(config_snapshot["config_version"]) is not int or config_snapshot["config_version"] != 1:
         raise ValueError("unsupported trust configuration version")
-    network_id = _hex(config["network_id"], "network_id", 64)
+    network_id = _hex(config_snapshot["network_id"], "network_id", 64)
     expected_network = _hex(expected_network_id, "expected_network_id", 64)
-    digest = _hex(config["config_digest"], "config_digest", 64)
+    digest = _hex(config_snapshot["config_digest"], "config_digest", 64)
     pinned_digest = _hex(pinned_config_digest, "pinned_config_digest", 64)
     if network_id != expected_network:
         raise ValueError("trust configuration network mismatch")
-    sequence = config["sequence"]
+    sequence = config_snapshot["sequence"]
     if type(sequence) is not int or sequence < 1 or sequence > _MAX_SAFE_INTEGER:
         raise ValueError("trust configuration sequence must be a positive safe integer")
     if type(expected_sequence) is not int or expected_sequence < 1:
@@ -94,7 +112,7 @@ def validate_trust_configuration(
     if sequence != expected_sequence:
         raise ValueError("trust configuration sequence does not match pinned sequence")
 
-    previous = config["previous_config_digest"]
+    previous = config_snapshot["previous_config_digest"]
     if expected_previous_config_digest is None:
         if previous is not None:
             raise ValueError("initial trust configuration must not name a predecessor")
@@ -106,11 +124,11 @@ def validate_trust_configuration(
         if previous != expected_previous:
             raise ValueError("trust configuration predecessor mismatch")
 
-    if not isinstance(config["keys"], list) or not config["keys"]:
+    if not isinstance(config_snapshot["keys"], list) or not config_snapshot["keys"]:
         raise ValueError("trust configuration keys must be a non-empty array")
     keys: dict[str, ValidatedTrustKey] = {}
     public_keys: set[bytes] = set()
-    for entry in config["keys"]:
+    for entry in config_snapshot["keys"]:
         if not isinstance(entry, Mapping) or set(entry) != _KEY_FIELDS:
             raise ValueError("trust key fields mismatch")
         public_hex = _hex(entry["public_key"], "public_key", 64)
@@ -136,7 +154,7 @@ def validate_trust_configuration(
         )
         public_keys.add(public_bytes)
 
-    calculated = calculate_trust_configuration_digest(config)
+    calculated = calculate_trust_configuration_digest(config_snapshot)
     if digest != calculated:
         raise ValueError("trust configuration digest mismatch")
     if digest != pinned_digest:
