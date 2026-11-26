@@ -32,13 +32,27 @@ function sha256d(bytes) {
   const first = createHash("sha256").update(bytes).digest();
   return createHash("sha256").update(first).digest();
 }
+function assertUnicodeScalarString(value) {
+  for (let index = 0; index < value.length; index += 1) {
+    const unit = value.charCodeAt(index);
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      const next = value.charCodeAt(index + 1);
+      assert(next >= 0xdc00 && next <= 0xdfff, "unpaired high surrogate");
+      index += 1;
+    } else {
+      assert(!(unit >= 0xdc00 && unit <= 0xdfff), "unpaired low surrogate");
+    }
+  }
+}
 function canonicalize(value) {
+  if (typeof value === "string") assertUnicodeScalarString(value);
   if (value === null || typeof value !== "object") {
     if (typeof value === "number") assert(Number.isSafeInteger(value));
     return JSON.stringify(value);
   }
   if (Array.isArray(value)) return "[" + value.map(canonicalize).join(",") + "]";
   const keys = Object.keys(value).sort();
+  for (const key of keys) assertUnicodeScalarString(key);
   return "{" + keys.map((key) => JSON.stringify(key) + ":" + canonicalize(value[key])).join(",") + "}";
 }
 
@@ -79,6 +93,12 @@ const digest = createHash("sha256")
   .digest("hex");
 
 assert.equal(digest, "9bb6346eff59ffa041f2d81ad640e0af04bde0feade6da4eef223c7744c86370");
+assert.equal(canonicalize({ text: "café 雪 😀" }), '{"text":"café 雪 😀"}');
+assert.equal(canonicalize({ control: "\\u0000\\b\\t\\n\\f\\r" }),
+  '{"control":"\\\\u0000\\\\b\\\\t\\\\n\\\\f\\\\r"}');
+assert.equal(canonicalize({ "\\ue000": 1, "😀": 2 }), '{"😀":2,"\\ue000":1}');
+assert.throws(() => canonicalize("unpaired-\\ud800"), /unpaired high surrogate/);
+assert.throws(() => canonicalize({ "bad-\\udfff": 1 }), /unpaired low surrogate/);
 assert.equal(sha256d(coinbase).reverse().toString("hex"),
   "b8119fc7d37dd8983eacfc85e3a312d9e1ec8bfeca53c30e844003a23070a5cd");
 console.log("Independent genesis manifest JCS vector: OK");
