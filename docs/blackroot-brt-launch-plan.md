@@ -22,7 +22,7 @@ This plan records the owner's selected direction: an independent blockchain name
 ## Release stages
 
 ### Stage 0 — Prototype integrity (current)
-- [ ] Complete cross-version CI and resolve reproducible warnings.
+- [x] Cross-version CI passed for the schema-v5 issuance-ledger regression (428 tests each on Python 3.12 and 3.13, run 45825892104). Later independent Base58Check vector changes also passed both Python jobs and Node.js 22 in runs 45826222268 and 45826234922. This does not close protocol, wallet, or audit gates.
 - [ ] Establish a clean reproducible test report and release candidate commit.
 - [ ] Review SQLite lifecycle, migration, backup, recovery, and data-directory locking.
 - [ ] Document known limitations and threat model.
@@ -30,7 +30,7 @@ This plan records the owner's selected direction: an independent blockchain name
 ### Stage 1 — Protocol freeze
 - [ ] Normative specification covering serialization, transaction/script rules, signatures, block validation, retargeting, time rules, fees, upgrades, network magic, address encoding, and limits.
 - [x] Owner-approved monetary schedule specified: 20,000,000 BRT founder allocation plus 20,000,000 BRT mining allocation at 10 BRT per block for heights 1–2,000,000.
-- [ ] Founder genesis output, spendability, exact serialization, and independent vectors implemented and reviewed.
+- [ ] Founder genesis output, spendability, exact serialization, and independent vectors implemented and reviewed. Current genesis remains a zero-value OP_RETURN; no founder coins are issued.
 - [ ] Testnet identity and genesis generated deterministically from reviewed inputs.
 - [ ] Genesis/header/transaction vectors reproduced by an independent implementation.
 - [ ] Freeze testnet parameters; resets must create a new network identity.
