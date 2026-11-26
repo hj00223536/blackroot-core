@@ -149,3 +149,39 @@ def validate_trust_configuration(
 def parse_trust_configuration_json(raw: str) -> dict[str, object]:
     """Strict JSON parser rejecting duplicate keys, floats and non-object roots."""
     return parse_genesis_manifest_json(raw)
+
+def verify_approval_with_validated_trust(
+    validated_manifest,
+    approval_record_json: str,
+    trust_configuration: ValidatedTrustConfiguration,
+) -> str:
+    """Verify manifest approval using only active keys from validated trust data.
+
+    The trust configuration must already have passed validation against
+    independently supplied network, digest, sequence, and predecessor pins.
+    This helper does not authenticate those pins or authorize issuance.
+    """
+    from .blackroot_genesis_manifest import ValidatedGenesisManifest
+    from .blackroot_genesis_approval import verify_validated_genesis_manifest_approval
+
+    if not isinstance(validated_manifest, ValidatedGenesisManifest):
+        raise TypeError("validated_manifest must be a ValidatedGenesisManifest")
+    if not isinstance(trust_configuration, ValidatedTrustConfiguration):
+        raise TypeError("trust_configuration must be a ValidatedTrustConfiguration")
+    if trust_configuration.network_id != validated_manifest.network_id:
+        raise ValueError("trust configuration network does not match validated manifest")
+    active = {
+        key_id: key.public_key
+        for key_id, key in trust_configuration.keys.items()
+        if key.status == "active" and _SCOPE in key.scopes
+    }
+    revoked = frozenset(
+        key_id for key_id, key in trust_configuration.keys.items()
+        if key.status == "revoked"
+    )
+    return verify_validated_genesis_manifest_approval(
+        validated_manifest,
+        approval_record_json,
+        trusted_public_keys=active,
+        revoked_key_ids=revoked,
+    )
