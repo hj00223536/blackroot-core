@@ -64,6 +64,10 @@ Before any semantic verifier can be considered reviewable, tests must cover:
 - Deterministic evidence reports and explicit negative assertions that verification alone does not authorize release or issuance.
 - Initializer crash/fault injection, duplicate invocation, database rollback, and post-initialization tampering — only after the initializer design has been independently reviewed.
 
+## Standalone genesis proof-of-work evidence
+
+The v1 genesis-manifest module now exposes a helper that composes the existing manifest/header commitment checks with canonical compact-target encoding and SHA-256d proof-of-work verification against an explicitly supplied network proof-of-work limit. Its regression test checks both acceptance under the supplied limit and rejection under a stricter limit. This is a standalone header check only: it does not establish that the supplied limit or genesis nBits is authoritative, nor does it validate contextual difficulty, timestamp rules, block-body consensus, scripts, UTXOs, or the complete network consensus profile. Those checks remain mandatory before any release decision.
+
 ## Version 1 manifest validator input consistency
 
 The legacy v1 structural validator now also snapshots the supplied mapping before schema, digest, network, transaction, founder-output, supply, and approval-reference checks. A regression test uses a changing mapping and verifies the validated founder amount remains the captured value. This closes the same repeated-read consistency gap across both manifest validator versions; it does not promote v1 or v2 to a frozen release format or provide external package authentication.
