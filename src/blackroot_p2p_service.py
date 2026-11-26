@@ -1,8 +1,10 @@
-"""Node-level wiring for peer lifecycle, header sync, and fork-body downloads.
+"""Peer wiring for header sync, block downloads, and fork-body activation.
 
 The service is opt-in and is attached to an existing PeerManager. It routes
 messages by the actual PeerConnection object, owns one header coordinator per
-peer, and shares one fork-body assignment pool across the node.
+peer, and shares one fork-body assignment pool across the node. Persistent-node
+callers must pass a lifecycle adapter (as BlackrootNodeRuntime does), not a raw
+UTXOStore, so activation participates in the node recovery-journal boundary.
 """
 from __future__ import annotations
 
