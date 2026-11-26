@@ -2,6 +2,10 @@
 
 **Status: PROPOSAL ONLY — no owner signing key is configured, no approval signature exists, and no issuance is authorized.**
 
+## Related governance and activation documents
+
+This verifier proposal must be read together with the [trust-anchor governance proposal](genesis-trust-anchor-governance-proposal.md), which defines how a public key could become trusted, and the [genesis activation package checklist](genesis-activation-package-checklist.md), which separates manifest approval from release authorization. Neither linked proposal is an approved trust configuration or launch decision.
+
 ## Purpose
 
 A manifest digest proves only that a particular byte-level manifest was presented. It does not prove who approved it. A text value such as \`approval_record: "approved"\` is not authentication and must never authorize founder issuance.
