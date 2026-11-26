@@ -2,10 +2,17 @@ import hashlib
 import json
 import unittest
 
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives import serialization
+
+from src.blackroot_genesis_approval import approval_message
+from src.blackroot_genesis_manifest import ValidatedGenesisManifest
+
 from src.blackroot_genesis_trust import (
     calculate_trust_configuration_digest,
     parse_trust_configuration_json,
     validate_trust_configuration,
+    verify_approval_with_validated_trust,
 )
 
 _NETWORK = "11" * 32
@@ -112,6 +119,86 @@ class TrustConfigurationTests(unittest.TestCase):
             parse_trust_configuration_json('{"config_version":1.0}')
         with self.assertRaisesRegex(ValueError, "root must be an object"):
             parse_trust_configuration_json("[]")
+
+
+class TrustBoundApprovalIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        self.private = Ed25519PrivateKey.from_private_bytes(bytes.fromhex(
+            "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"
+        ))
+        self.public = self.private.public_key().public_bytes(
+            serialization.Encoding.Raw, serialization.PublicFormat.Raw
+        )
+        self.key_id = hashlib.sha256(self.public).hexdigest()
+        self.digest = "22" * 32
+        self.manifest = ValidatedGenesisManifest(
+            manifest_digest=self.digest,
+            network_id=_NETWORK,
+            genesis_block_hash="33" * 32,
+            coinbase=None,
+            founder_output_index=0,
+            founder_amount_sats=1,
+            founder_script_pub_key=b"\\x51",
+            total_supply_cap_sats=2,
+            mining_schedule_id="44" * 32,
+            approval_record="detached",
+        )
+        self.approval = {
+            "record_version": 1,
+            "network_id": _NETWORK,
+            "manifest_digest": self.digest,
+            "approval_scope": "genesis-founder-allocation",
+            "signing_key_id": self.key_id,
+            "signature_algorithm": "Ed25519",
+            "signature": self.private.sign(
+                approval_message(_NETWORK, self.digest)
+            ).hex(),
+        }
+
+    def make_validated_trust(self, status="active", network=_NETWORK):
+        config = {
+            "config_version": 1,
+            "network_id": network,
+            "sequence": 1,
+            "previous_config_digest": None,
+            "keys": [{
+                "key_id": self.key_id,
+                "public_key": self.public.hex(),
+                "scopes": ["genesis-founder-allocation"],
+                "status": status,
+            }],
+        }
+        config["config_digest"] = calculate_trust_configuration_digest(config)
+        return validate_trust_configuration(
+            config,
+            expected_network_id=network,
+            pinned_config_digest=config["config_digest"],
+            expected_sequence=1,
+            expected_previous_config_digest=None,
+        )
+
+    def test_approval_uses_only_active_key_from_validated_trust(self):
+        self.assertEqual(
+            verify_approval_with_validated_trust(
+                self.manifest, json.dumps(self.approval),
+                self.make_validated_trust(),
+            ),
+            self.key_id,
+        )
+
+    def test_revoked_key_cannot_approve(self):
+        with self.assertRaisesRegex(ValueError, "not present in trusted"):
+            verify_approval_with_validated_trust(
+                self.manifest, json.dumps(self.approval),
+                self.make_validated_trust(status="revoked"),
+            )
+
+    def test_cross_network_trust_configuration_rejected(self):
+        with self.assertRaisesRegex(ValueError, "network does not match"):
+            verify_approval_with_validated_trust(
+                self.manifest, json.dumps(self.approval),
+                self.make_validated_trust(network="55" * 32),
+            )
 
 
 if __name__ == "__main__":
