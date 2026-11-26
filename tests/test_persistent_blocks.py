@@ -499,6 +499,17 @@ class PersistentBlockTests(unittest.TestCase):
         self.assertEqual(self.store.count(), 2)
         self.store.verify_integrity()
 
+    def test_underclaimed_coinbase_does_not_reduce_consensus_issuance_budget(self):
+        genesis_cb = coinbase(0, b"\\x00\\x00")
+        genesis = block_for([genesis_cb])
+        self.store.connect_block(genesis, 0)
+
+        underclaimed_cb = coinbase(block_subsidy(1) - 1, b"\\x01\\x01")
+        underclaimed = block_for([underclaimed_cb], previous=genesis.header.hash, timestamp=2)
+        self.store.connect_block(underclaimed, 1)
+        self.assertEqual(self.store.issued_subsidy(), block_subsidy(1))
+        self.store.verify_integrity()
+
     def test_disconnect_rejects_empty_chain(self):
         with self.assertRaisesRegex(ValueError, "empty chain"):
             self.store.disconnect_tip(bytes.fromhex("44" * 32))
