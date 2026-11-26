@@ -147,6 +147,7 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
         self.state.headers.chain.add_to_branch(fork_one.header)
         fork_two = mined(2, fork_one.header.hash, 4)
         self.state.headers.chain.add_to_branch(fork_two.header)
+        self.state.persist_synced_headers(self.state.headers.chain)
         bodies = {
             fork_one.header.hash: fork_one.serialize(),
             fork_two.header.hash: fork_two.serialize(),
