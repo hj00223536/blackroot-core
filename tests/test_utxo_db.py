@@ -523,6 +523,18 @@ store.apply(tx)
             )
 
 
+    def test_zero_bootstrap_counter_does_not_create_initialization_marker(self):
+        fresh_path = Path(self.tempdir.name) / "fresh-uninitialized.sqlite"
+        UTXOStore(fresh_path)
+        with _managed_sqlite(fresh_path) as db:
+            metadata = dict(db.execute(
+                "SELECT key, value FROM metadata"
+            ).fetchall())
+
+        self.assertEqual(metadata["bootstrap_issued_sats"], "0")
+        self.assertNotIn("genesis_initialization", metadata)
+        self.assertNotIn("genesis_manifest_digest", metadata)
+
     def test_bootstrap_counter_is_not_genesis_initialization_marker(self):
         # The counter tracks only aggregate trusted bootstrap value. Its
         # presence (including zero) must never be treated as proof that a
