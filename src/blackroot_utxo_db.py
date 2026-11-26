@@ -126,11 +126,12 @@ class UTXOStore:
                     if live or block_count:
                         raise RuntimeError("unsafe schema-v1 migration: non-empty state requires verified reindex from genesis")
                     raise RuntimeError("schema-v1 migration requires an explicit empty-database rebuild")
-                if row[0] == "2":
+                elif row[0] == "2":
                     raise RuntimeError("schema-v2 migration requires a verified reindex from genesis to reconstruct UTXO creation MTP")
-                if row[0] == "3":
+                elif row[0] == "3":
                     raise RuntimeError("schema-v3 migration requires a verified reindex from genesis to distinguish unknown creation MTP")
-                raise RuntimeError("unsupported UTXO database schema version")
+                else:
+                    raise RuntimeError("unsupported UTXO database schema version")
             db.execute("""
                 CREATE TABLE IF NOT EXISTS blocks (
                     height INTEGER PRIMARY KEY CHECK(height >= 0),
@@ -321,6 +322,19 @@ class UTXOStore:
             issued = db.execute("SELECT COALESCE(SUM(subsidy_issued), 0) FROM blocks").fetchone()[0]
             if issued < 0 or issued > TOTAL_SUPPLY_CAP:
                 raise RuntimeError("persisted cumulative subsidy issuance exceeds total supply cap")
+            issuance_rows = db.execute(
+                "SELECT b.total_fees, b.subsidy_issued, t.raw_transaction "
+                "FROM blocks b JOIN block_transactions t ON t.height=b.height AND t.position=0 "
+                "ORDER BY b.height"
+            ).fetchall()
+            for total_fees, recorded_issuance, raw_coinbase in issuance_rows:
+                try:
+                    coinbase_tx = Transaction.deserialize(bytes(raw_coinbase))
+                except (TypeError, ValueError) as exc:
+                    raise RuntimeError("stored coinbase transaction is malformed during issuance audit") from exc
+                actual_issuance = max(0, sum(output.value for output in coinbase_tx.outputs) - total_fees)
+                if actual_issuance != recorded_issuance:
+                    raise RuntimeError("stored per-block subsidy issuance does not match coinbase and fees")
             blocks = db.execute(
                 "SELECT height, block_hash, prev_hash, tx_count FROM blocks ORDER BY height"
             ).fetchall()
