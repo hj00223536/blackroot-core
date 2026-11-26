@@ -65,3 +65,8 @@ The repository currently has a v2 manifest structural-validator prototype, stric
 ## Stop conditions
 
 Do not create or publish a founder output, initialize a production database, expose a public endpoint, or claim BRT is issued or spendable based on this checklist. Do not claim a market price, liquidity, exchange listing, or investment return.
+## Prototype inventory-audit helper
+
+The repository now contains `src/blackroot_genesis_package_audit.py` and regression tests in `tests/test_genesis_package_audit.py`. This helper accepts an in-memory mapping of exact file names to bytes, requires the five mandatory artifacts listed above, permits only the optional `checksums.txt`, applies per-file and aggregate size limits, and compares every artifact SHA-256 against a separately supplied external pin. It rejects missing, unexpected, substituted, malformed, and non-byte artifacts, and returns a read-only digest inventory.
+
+This is only an inventory and transport-integrity check. It does not parse or semantically validate the files, authenticate the source of the external pins, verify signatures, establish owner identity, check consensus, or authorize database initialization or release. The package container format and independent pin-distribution mechanism remain open design decisions.
