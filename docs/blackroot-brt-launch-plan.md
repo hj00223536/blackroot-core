@@ -11,11 +11,12 @@ This plan records the owner's selected direction: an independent blockchain name
 - Architecture: independent UTXO blockchain
 - Proposed consensus: proof-of-work, SHA-256d (subject to protocol review)
 - Target block interval: 10 minutes (provisional)
-- Proposed initial subsidy: 50 BRT
-- Proposed halving interval: 210,000 blocks
-- Proposed atomic precision: 100,000,000 units per BRT
-- Proposed maximum supply: 21,000,000 BRT
-- Premine/founder allocation: none proposed
+- Proposed total supply: 40,000,000 BRT
+- Proposed founder allocation: 20,000,000 BRT (50%), intended to be spendable and not time-locked
+- Proposed mining allocation: 20,000,000 BRT (50%), to be emitted under a yet-to-be-specified reward schedule
+- No cash liquidity pool is funded or promised at this stage.
+- The previous 21,000,000 BRT supply and 50 BRT / 210,000-block subsidy model are superseded as the owner's selected design direction, but remain the current prototype constants until a reviewed consensus change is implemented.
+- The allocation proposal is recorded in [docs/blackroot-brt-monetary-policy-proposal.md](blackroot-brt-monetary-policy-proposal.md). It is not yet active in consensus, genesis, or any wallet.
 - These monetary and consensus parameters are not frozen; do not rely on them until the normative specification and test vectors are reviewed and approved.
 
 ## Release stages
@@ -28,6 +29,7 @@ This plan records the owner's selected direction: an independent blockchain name
 
 ### Stage 1 — Protocol freeze
 - [ ] Normative specification covering serialization, transaction/script rules, signatures, block validation, retargeting, time rules, fees, upgrades, network magic, address encoding, and limits.
+- [ ] Normative monetary specification for the 40,000,000 BRT proposal, including founder genesis allocation, mining reward curve, exact cumulative cap, rounding, and coinbase/genesis spend rules.
 - [ ] Testnet identity and genesis generated deterministically from reviewed inputs.
 - [ ] Genesis/header/transaction vectors reproduced by an independent implementation.
 - [ ] Freeze testnet parameters; resets must create a new network identity.
@@ -58,4 +60,4 @@ This plan records the owner's selected direction: an independent blockchain name
 
 ## Launch rule
 
-Do not deploy a mainnet genesis, advertise a market value, accept deposits, sell tokens, or ask users to entrust funds until every blocker above is independently verified and approved. Unit-test success alone is not launch readiness.
+Do not deploy a mainnet genesis, advertise a market value, accept deposits, sell tokens, or ask users to entrust funds until every blocker above is independently verified and approved. Unit-test success alone is not launch readiness. A spendable founder allocation is not cash liquidity and does not guarantee buyers, exchange access, or a market price.
