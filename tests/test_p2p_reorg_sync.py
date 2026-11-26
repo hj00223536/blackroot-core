@@ -170,6 +170,16 @@ class MultiPeerReorganizationSyncTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(ValueError, "positive"):
             self.sync.expire_requests(0)
 
+    async def test_expire_requests_rejects_non_finite_values(self):
+        for invalid in (float("nan"), float("inf"), float("-inf"), True):
+            with self.subTest(timeout=invalid):
+                with self.assertRaisesRegex(ValueError, "positive"):
+                    self.sync.expire_requests(invalid)
+        for invalid in (float("nan"), float("inf"), float("-inf"), True):
+            with self.subTest(now=invalid):
+                with self.assertRaisesRegex(ValueError, "timestamp"):
+                    self.sync.expire_requests(5, now=invalid)
+
     async def test_notfound_from_assigned_peer_releases_and_retries_body(self):
         assignments = await self.sync.request_missing_bodies(self.peers)
         block_hash = self.fork_one.header.hash
