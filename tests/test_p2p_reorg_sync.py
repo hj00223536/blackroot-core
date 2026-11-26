@@ -82,6 +82,17 @@ class MultiPeerReorganizationSyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.tip(), second_result)
         self.assertEqual(self.sync.pool.pending_hashes, ())
 
+    async def test_request_sync_activates_best_branch_when_all_bodies_are_already_archived(self):
+        self.store.store_block_body(self.fork_one)
+        self.store.store_block_body(self.fork_two)
+
+        assignments = await self.sync.request_missing_bodies(self.peers)
+
+        self.assertEqual(assignments, {})
+        self.assertEqual(self.store.tip(), (2, self.fork_two.header.hash))
+        self.assertEqual(self.sync.pool.pending_hashes, ())
+        self.store.verify_integrity()
+
     def test_strict_lifecycle_mode_rejects_unmarked_store(self):
         with self.assertRaisesRegex(ValueError, "lifecycle adapter"):
             MultiPeerReorganizationSync(
