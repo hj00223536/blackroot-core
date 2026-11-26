@@ -161,14 +161,14 @@ class PersistentBlockTests(unittest.TestCase):
         pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
         locking_script = p2pkh_script(_hash160(pubkey))
         funding = OutPoint(bytes.fromhex("55" * 32), 0)
-        previous_output = TxOutput(block_subsidy(0), locking_script)
+        previous_output = TxOutput(10_000, locking_script)
         self.store.add_genesis_output(funding, previous_output)
 
         genesis_cb = coinbase(block_subsidy(0), b"\x01\x01")
         genesis = block_for([genesis_cb])
         self.store.connect_block(genesis, 0)
 
-        spend = signed_spend(funding, previous_output, block_subsidy(0) - 100)
+        spend = signed_spend(funding, previous_output, 9_900)
         next_cb = coinbase(block_subsidy(1) + 100, b"\x01\x02")
         second = block_for([next_cb, spend], previous=genesis.header.hash, timestamp=2)
         self.store.connect_block(second, 1)
@@ -185,60 +185,66 @@ class PersistentBlockTests(unittest.TestCase):
         point = _mul(1)
         pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
         locking_script = p2pkh_script(_hash160(pubkey))
-        genesis_cb = coinbase(block_subsidy(0), b"\x01\x01", locking_script)
+        genesis_cb = coinbase(0, b"\x00\x00")
         genesis = block_for([genesis_cb])
         self.store.connect_block(genesis, 0)
-        coinbase_point = OutPoint(genesis_cb.txid, 0)
+
+        reward_cb = coinbase(block_subsidy(1), b"\x01\x01", locking_script)
+        reward = block_for([reward_cb], previous=genesis.header.hash, timestamp=2)
+        self.store.connect_block(reward, 1)
+        coinbase_point = OutPoint(reward_cb.txid, 0)
+        reward_output = TxOutput(block_subsidy(1), locking_script)
         with self.store._connection_scope() as db:
             row = db.execute(
                 "SELECT created_height, is_coinbase FROM utxos WHERE txid=? AND output_index=?",
                 (coinbase_point.txid, coinbase_point.index),
             ).fetchone()
-        self.assertEqual(row, (0, 1))
+        self.assertEqual(row, (1, 1))
         reopened = UTXOStore(self.path)
-        self.assertEqual(reopened.get(coinbase_point), TxOutput(block_subsidy(0), locking_script))
+        self.assertEqual(reopened.get(coinbase_point), reward_output)
 
-        spend = signed_spend(
-            coinbase_point, TxOutput(block_subsidy(0), locking_script),
-            block_subsidy(0) - 100,
-        )
-        next_cb = coinbase(block_subsidy(1) + 100, b"\x01\x02")
-        immature = block_for([next_cb, spend], previous=genesis.header.hash, timestamp=2)
+        spend = signed_spend(coinbase_point, reward_output, block_subsidy(1) - 100)
+        next_cb = coinbase(block_subsidy(2) + 100, b"\x02\x02")
+        immature = block_for([next_cb, spend], previous=reward.header.hash, timestamp=3)
         with self.assertRaisesRegex(ValueError, "premature coinbase"):
-            reopened.connect_block(immature, 1)
-        self.assertEqual(reopened.tip(), (0, genesis.header.hash))
-        self.assertEqual(reopened.get(coinbase_point), TxOutput(block_subsidy(0), locking_script))
+            reopened.connect_block(immature, 2)
+        self.assertEqual(reopened.tip(), (1, reward.header.hash))
+        self.assertEqual(reopened.get(coinbase_point), reward_output)
 
 
-    def test_persistent_store_accepts_coinbase_spend_at_height_100(self):
+    def test_persistent_store_accepts_coinbase_spend_at_height_101(self):
         point = _mul(1)
         pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
         locking_script = p2pkh_script(_hash160(pubkey))
-        genesis_cb = coinbase(block_subsidy(0), b"\x00\x00", locking_script)
+        genesis_cb = coinbase(0, b"\x00\x00")
         previous = block_for([genesis_cb], timestamp=1)
         self.store.connect_block(previous, 0)
 
-        for height in range(1, 100):
+        reward_cb = coinbase(block_subsidy(1), b"\x01\x00", locking_script)
+        previous = block_for([reward_cb], previous=previous.header.hash, timestamp=2)
+        self.store.connect_block(previous, 1)
+
+        for height in range(2, 101):
             cb = coinbase(block_subsidy(height), bytes([height & 255, (height >> 8) & 255]))
             previous = block_for([cb], previous=previous.header.hash, timestamp=height + 1)
             self.store.connect_block(previous, height)
 
-        genesis_point = OutPoint(genesis_cb.txid, 0)
-        genesis_output = TxOutput(block_subsidy(0), locking_script)
-        spend = signed_spend(genesis_point, genesis_output, block_subsidy(0) - 100)
-        final_cb = coinbase(block_subsidy(100) + 100, b"\x64\x00")
+        reward_point = OutPoint(reward_cb.txid, 0)
+        reward_output = TxOutput(block_subsidy(1), locking_script)
+        spend = signed_spend(reward_point, reward_output, block_subsidy(1) - 100)
+        final_cb = coinbase(block_subsidy(101) + 100, b"\x65\x00")
         final_block = block_for(
-            [final_cb, spend], previous=previous.header.hash, timestamp=101
+            [final_cb, spend], previous=previous.header.hash, timestamp=102
         )
-        self.assertEqual(self.store.connect_block(final_block, 100), 100)
-        self.assertIsNone(self.store.get(genesis_point))
+        self.assertEqual(self.store.connect_block(final_block, 101), 101)
+        self.assertIsNone(self.store.get(reward_point))
         final_point = OutPoint(final_cb.txid, 0)
         with self.store._connection_scope() as db:
             row = db.execute(
                 "SELECT created_height, is_coinbase FROM utxos WHERE txid=? AND output_index=?",
                 (final_point.txid, final_point.index),
             ).fetchone()
-        self.assertEqual(row, (100, 1))
+        self.assertEqual(row, (101, 1))
 
     def test_disconnect_rejects_wrong_hash_without_mutation(self):
         cb = coinbase(block_subsidy(0), b"\x01\x01")
@@ -301,29 +307,33 @@ class PersistentBlockTests(unittest.TestCase):
         point = _mul(1)
         pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
         locking_script = p2pkh_script(_hash160(pubkey))
-        genesis_cb = coinbase(block_subsidy(0), b"\x01\x01", locking_script)
+        genesis_cb = coinbase(0, b"\x00\x00")
         genesis = block_for([genesis_cb])
         self.store.connect_block(genesis, 0)
 
-        active_cb = coinbase(block_subsidy(1), b"\x01\x02")
-        active = block_for([active_cb], previous=genesis.header.hash, timestamp=2)
-        self.store.connect_block(active, 1)
+        reward_cb = coinbase(block_subsidy(1), b"\x01\x01", locking_script)
+        reward = block_for([reward_cb], previous=genesis.header.hash, timestamp=2)
+        self.store.connect_block(reward, 1)
 
-        genesis_point = OutPoint(genesis_cb.txid, 0)
-        genesis_output = TxOutput(block_subsidy(0), locking_script)
-        spend = signed_spend(genesis_point, genesis_output, block_subsidy(0) - 100)
-        replacement_cb = coinbase(block_subsidy(1) + 100, b"\x02\x02")
+        active_cb = coinbase(block_subsidy(2), b"\x01\x02")
+        active = block_for([active_cb], previous=reward.header.hash, timestamp=3)
+        self.store.connect_block(active, 2)
+
+        reward_point = OutPoint(reward_cb.txid, 0)
+        reward_output = TxOutput(block_subsidy(1), locking_script)
+        spend = signed_spend(reward_point, reward_output, block_subsidy(1) - 100)
+        replacement_cb = coinbase(block_subsidy(2) + 100, b"\x02\x02")
         replacement = block_for(
-            [replacement_cb, spend], previous=genesis.header.hash, timestamp=3
+            [replacement_cb, spend], previous=reward.header.hash, timestamp=4
         )
         with self.assertRaisesRegex(ValueError, "premature coinbase"):
             self.store.reorganize((active.header.hash,), (replacement,))
 
-        self.assertEqual(self.store.tip(), (1, active.header.hash))
-        self.assertEqual(self.store.get(genesis_point), genesis_output)
+        self.assertEqual(self.store.tip(), (2, active.header.hash))
+        self.assertEqual(self.store.get(reward_point), reward_output)
         self.assertEqual(
             self.store.get(OutPoint(active_cb.txid, 0)),
-            TxOutput(block_subsidy(1), b"miner"),
+            TxOutput(block_subsidy(2), b"miner"),
         )
         self.assertIsNone(self.store.get(OutPoint(replacement_cb.txid, 0)))
 
