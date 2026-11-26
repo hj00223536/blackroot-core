@@ -82,7 +82,7 @@ class TrustConfigurationTests(unittest.TestCase):
         config["previous_config_digest"] = "44" * 32
         config["config_digest"] = calculate_trust_configuration_digest(config)
         with self.assertRaisesRegex(ValueError, "must not name a predecessor"):
-            self.validate(config)
+            self.validate(config, expected_previous_config_digest=None)
 
     def test_duplicate_key_ids_or_public_keys_rejected(self):
         config = make_config()
