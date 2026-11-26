@@ -1,6 +1,6 @@
 # BLACKROOT genesis manifest specification
 
-**Status: PROPOSAL ONLY — not frozen, not implemented, and not an issuance authorization.**
+**Status: PROPOSAL ONLY — validator prototype exists, but the specification is not frozen and this is not an issuance authorization.**
 
 This document defines the public review artifact required before a future genesis initializer may create the founder output. It does not select a founder address, create a key, alter the current genesis candidate, or authorize a network launch.
 
@@ -46,7 +46,7 @@ A future initializer must fail closed unless all checks pass:
 
 1. Parse strictly; reject duplicate keys, unknown fields, malformed hex, non-integers, negative values, and out-of-range output indexes.
 2. Decode the coinbase transaction using the consensus transaction decoder and reserialize it byte-for-byte; reject non-canonical encodings.
-3. Recompute the transaction ID, Merkle root, and genesis block hash using the frozen consensus rules.
+3. Recompute the transaction ID, Merkle root, and genesis block hash using the frozen consensus rules. A prototype helper now binds the manifest coinbase txid to a serialized 80-byte header, checks its one-transaction Merkle root, zero previous hash, and display hash; it does not validate proof of work or difficulty.
 4. Confirm the selected output exists and its value and script bytes exactly match the manifest.
 5. Confirm the genesis block hash, network identifier, monetary cap, and mining schedule match the locally frozen network configuration.
 6. Confirm the founder output plus the maximum scheduled mining issuance does not exceed the total supply cap.
@@ -86,4 +86,4 @@ This proposal remains OPEN until the owner-approved monetary policy, network ide
 
 A fail-closed structural checker now exists at `src/blackroot_genesis_manifest.py`, with regression tests in `tests/test_genesis_manifest.py`. It checks the exact field set and basic types, canonical lowercase hex, coinbase transaction decoding/round-trip, the expected transaction ID supplied by frozen configuration, founder output index/value/script, network/genesis/schedule identifiers supplied by frozen configuration, and the founder-plus-mining supply arithmetic.
 
-**This checker is not sufficient to authorize issuance.** It now calculates and checks a domain-separated digest using a restricted JCS encoder and rejects duplicate JSON keys through its strict parser. It still does not authenticate the approval record, derive the genesis block hash from a full header and Merkle commitment, establish that the supplied expected constants are themselves frozen/approved, or write database state. Cross-language canonicalization vectors and an independent implementation remain outstanding. The tests use synthetic public values and a dummy locking script; they are not a real founder address or spendability test. Do not connect this structural checker to a node startup path or treat a passing result as owner approval.
+**This checker is not sufficient to authorize issuance.** It now calculates and checks a domain-separated digest using a restricted JCS encoder and rejects duplicate JSON keys through its strict parser. A separate prototype helper now checks the coinbase-to-Merkle-to-header-hash commitment, including the zero previous-block hash. It does not validate proof of work, difficulty, timestamp rules, or chain consensus. The validator still does not authenticate the approval record, establish that supplied expected constants are themselves frozen/approved, or write database state. Cross-language JCS canonicalization vectors and an independent implementation remain outstanding. The tests use synthetic public values and a dummy locking script; they are not a real founder address or spendability test. Do not connect this structural checker to a node startup path or treat a passing result as owner approval.
