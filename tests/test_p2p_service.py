@@ -110,7 +110,7 @@ class P2PSyncServiceTests(unittest.IsolatedAsyncioTestCase):
                 candidate = Block(header, template.transactions)
                 break
         self.assertIsNotNone(candidate)
-        self.chain.add(candidate.header)
+        self.chain.add(candidate.header, adjusted_time=100_000)
         self.store.tip.return_value = (0, genesis_hash)
         handler = self.manager.on_peer_message_factory(self.peer_a)
 
@@ -132,7 +132,7 @@ class P2PSyncServiceTests(unittest.IsolatedAsyncioTestCase):
                 child = Block(header, genesis.transactions)
                 break
         self.assertIsNotNone(child)
-        self.chain.add(child.header)
+        self.chain.add(child.header, adjusted_time=100_000)
         self.store.tip.return_value = None
         handler = self.manager.on_peer_message_factory(self.peer_a)
 
