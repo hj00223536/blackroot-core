@@ -510,6 +510,25 @@ class PersistentBlockTests(unittest.TestCase):
         self.assertEqual(self.store.issued_subsidy(), block_subsidy(1))
         self.store.verify_integrity()
 
+    def test_mining_subsidy_respects_bootstrap_issuance_already_at_cap(self):
+        from src.blackroot_monetary import TOTAL_SUPPLY_CAP
+
+        self.store.add_genesis_output(
+            OutPoint(bytes.fromhex("99" * 32), 0),
+            TxOutput(TOTAL_SUPPLY_CAP, b"fully-allocated"),
+        )
+        genesis_cb = coinbase(0, b"\\x00\\x00")
+        genesis = block_for([genesis_cb])
+        self.store.connect_block(genesis, 0)
+
+        reward_cb = coinbase(block_subsidy(1), b"\\x01\\x01")
+        reward = block_for([reward_cb], previous=genesis.header.hash, timestamp=2)
+        with self.assertRaisesRegex(ValueError, "cumulative subsidy issuance"):
+            self.store.connect_block(reward, 1)
+        self.assertEqual(self.store.issued_total(), TOTAL_SUPPLY_CAP)
+        self.assertEqual(self.store.tip(), (0, genesis.header.hash))
+        self.store.verify_integrity()
+
     def test_disconnect_rejects_empty_chain(self):
         with self.assertRaisesRegex(ValueError, "empty chain"):
             self.store.disconnect_tip(bytes.fromhex("44" * 32))
