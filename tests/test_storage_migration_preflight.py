@@ -184,6 +184,9 @@ class LegacyStoragePreflightTests(unittest.TestCase):
         with _managed_sqlite(self.utxo) as db:
             db.execute("UPDATE metadata SET value='5' WHERE key='schema_version'")
             db.execute("ALTER TABLE blocks ADD COLUMN subsidy_issued INTEGER NOT NULL DEFAULT 0")
+            db.execute("ALTER TABLE block_transactions ADD COLUMN position INTEGER NOT NULL DEFAULT 0")
+            db.execute("ALTER TABLE block_transactions ADD COLUMN txid BLOB")
+            db.execute("ALTER TABLE block_transactions ADD COLUMN raw_transaction BLOB")
             db.execute(
                 "INSERT INTO metadata(key, value) VALUES('bootstrap_issued_sats', '0')"
             )
