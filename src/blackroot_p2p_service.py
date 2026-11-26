@@ -45,8 +45,12 @@ class P2PSyncService:
         self.chain = chain
         self.store = store
         self.request_timeout = float(request_timeout)
-        self.reorg = MultiPeerReorganizationSync(chain, store)
-        self.blocks = MultiPeerBlockScheduler(chain, store)
+        self.reorg = MultiPeerReorganizationSync(
+            chain, store, require_node_state_lifecycle=require_node_state_lifecycle
+        )
+        self.blocks = MultiPeerBlockScheduler(
+            chain, store, require_node_state_lifecycle=require_node_state_lifecycle
+        )
         self._header_sync: dict[object, PeerHeaderSync] = {}
         self._previous_factory = getattr(manager, "on_peer_message_factory", None)
         self._previous_disconnect = getattr(manager, "on_peer_disconnected", None)
