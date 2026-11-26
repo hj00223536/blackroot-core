@@ -21,7 +21,7 @@ from .blackroot_sqlite import SQLiteTransactionConnection
 
 
 class UTXOStore:
-    SCHEMA_VERSION = 3
+    SCHEMA_VERSION = 4
 
     def __init__(
         self,
@@ -98,7 +98,7 @@ class UTXOStore:
                     script_pubkey BLOB NOT NULL,
                     created_height INTEGER NOT NULL DEFAULT 0 CHECK(created_height >= 0),
                     is_coinbase INTEGER NOT NULL DEFAULT 0 CHECK(is_coinbase IN (0, 1)),
-                    created_mtp INTEGER NOT NULL DEFAULT 0 CHECK(created_mtp >= 0),
+                    created_mtp INTEGER CHECK(created_mtp IS NULL OR created_mtp >= 0),
                     PRIMARY KEY (txid, output_index)
                 ) WITHOUT ROWID
             """)
@@ -118,6 +118,8 @@ class UTXOStore:
                     raise RuntimeError("schema-v1 migration requires an explicit empty-database rebuild")
                 if row[0] == "2":
                     raise RuntimeError("schema-v2 migration requires a verified reindex from genesis to reconstruct UTXO creation MTP")
+                if row[0] == "3":
+                    raise RuntimeError("schema-v3 migration requires a verified reindex from genesis to distinguish unknown creation MTP")
                 raise RuntimeError("unsupported UTXO database schema version")
             db.execute("""
                 CREATE TABLE IF NOT EXISTS blocks (
@@ -154,7 +156,7 @@ class UTXOStore:
                     script_pubkey BLOB NOT NULL,
                     created_height INTEGER NOT NULL CHECK(created_height >= 0),
                     is_coinbase INTEGER NOT NULL CHECK(is_coinbase IN (0, 1)),
-                    created_mtp INTEGER NOT NULL CHECK(created_mtp >= 0),
+                    created_mtp INTEGER CHECK(created_mtp IS NULL OR created_mtp >= 0),
                     PRIMARY KEY(height, txid, output_index)
                 ) WITHOUT ROWID
             """)
@@ -251,7 +253,7 @@ class UTXOStore:
             if db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0]:
                 raise RuntimeError("bootstrap outputs cannot be added after chain activation")
             db.execute(
-                "INSERT INTO utxos(txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp) VALUES(?, ?, ?, ?, 0, 0, 0)",
+                "INSERT INTO utxos(txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp) VALUES(?, ?, ?, ?, 0, 0, NULL)",
                 (outpoint.txid, outpoint.index, output.value, output.script_pubkey),
             )
 
@@ -481,7 +483,7 @@ class UTXOStore:
             updated, fees = validate_block_transactions(
                 block, parent, height, provenance, median_time_past
             )
-            created_mtp = 0 if median_time_past is None else median_time_past
+            created_mtp = median_time_past
             updated_provenance = self._advance_provenance(block, provenance, height, created_mtp)
             if set(updated) != set(updated_provenance):
                 raise RuntimeError("UTXO/provenance state diverged")
@@ -507,7 +509,7 @@ class UTXOStore:
                             (height, previous.txid, previous.index,
                              spent_output.value, spent_output.script_pubkey,
                              provenance[previous].created_height, int(provenance[previous].is_coinbase),
-                              provenance[previous].created_median_time_past or 0),
+                              provenance[previous].created_median_time_past),
                         )
             for tx in block.transactions:
                 for index, _output in enumerate(tx.outputs):
@@ -529,7 +531,7 @@ class UTXOStore:
                 [(op.txid, op.index, output.value, output.script_pubkey,
                   updated_provenance[op].created_height,
                   int(updated_provenance[op].is_coinbase),
-                  updated_provenance[op].created_median_time_past or 0)
+                  updated_provenance[op].created_median_time_past)
                  for op, output in updated.items()],
             )
         return fees
@@ -689,7 +691,7 @@ class UTXOStore:
                 updated, fees = validate_block_transactions(
                     block, parent, height, provenance, median_time_past
                 )
-                created_mtp = 0 if median_time_past is None else median_time_past
+                created_mtp = median_time_past
                 updated_provenance = self._advance_provenance(block, provenance, height, created_mtp)
                 if set(updated) != set(updated_provenance):
                     raise RuntimeError("UTXO/provenance state diverged")
@@ -711,7 +713,7 @@ class UTXOStore:
                                 (height, previous.txid, previous.index,
                                  spent_output.value, spent_output.script_pubkey,
                                  provenance[previous].created_height, int(provenance[previous].is_coinbase),
-                                  provenance[previous].created_median_time_past or 0),
+                                  provenance[previous].created_median_time_past),
                             )
                 for tx in block.transactions:
                     for index, _output in enumerate(tx.outputs):
@@ -731,7 +733,7 @@ class UTXOStore:
                     [(op.txid, op.index, output.value, output.script_pubkey,
                       updated_provenance[op].created_height,
                       int(updated_provenance[op].is_coinbase),
-                      updated_provenance[op].created_median_time_past or 0)
+                      updated_provenance[op].created_median_time_past)
                      for op, output in updated.items()],
                 )
 
