@@ -113,8 +113,16 @@ def _inspect_database(path: Path, kind: str) -> dict:
         elif kind == "utxo":
             metadata = dict(db.execute("SELECT key, value FROM metadata"))
             version = metadata.get("schema_version")
-            if version not in ("2", "3", "4"):
+            if version not in ("2", "3", "4", "5"):
                 raise RuntimeError(f"unsupported UTXO schema version: {version!r}")
+            if version == "5":
+                block_columns = {
+                    row[1] for row in db.execute("PRAGMA table_info(blocks)")
+                }
+                if "subsidy_issued" not in block_columns:
+                    raise RuntimeError("UTXO schema-v5 is missing its per-block issuance ledger")
+                if "bootstrap_issued_sats" not in metadata:
+                    raise RuntimeError("UTXO schema-v5 is missing bootstrap issuance metadata")
             counts = {
                 table: db.execute(f'SELECT COUNT(*) FROM "{table}"').fetchone()[0]
                 for table in sorted(_REQUIRED_TABLES["utxo"])
