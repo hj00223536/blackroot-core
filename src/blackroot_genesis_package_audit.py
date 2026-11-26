@@ -28,25 +28,29 @@ def audit_genesis_package_inventory(
     """
     if not isinstance(artifacts, Mapping) or not isinstance(expected_sha256, Mapping):
         raise TypeError("artifacts and expected_sha256 must be mappings")
-    if any(not isinstance(name, str) for name in artifacts):
+    # Snapshot caller-controlled mappings once so validation and hashing use
+    # one stable inventory rather than a mapping that can change mid-audit.
+    artifact_snapshot = dict(artifacts)
+    pin_snapshot = dict(expected_sha256)
+    if any(not isinstance(name, str) for name in artifact_snapshot):
         raise ValueError("artifact names must be strings")
-    if any(not isinstance(name, str) for name in expected_sha256):
+    if any(not isinstance(name, str) for name in pin_snapshot):
         raise ValueError("external digest pin names must be strings")
-    names = set(artifacts)
+    names = set(artifact_snapshot)
     missing = _REQUIRED - names
     unexpected = names - _REQUIRED - _OPTIONAL
     if missing:
         raise ValueError(f"missing required package artifacts: {sorted(missing)}")
     if unexpected:
         raise ValueError(f"unexpected package artifacts: {sorted(unexpected)}")
-    if set(expected_sha256) != names:
+    if set(pin_snapshot) != names:
         raise ValueError("external digest pins must name exactly the supplied artifacts")
     total = 0
     result: dict[str, str] = {}
     for name in sorted(names):
         if not isinstance(name, str) or not name or "/" in name or "\\" in name or name in {".", ".."}:
             raise ValueError("artifact names must be simple file names")
-        data = artifacts[name]
+        data = artifact_snapshot[name]
         if not isinstance(data, bytes):
             raise TypeError(f"{name} must be supplied as bytes")
         if not data:
@@ -56,7 +60,7 @@ def audit_genesis_package_inventory(
         total += len(data)
         if total > _MAX_TOTAL_BYTES:
             raise ValueError("package exceeds total size limit")
-        pin = expected_sha256[name]
+        pin = pin_snapshot[name]
         if (not isinstance(pin, str) or len(pin) != 64
                 or any(c not in "0123456789abcdef" for c in pin)):
             raise ValueError(f"{name} external SHA-256 pin is malformed")
