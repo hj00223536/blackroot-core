@@ -343,6 +343,12 @@ store.apply(tx)
         reopened = UTXOStore(shared_path)
         self.assertEqual(reopened.get(funding), TxOutput(700, b"funding"))
         self.assertIsNone(reopened.get(OutPoint(tx.txid, 0)))
+        reopened.verify_integrity()
+        with _managed_sqlite(shared_path) as db:
+            issued = db.execute(
+                "SELECT value FROM metadata WHERE key='bootstrap_issued_sats'"
+            ).fetchone()[0]
+        self.assertEqual(issued, "700")
 
     def test_applies_spend_atomically_and_returns_fee(self):
         tx = Transaction(
