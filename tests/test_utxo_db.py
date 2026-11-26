@@ -583,5 +583,20 @@ store.apply(tx)
             self.store.verify_integrity()
 
 
+    def test_bootstrap_insertion_rejects_missing_issuance_metadata_without_mutation(self):
+        candidate = OutPoint(bytes.fromhex("51" * 32), 1)
+        with _managed_sqlite(self.db_path) as db:
+            db.execute(
+                "DELETE FROM metadata WHERE key='bootstrap_issued_sats'"
+            )
+
+        with self.assertRaisesRegex(
+            RuntimeError, "bootstrap issuance metadata is missing"
+        ):
+            self.store.add_genesis_output(candidate, TxOutput(100, b"candidate-script"))
+
+        self.assertIsNone(self.store.get(candidate))
+
+
 if __name__ == "__main__":
     unittest.main()
