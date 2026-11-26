@@ -59,6 +59,43 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         await self.runtime.close()
 
+    async def test_runtime_sync_store_routes_activation_through_node_state(self):
+        adapter = self.runtime.sync.store
+        self.assertIsNot(adapter, self.state.utxos)
+        self.assertTrue(callable(adapter.connect_validated_block))
+        self.assertTrue(callable(adapter.reorganize_to_best))
+
+        block = genesis_block()
+        calls = []
+        original = self.state.connect_best_block
+
+        def tracked_connect(candidate, height):
+            calls.append((candidate.header.hash, height))
+            return original(candidate, height)
+
+        self.state.connect_best_block = tracked_connect
+        try:
+            result = adapter.connect_validated_block(
+                block, 0, self.state.headers.chain
+            )
+        finally:
+            self.state.connect_best_block = original
+
+        self.assertEqual(result, 0)
+        self.assertEqual(calls, [(block.header.hash, 0)])
+        self.assertEqual(self.state.utxos.tip(), (0, block.header.hash))
+        self.assertFalse(self.state.recovery_journal.pending())
+
+    async def test_runtime_sync_store_rejects_foreign_header_chain(self):
+        from src.blackroot_chain import HeaderChain
+
+        foreign = HeaderChain(POW_LIMIT, self.state.headers.chain.get(0))
+        with self.assertRaisesRegex(ValueError, "not the node state's validated chain"):
+            self.runtime.sync.store.connect_validated_block(
+                genesis_block(), 0, foreign
+            )
+        self.assertIsNone(self.state.utxos.tip())
+
     async def test_runtime_binds_sync_callbacks_and_starts_listener(self):
         self.assertIs(
             self.runtime.manager.on_peer_message_factory.__self__,
