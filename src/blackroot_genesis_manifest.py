@@ -13,6 +13,7 @@ import json
 from typing import Mapping
 
 from .blackroot_blocks import is_coinbase
+from .blackroot_consensus import check_proof_of_work, decode_compact_target, encode_compact_target
 from .blackroot_chain import BlockHeader
 from .blackroot_transactions import Transaction, merkle_root
 
@@ -124,6 +125,29 @@ def validate_genesis_header_commitment(
         raise ValueError("genesis header merkle root does not commit to manifest coinbase")
     if header.display_hash != validated.genesis_block_hash:
         raise ValueError("genesis header hash does not match manifest genesis_block_hash")
+    return header
+
+
+def validate_genesis_header_proof_of_work(
+    validated: "ValidatedGenesisManifest",
+    serialized_header_hex: str,
+    *,
+    pow_limit: int,
+) -> BlockHeader:
+    """Check a committed genesis header's standalone PoW against a supplied limit.
+
+    This composes the manifest/header commitment check with canonical compact
+    target encoding and SHA-256d proof-of-work verification. The caller must
+    supply an independently frozen network pow_limit. This does NOT establish
+    the network's required genesis nBits, contextual difficulty rules,
+    timestamp policy, or full consensus validity.
+    """
+    header = validate_genesis_header_commitment(validated, serialized_header_hex)
+    target = decode_compact_target(header.bits)
+    if encode_compact_target(target) != header.bits:
+        raise ValueError("genesis header compact target is not canonical")
+    if not check_proof_of_work(header.serialize(), header.bits, pow_limit):
+        raise ValueError("genesis header does not satisfy proof of work and network limit")
     return header
 
 
