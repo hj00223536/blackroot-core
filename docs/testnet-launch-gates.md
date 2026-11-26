@@ -108,3 +108,18 @@ CLI entry point only: callers that construct persistent stores directly must
 provide their own single-writer discipline, and this mechanism has not been
 validated on non-POSIX platforms. The end-to-end CLI contention regression
 passed in [GitHub Actions run 45724969798](https://github.com/hj00223536/blackroot-core/actions/runs/45724969798): Python 3.12 and 3.13 each ran 388 tests successfully, and the Node.js 22 genesis, transaction, and P2PKH vectors passed.
+
+## Latest cross-version CI verification (2026-11-26)
+
+The documentation/evidence update at commit
+`693a59ff387f7540a8302bc7df451580f767bf65` was itself validated by
+[GitHub Actions run 45727313138](https://github.com/hj00223536/blackroot-core/actions/runs/45727313138):
+the Python 3.12 and Python 3.13 jobs both completed successfully, each
+reported 395 passing unit tests and test-process exit code 0, and the Node.js
+22 independent genesis-candidate verifier reported PASS. The preceding
+workflow-timeout configuration commit was also validated by
+[run 45727076855](https://github.com/hj00223536/blackroot-core/actions/runs/45727076855),
+with all three jobs successful. These results confirm the checked-in
+regression suite and in-repository cross-language candidate vector only;
+they do not resolve the protocol decisions, provide an external client, or
+satisfy the public-testnet activation gates.
