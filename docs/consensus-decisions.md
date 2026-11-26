@@ -26,6 +26,8 @@
 
 A standalone Node.js 22 script (`scripts/verify_retarget_vectors.mjs`) now reproduces the current compact-target retarget arithmetic, including quarter/nominal/double/four-times clamp vectors and the candidate-height-2016 first-boundary convention (2,015 elapsed intervals against a 2,016-interval target span). CI runs this script separately from the Python implementation. This confirms arithmetic parity for the selected fixtures only; it does not decide whether the first-boundary convention is the desired BLACKROOT rule, validate the full header-chain path, or replace an independently maintained client and external protocol review.
 
+A detailed [difficulty-adjustment policy proposal](difficulty-adjustment-policy-proposal.md) records the current implementation as a candidate rule set. It remains a proposal pending owner approval, boundary/reorganization vectors, and external independent review.
+
 ## Required protocol decisions before testnet activation
 
 1. **First retarget period:** choose and document the exact start/end block timestamps used at each boundary. Include vectors at heights 2,015, 2,016, 2,017 and across a reorganization.
