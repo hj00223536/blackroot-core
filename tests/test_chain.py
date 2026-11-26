@@ -287,8 +287,8 @@ class HeaderChainTests(unittest.TestCase):
             )
             chain.add_to_branch(side_parent)
 
-            if height == DIFFICULTY_INTERVAL - 1:
-                # Candidate 2015 is not a retarget boundary.
+            if height == DIFFICULTY_INTERVAL - 2:
+                # Parent height 2014 checks candidate height 2015, which is not a retarget boundary.
                 self.assertEqual(
                     chain.expected_bits(main_parent.hash, DIFFICULTY_INTERVAL - 1),
                     BITS,
