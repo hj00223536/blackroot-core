@@ -111,6 +111,38 @@ class PersistentHeaderStoreTests(unittest.TestCase):
         self.assertEqual(reopened.chain.height, 1)
         self.assertEqual(len(clock_calls), 3)
 
+    def test_persistent_admission_enforces_inclusive_future_time_boundary(self):
+        clock_state = {"now": 1_000}
+        store = PersistentHeaderStore(
+            self.path,
+            POW_LIMIT,
+            self.genesis,
+            adjusted_time_provider=lambda: clock_state["now"],
+        )
+
+        # The existing prototype's default 7,200-second allowance is inclusive.
+        boundary = mine(self.genesis.hash, 8_200)
+        store.add_to_branch(boundary)
+        self.assertEqual(store.chain.height, 1)
+
+        beyond = mine(boundary.hash, 8_201)
+        before_nodes = tuple(store.chain.nodes)
+        with self.assertRaisesRegex(ValueError, "future"):
+            store.add_to_branch(beyond)
+
+        self.assertEqual(tuple(store.chain.nodes), before_nodes)
+        self.assertIsNone(store.chain.node(beyond.hash))
+
+        reopened = PersistentHeaderStore(
+            self.path,
+            POW_LIMIT,
+            self.genesis,
+            adjusted_time_provider=lambda: clock_state["now"],
+        )
+        self.assertEqual(reopened.chain.height, 1)
+        self.assertIsNotNone(reopened.chain.node(boundary.hash))
+        self.assertIsNone(reopened.chain.node(beyond.hash))
+
     def test_clock_provider_failure_during_reload_preserves_live_chain(self):
         clock_state = {"broken": False}
 
