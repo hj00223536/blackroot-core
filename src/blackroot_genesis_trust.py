@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Mapping
 
 from .blackroot_genesis_manifest import (
@@ -142,7 +143,7 @@ def validate_trust_configuration(
         raise ValueError("trust configuration digest does not match external pin")
     return ValidatedTrustConfiguration(
         network_id=network_id, sequence=sequence,
-        previous_config_digest=previous, config_digest=digest, keys=keys,
+        previous_config_digest=previous, config_digest=digest, keys=MappingProxyType(keys),
     )
 
 
