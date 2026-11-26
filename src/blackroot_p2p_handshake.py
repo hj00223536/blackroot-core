@@ -22,6 +22,16 @@ class VersionMessage:
     user_agent: str
 
     def __post_init__(self) -> None:
+        integer_fields = (
+            ("protocol_version", self.protocol_version),
+            ("services", self.services),
+            ("timestamp", self.timestamp),
+            ("nonce", self.nonce),
+            ("start_height", self.start_height),
+        )
+        for name, value in integer_fields:
+            if not isinstance(value, int) or isinstance(value, bool):
+                raise TypeError(f"{name} must be an integer (not bool)")
         if not 0 < self.protocol_version <= 0x7FFFFFFF:
             raise ValueError("protocol version must be a positive int32")
         if not 0 <= self.services <= 0xFFFFFFFFFFFFFFFF:
