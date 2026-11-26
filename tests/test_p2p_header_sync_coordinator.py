@@ -32,7 +32,7 @@ class FakePeer:
 class PeerHeaderSyncTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.genesis = mine(ZERO_HASH, 1)
-        self.chain = HeaderChain(POW_LIMIT, self.genesis)
+        self.chain = HeaderChain(POW_LIMIT, self.genesis, adjusted_time_provider=lambda: 100_000)
         self.sync = PeerHeaderSync(self.chain, protocol_version=70001, adjusted_time=lambda: 100_000)
 
     def test_locator_starts_at_tip_and_ends_at_genesis(self):
