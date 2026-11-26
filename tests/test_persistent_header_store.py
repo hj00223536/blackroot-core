@@ -139,6 +139,14 @@ class PersistentHeaderStoreTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "different proof-of-work limit"):
             store.persist_chain(foreign_chain)
 
+    def test_persist_chain_rejects_different_adjusted_time_provider(self):
+        from src.blackroot_chain import HeaderChain
+
+        store = self.open_store()
+        foreign_chain = HeaderChain(POW_LIMIT, self.genesis)
+        with self.assertRaisesRegex(ValueError, "different adjusted-time provider"):
+            store.persist_chain(foreign_chain)
+
     def test_persist_chain_rejects_test_only_unchecked_time_chain(self):
         from src.blackroot_chain import HeaderChain
 
