@@ -53,11 +53,19 @@ class PeerHeaderSync:
         if adjusted_time is not None and not callable(adjusted_time):
             raise TypeError("adjusted_time must be callable")
         chain_adjusted_time = chain.adjusted_time_provider
+        if on_headers_validated is not None and not callable(chain_adjusted_time):
+            raise ValueError(
+                "persistent peer header sync requires the header chain's adjusted-time provider"
+            )
         if adjusted_time is None:
             adjusted_time = chain_adjusted_time
         elif chain_adjusted_time is not None and adjusted_time is not chain_adjusted_time:
             raise ValueError(
                 "peer header sync adjusted-time provider must match the header chain provider"
+            )
+        if on_headers_validated is not None and adjusted_time is not chain_adjusted_time:
+            raise ValueError(
+                "persistent peer header sync clock must match the header chain provider"
             )
         if not isinstance(max_future_seconds, int) or isinstance(max_future_seconds, bool) or max_future_seconds < 0:
             raise ValueError("max_future_seconds must be non-negative")
