@@ -180,6 +180,25 @@ class LegacyStoragePreflightTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "unresolved intent"):
             inspect_legacy_node_databases(self.header, self.utxo, self.journal)
 
+    def test_accepts_complete_utxo_schema_v5(self):
+        with _managed_sqlite(self.utxo) as db:
+            db.execute("UPDATE metadata SET value='5' WHERE key='schema_version'")
+            db.execute("ALTER TABLE blocks ADD COLUMN subsidy_issued INTEGER NOT NULL DEFAULT 0")
+            db.execute(
+                "INSERT INTO metadata(key, value) VALUES('bootstrap_issued_sats', '0')"
+            )
+        report = inspect_legacy_node_databases(self.header, self.utxo, self.journal)
+        self.assertEqual(report["databases"]["utxo"]["schema_version"], "5")
+
+    def test_rejects_incomplete_utxo_schema_v5(self):
+        with _managed_sqlite(self.utxo) as db:
+            db.execute("UPDATE metadata SET value='5' WHERE key='schema_version'")
+            db.execute(
+                "INSERT INTO metadata(key, value) VALUES('bootstrap_issued_sats', '0')"
+            )
+        with self.assertRaisesRegex(RuntimeError, "per-block issuance ledger"):
+            inspect_legacy_node_databases(self.header, self.utxo, self.journal)
+
     def test_rejects_unknown_utxo_schema(self):
         with _managed_sqlite(self.utxo) as db:
             db.execute("UPDATE metadata SET value='99' WHERE key='schema_version'")
