@@ -39,7 +39,7 @@ class FakePeer:
 class MultiPeerBlockSchedulerTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.block = make_block()
-        self.chain = HeaderChain(POW_LIMIT, self.block.header)
+        self.chain = HeaderChain(POW_LIMIT, self.block.header, adjusted_time_provider=lambda: 1_000_000)
         self.store = Mock()
         self.store.connect_validated_block.return_value = 0
         self.scheduler = MultiPeerBlockScheduler(self.chain, self.store)
