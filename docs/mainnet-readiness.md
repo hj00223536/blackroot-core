@@ -17,7 +17,7 @@ A public mainnet must not be announced until every mandatory gate is met.
 - [ ] Public testnet operated long enough to expose operational failures
 - [ ] Multiple independent miners and node operators
 - [ ] Written legal assessment for each jurisdiction and each planned activity
-- [ ] Public disclosure of premine (currently proposed as zero), allocations, and governance
+- [ ] Public disclosure of the proposed 20,000,000 BRT founder allocation, 20,000,000 BRT scheduled mining allocation, governance, and the fact that no founder output or BRT balance has been issued
 - [ ] Emergency response, upgrade, and vulnerability disclosure policies
 
 A website, repository, genesis block, or successful local mining demo does not by itself constitute a safe or launched cryptocurrency.
