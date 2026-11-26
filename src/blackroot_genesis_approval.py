@@ -116,3 +116,32 @@ def parse_genesis_approval_record_json(raw: str) -> dict[str, object]:
     if not isinstance(value, dict):
         raise ValueError("approval JSON root must be an object")
     return value
+
+
+def verify_validated_genesis_manifest_approval(
+    validated_manifest,
+    approval_record_json: str,
+    *,
+    trusted_public_keys: Mapping[str, bytes],
+    revoked_key_ids: frozenset[str] = frozenset(),
+) -> str:
+    """Verify detached approval against values from a validated manifest.
+
+    This binding helper prevents the approval record from choosing its own
+    expected network or digest. It does not establish trust-anchor provenance,
+    authorize issuance, or perform database writes.
+    """
+    # Import lazily to avoid a module cycle: the manifest validator is kept
+    # independent of approval policy and database/initializer capabilities.
+    from .blackroot_genesis_manifest import ValidatedGenesisManifest
+
+    if not isinstance(validated_manifest, ValidatedGenesisManifest):
+        raise TypeError("validated_manifest must be a ValidatedGenesisManifest")
+    record = parse_genesis_approval_record_json(approval_record_json)
+    return verify_genesis_approval_record(
+        record,
+        expected_network_id=validated_manifest.network_id,
+        expected_manifest_digest=validated_manifest.manifest_digest,
+        trusted_public_keys=trusted_public_keys,
+        revoked_key_ids=revoked_key_ids,
+    )
