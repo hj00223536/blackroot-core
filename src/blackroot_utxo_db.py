@@ -18,7 +18,7 @@ from .blackroot_blocks import Block, validate_block_transactions
 from .blackroot_chain import HeaderChain
 from .blackroot_maturity import UTXOProvenance
 from .blackroot_sqlite import SQLiteTransactionConnection
-from .blackroot_monetary import TOTAL_SUPPLY_CAP
+from .blackroot_monetary import TOTAL_SUPPLY_CAP, block_subsidy
 
 
 class UTXOStore:
@@ -341,18 +341,12 @@ class UTXOStore:
             if bootstrap_issued < 0 or issued < 0 or bootstrap_issued + issued > TOTAL_SUPPLY_CAP:
                 raise RuntimeError("persisted cumulative issuance exceeds total supply cap")
             issuance_rows = db.execute(
-                "SELECT b.total_fees, b.subsidy_issued, t.raw_transaction "
-                "FROM blocks b JOIN block_transactions t ON t.height=b.height AND t.position=0 "
-                "ORDER BY b.height"
+                "SELECT height, subsidy_issued FROM blocks ORDER BY height"
             ).fetchall()
-            for total_fees, recorded_issuance, raw_coinbase in issuance_rows:
-                try:
-                    coinbase_tx = Transaction.deserialize(bytes(raw_coinbase))
-                except (TypeError, ValueError) as exc:
-                    raise RuntimeError("stored coinbase transaction is malformed during issuance audit") from exc
-                actual_issuance = max(0, sum(output.value for output in coinbase_tx.outputs) - total_fees)
-                if actual_issuance != recorded_issuance:
-                    raise RuntimeError("stored per-block subsidy issuance does not match coinbase and fees")
+            for height, recorded_issuance in issuance_rows:
+                expected_issuance = block_subsidy(height)
+                if expected_issuance != recorded_issuance:
+                    raise RuntimeError("stored per-block subsidy budget does not match consensus schedule")
             blocks = db.execute(
                 "SELECT height, block_hash, prev_hash, tx_count FROM blocks ORDER BY height"
             ).fetchall()
@@ -546,8 +540,7 @@ class UTXOStore:
             updated, fees = validate_block_transactions(
                 block, parent, height, provenance, median_time_past
             )
-            coinbase_total = sum(output.value for output in block.transactions[0].outputs)
-            subsidy_issued = max(0, coinbase_total - fees)
+            subsidy_issued = block_subsidy(height)
             already_issued = db.execute("SELECT COALESCE(SUM(subsidy_issued), 0) FROM blocks").fetchone()[0]
             bootstrap_issued = int(db.execute("SELECT value FROM metadata WHERE key='bootstrap_issued_sats'").fetchone()[0])
             if bootstrap_issued + already_issued + subsidy_issued > TOTAL_SUPPLY_CAP:
@@ -760,8 +753,7 @@ class UTXOStore:
                 updated, fees = validate_block_transactions(
                     block, parent, height, provenance, median_time_past
                 )
-                coinbase_total = sum(output.value for output in block.transactions[0].outputs)
-                subsidy_issued = max(0, coinbase_total - fees)
+                subsidy_issued = block_subsidy(height)
                 already_issued = db.execute("SELECT COALESCE(SUM(subsidy_issued), 0) FROM blocks").fetchone()[0]
                 bootstrap_issued = int(db.execute("SELECT value FROM metadata WHERE key='bootstrap_issued_sats'").fetchone()[0])
                 if bootstrap_issued + already_issued + subsidy_issued > TOTAL_SUPPLY_CAP:
