@@ -64,6 +64,10 @@ Before any semantic verifier can be considered reviewable, tests must cover:
 - Deterministic evidence reports and explicit negative assertions that verification alone does not authorize release or issuance.
 - Initializer crash/fault injection, duplicate invocation, database rollback, and post-initialization tampering — only after the initializer design has been independently reviewed.
 
+## Manifest validator input consistency
+
+The v2 structural validator now snapshots a caller-supplied mapping once and uses only that snapshot for schema, digest, network, transaction, founder-output, and supply checks. A regression test supplies a custom mapping that changes the founder amount on a second read; validation must consume the first captured value exactly once. This protects the validator from inconsistent repeated reads of a mutable mapping during one validation call. It does not authenticate the manifest source or replace canonical parsing of the original package bytes.
+
 ## Existing approval-verifier regression coverage
 
 The standalone approval verifier already has focused negative tests in `tests/test_genesis_approval.py` for replay against a different manifest digest, cross-network substitution, scope and algorithm changes, unknown/revoked keys, key-ID mismatch, invalid signatures, non-canonical signature encoding, duplicate JSON keys, floating-point values, and non-object JSON roots. The validated-manifest binding helper is also tested to reject a detached record whose digest differs from the validated manifest.
