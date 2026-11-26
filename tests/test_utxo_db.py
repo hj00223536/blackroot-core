@@ -263,6 +263,28 @@ store.apply(tx)
         self.assertEqual(after_duplicate, before)
         reopened.verify_integrity()
 
+
+    def test_spending_bootstrap_output_does_not_rewrite_historical_issuance_on_reopen(self):
+        tx = Transaction(
+            1,
+            (TxInput(self.funding),),
+            (TxOutput(800, b"recipient-after-spend"),),
+        )
+        self.assertEqual(self.store.apply(tx), 100)
+        self.assertIsNone(self.store.get(self.funding))
+
+        reopened = UTXOStore(self.db_path)
+        self.assertEqual(
+            reopened.get(OutPoint(tx.txid, 0)),
+            TxOutput(800, b"recipient-after-spend"),
+        )
+        reopened.verify_integrity()
+        with _managed_sqlite(self.db_path) as db:
+            issued = db.execute(
+                "SELECT value FROM metadata WHERE key='bootstrap_issued_sats'"
+            ).fetchone()[0]
+        self.assertEqual(issued, "900")
+
     def test_coordinator_owned_connection_initializes_and_commits_bootstrap_state(self):
         shared_path = Path(self.tempdir.name) / "shared.sqlite"
         funding = OutPoint(bytes.fromhex("51" * 32), 0)
