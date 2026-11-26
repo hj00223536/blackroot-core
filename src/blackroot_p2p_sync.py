@@ -16,6 +16,7 @@ def accept_headers_payload(
     *,
     adjusted_time: int | None = None,
     max_future_seconds: int = 7_200,
+    on_commit=None,
 ) -> list[str]:
     """Decode and consensus-check a peer headers payload as one atomic batch."""
     if not isinstance(chain, HeaderChain):
@@ -25,4 +26,5 @@ def accept_headers_payload(
         headers,
         adjusted_time=adjusted_time,
         max_future_seconds=max_future_seconds,
+        on_commit=on_commit,
     )
