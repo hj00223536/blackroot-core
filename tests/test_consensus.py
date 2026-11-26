@@ -75,6 +75,13 @@ class TargetAndPowTests(unittest.TestCase):
         header = serialize_header(1, bytes(32), bytes(32), 1, 0x207FFFFF, 0)
         self.assertFalse(check_proof_of_work(header, 0x207FFFFF, 1))
 
+    def test_pow_limit_must_be_a_uint256(self):
+        header = serialize_header(1, bytes(32), bytes(32), 1, 0x207FFFFF, 0)
+        for invalid_limit in (0, -1, 1 << 256, True, 1.5):
+            with self.subTest(pow_limit=invalid_limit):
+                with self.assertRaisesRegex(ValueError, "positive uint256"):
+                    check_proof_of_work(header, 0x207FFFFF, invalid_limit)
+
     def test_reject_compact_target_overflow_encodings(self):
         for bits in (0x23000001, 0x22000100, 0x21010001):
             with self.subTest(bits=hex(bits)):
