@@ -26,6 +26,10 @@ The validator requires the caller to supply all of the following from a separate
 
 The package cannot choose these values. A valid digest without an independently supplied pin is not trusted. A later configuration must match the exact expected sequence and predecessor digest; older or substituted configurations fail closed.
 
+## Independent digest fixture
+
+The canonical first-configuration fixture uses the published RFC 8032 Ed25519 public test key (not an owner key), network ID `11` repeated 32 times, sequence 1, no predecessor, and the sole `genesis-founder-allocation` scope. Its trust-configuration digest is `157f3c321befaaaf8f9180c90fdb0ed3164ff9e71c070a664e14a7fbad1456ab`. Python regression tests and `scripts/verify_genesis_trust_config.mjs` independently reproduce the value; CI runs the Node.js verifier. This is a format test vector, not a trust anchor or activation artifact.
+
 ## Approval-verification binding prototype
 
 `verify_approval_with_validated_trust()` now accepts a structurally validated manifest and a validated trust configuration, rejects cross-network use, and passes only active keys with the exact founder-allocation scope to the detached Ed25519 approval verifier. Revoked keys are explicitly rejected. The validated key mapping is exposed read-only. Regression tests cover successful binding, revoked-key rejection, and cross-network substitution. This is still only a library-level prototype: it does not load or authenticate the external pins, persist anti-rollback state, or authorize issuance.
