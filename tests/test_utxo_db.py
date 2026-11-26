@@ -570,5 +570,18 @@ store.apply(tx)
                     )
 
 
+    def test_verify_integrity_rejects_missing_bootstrap_issuance_metadata(self):
+        # A missing accounting record must not be interpreted as zero issuance.
+        with _managed_sqlite(self.db_path) as db:
+            db.execute(
+                "DELETE FROM metadata WHERE key='bootstrap_issued_sats'"
+            )
+
+        with self.assertRaisesRegex(
+            RuntimeError, "persisted bootstrap issuance metadata is malformed"
+        ):
+            self.store.verify_integrity()
+
+
 if __name__ == "__main__":
     unittest.main()
