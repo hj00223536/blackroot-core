@@ -236,6 +236,25 @@ class HeaderChainTests(unittest.TestCase):
         self.assertEqual(chain.height, 1)
 
 
+    def test_configured_adjusted_time_provider_rejects_caller_override(self):
+        genesis = mine_header(ZERO_HASH, 1)
+        calls = []
+        chain = HeaderChain(
+            POW_LIMIT, genesis,
+            adjusted_time_provider=lambda: calls.append(10_000) or 10_000,
+        )
+        candidate = mine_header(genesis.hash, 2)
+
+        with self.assertRaisesRegex(ValueError, "configured adjusted-time provider"):
+            chain.add_to_branch(candidate, adjusted_time=1)
+        with self.assertRaisesRegex(ValueError, "configured adjusted-time provider"):
+            chain.add(candidate, adjusted_time=1)
+        with self.assertRaisesRegex(ValueError, "configured adjusted-time provider"):
+            chain.add_batch([candidate], adjusted_time=1)
+
+        self.assertEqual(chain.height, 0)
+        self.assertEqual(calls, [])
+
     def test_injected_adjusted_time_provider_is_used_by_default_admission(self):
         genesis = mine_header(ZERO_HASH, 1)
         clock_values = iter([1, 7_201])
