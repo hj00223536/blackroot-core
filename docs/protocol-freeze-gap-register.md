@@ -88,3 +88,8 @@ PF-07 has a detailed [transaction and script policy proposal](transaction-script
 - [Genesis activation package checklist](genesis-activation-package-checklist.md)
 - [Genesis trust-anchor governance proposal](genesis-trust-anchor-governance-proposal.md)
 - [Genesis trust configuration validator prototype](genesis-trust-config-validator.md)
+
+
+## Adjusted-time override guard follow-up (2026-11-27)
+
+The HeaderChain public admission APIs now reject caller-supplied adjusted-time overrides whenever a configured provider is present; the internal trusted replay path remains separate. Persistent header-store replay and storage-migration replay use that internal path, while P2P header synchronization delegates non-empty batches to the chain-owned provider and explicitly validates the provider for empty batches. The first integration run after the API guard (CI 1223, commit 58809c1d13f3) exposed an empty-batch clock-validation regression on Python 3.12; the subsequent fix in commit 0f92849fb6a7 passed all four CI jobs in [run 45910734405](https://github.com/hj00223536/blackroot-core/actions/runs/45910734405): Python 3.12, Python 3.13, independent Node.js genesis-vector reproduction, and static wallet-security guard. This closes that specific regression only. PF-05 remains OPEN because the trustworthiness of the network-adjusted clock, peer-time adjustment policy, all external embedding paths, and independent consensus review are not yet resolved.
