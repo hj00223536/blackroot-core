@@ -6,6 +6,8 @@ Status: design only; not a usable wallet and not approved for mainnet funds.
 
 The founder wants a browser-based wallet that can be opened on a phone without a terminal. The owner-approved monetary design is 20,000,000 BRT for the founder and 20,000,000 BRT for mining, with a proposed 40,000,000 BRT maximum supply. The reference subsidy helper returns zero at genesis height 0 and 10 BRT mining subsidy at heights 1–2,000,000. The founder allocation is a separate planned genesis output and has not been issued. A persistent schema-v5 issuance ledger records the consensus subsidy budget on the active block chain and counts trusted bootstrap outputs against the proposed 40,000,000 BRT ceiling. The the schema-v5 issuance-ledger changes passed 428 tests on Python 3.12 and 3.13 in GitHub Actions run 45825892104; independent Base58Check address vectors also passed Node.js 22 and Python CI in runs 45826222268 and 45826234922. Passing reference tests alone does not establish launch readiness.
 
+The unresolved consensus and network-identity decisions are tracked in the [protocol-freeze gap register](protocol-freeze-gap-register.md). Wallet address generation remains blocked until those decisions are reviewed and frozen.
+
 ## Current blockers verified in the repository
 
 - The repository has an Arabic HTML wallet shell, but no browser wallet application, secure key manager, encrypted vault, transaction signer, or production wallet build pipeline.
