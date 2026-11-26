@@ -1,4 +1,5 @@
 import unittest
+from collections.abc import Mapping
 from dataclasses import replace
 
 from src.blackroot_blocks import COINBASE_INDEX
@@ -68,8 +69,34 @@ def _validate(manifest):
     )
 
 
+class MutatingManifestMapping(Mapping):
+    def __init__(self, values):
+        self.values = dict(values)
+        self.amount_reads = 0
+
+    def __iter__(self):
+        return iter(self.values)
+
+    def __len__(self):
+        return len(self.values)
+
+    def __getitem__(self, key):
+        value = self.values[key]
+        if key == "founder_amount_sats":
+            self.amount_reads += 1
+            if self.amount_reads > 2:
+                return value + 1
+        return value
+
+
 class GenesisManifestStructureTests(unittest.TestCase):
     """Structural checks only; fixtures do not authorize real issuance."""
+
+    def test_validation_uses_one_snapshot_of_caller_mapping(self):
+        supplied = MutatingManifestMapping(_manifest())
+        validated = _validate(supplied)
+        self.assertEqual(validated.founder_amount_sats, FOUNDER_ALLOCATION)
+        self.assertLessEqual(supplied.amount_reads, 2)
 
     def test_valid_manifest_decodes_exact_founder_output(self):
         validated = _validate(_manifest())
