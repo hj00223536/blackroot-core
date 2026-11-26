@@ -64,6 +64,12 @@ Before any semantic verifier can be considered reviewable, tests must cover:
 - Deterministic evidence reports and explicit negative assertions that verification alone does not authorize release or issuance.
 - Initializer crash/fault injection, duplicate invocation, database rollback, and post-initialization tampering — only after the initializer design has been independently reviewed.
 
+## Existing approval-verifier regression coverage
+
+The standalone approval verifier already has focused negative tests in `tests/test_genesis_approval.py` for replay against a different manifest digest, cross-network substitution, scope and algorithm changes, unknown/revoked keys, key-ID mismatch, invalid signatures, non-canonical signature encoding, duplicate JSON keys, floating-point values, and non-object JSON roots. The validated-manifest binding helper is also tested to reject a detached record whose digest differs from the validated manifest.
+
+These tests demonstrate behavior of the isolated approval-verifier prototype only. They do not prove trust-anchor provenance, durable revocation or anti-rollback, integration with package parsing, consensus validation, release authorization, or safe issuance. The semantic verifier remains an unimplemented integration gate.
+
 ## Current repository status
 
 Existing components are prototypes: v2 manifest structural validation and strict parsing, detached Ed25519 approval verification, trust-configuration validation, a deterministic evidence report, and an inventory-only package audit. They are not an integrated semantic package verifier. The inventory audit does not authenticate its external pins. Trust-anchor sourcing and durable anti-rollback state are not implemented. The v2 manifest is not frozen. The evidence report deliberately records authorization as `not-authorized`; it does not validate full consensus or initialize a database.
