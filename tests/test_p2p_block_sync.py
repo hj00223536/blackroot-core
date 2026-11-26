@@ -101,6 +101,25 @@ class BlockBodyRequestTrackerTests(unittest.TestCase):
         self.assertEqual(tracker.expire(5, now=15.0), (self.block.header.hash,))
         self.assertEqual(tracker.pending_hashes, ())
 
+    def test_expire_rejects_non_finite_timeout_and_now(self):
+        tracker = BlockBodyRequestTracker(max_outstanding=2, clock=lambda: 10.0)
+        tracker.request(self.block.header.hash, self.chain)
+        for invalid in (float("nan"), float("inf"), float("-inf"), True, 0, -1):
+            with self.subTest(timeout=invalid):
+                with self.assertRaisesRegex(ValueError, "timeout"):
+                    tracker.expire(invalid)
+        for invalid in (float("nan"), float("inf"), float("-inf"), True):
+            with self.subTest(now=invalid):
+                with self.assertRaisesRegex(ValueError, "now"):
+                    tracker.expire(5, now=invalid)
+
+    def test_request_rejects_non_finite_clock_value(self):
+        for invalid in (float("nan"), float("inf"), float("-inf")):
+            tracker = BlockBodyRequestTracker(clock=lambda: invalid)
+            with self.subTest(clock=invalid):
+                with self.assertRaisesRegex(ValueError, "finite"):
+                    tracker.request(self.block.header.hash, self.chain)
+
     def test_cancel_all_clears_outstanding_requests(self):
         tracker = BlockBodyRequestTracker(max_outstanding=2)
         tracker.request(self.block.header.hash, self.chain)
