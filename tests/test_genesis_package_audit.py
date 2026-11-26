@@ -109,5 +109,35 @@ class GenesisPackageInventoryTests(unittest.TestCase):
             audit_genesis_package_inventory(files, expected_sha256=expected)
 
 
+    def test_artifact_mapping_is_snapshotted_before_pin_mapping_iteration(self):
+        from collections.abc import Mapping
+
+        files = package()
+        expected = pins(files)
+        original_manifest_digest = expected["manifest.json"]
+
+        class MutatingPins(Mapping):
+            def __iter__(self):
+                # This runs while the pin mapping is copied, after the
+                # artifact mapping has already been snapshotted.
+                files["manifest.json"] = b"changed during audit"
+                return iter(expected)
+
+            def __len__(self):
+                return len(expected)
+
+            def __getitem__(self, key):
+                return expected[key]
+
+        result = audit_genesis_package_inventory(
+            files, expected_sha256=MutatingPins()
+        )
+        self.assertEqual(result["manifest.json"], original_manifest_digest)
+        self.assertEqual(
+            hashlib.sha256(files["manifest.json"]).hexdigest(),
+            hashlib.sha256(b"changed during audit").hexdigest(),
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
