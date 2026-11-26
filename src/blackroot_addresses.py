@@ -58,6 +58,18 @@ def encode_base58check(version: int, payload: bytes) -> str:
 
 def decode_base58check(address: str, *, expected_version: int | None = None,
                        payload_length: int | None = None) -> tuple[int, bytes]:
+    if expected_version is not None and (
+        not isinstance(expected_version, int)
+        or isinstance(expected_version, bool)
+        or not 0 <= expected_version <= 255
+    ):
+        raise ValueError("expected_version must be a uint8")
+    if payload_length is not None and (
+        not isinstance(payload_length, int)
+        or isinstance(payload_length, bool)
+        or payload_length <= 0
+    ):
+        raise ValueError("payload_length must be a positive integer")
     raw = b58decode(address)
     if len(raw) < 6:
         raise ValueError("Base58Check value is too short")
