@@ -57,4 +57,4 @@ The current genesis manifest validator accepts a non-empty \`approval_record\` s
 
 ## Release gate
 
-This proposal remains OPEN until the owner explicitly approves the trust model, a public key is pinned through a separately reviewed process, independent signature vectors pass, and the verifier is independently reviewed. No founder allocation or network launch may depend on this proposal alone.
+This proposal remains OPEN until the owner explicitly approves the trust model, a real public key is pinned through a separately reviewed process, independent signature vectors pass, the detached record is bound into the manifest/initializer design, and the verifier is independently reviewed. The current verifier is a prototype requiring external review. No founder allocation or network launch may depend on this proposal alone.
