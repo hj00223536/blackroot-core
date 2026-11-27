@@ -247,6 +247,8 @@ class PeerManagerTests(unittest.IsolatedAsyncioTestCase):
             closed = False
             def close(self):
                 self.closed = True
+            def is_serving(self):
+                return not self.closed
             async def wait_closed(self):
                 return None
 
