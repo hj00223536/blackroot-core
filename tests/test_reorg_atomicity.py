@@ -114,7 +114,7 @@ class ReorganizationAtomicityTests(unittest.TestCase):
                     "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
                     "FROM utxos ORDER BY txid, output_index"
                 ).fetchall()
-            with store._connection_scope() as db:
+            with store._write_scope() as db:
                 db.execute(
                     "UPDATE block_transactions SET position=position + 1 WHERE height=1"
                 )
@@ -160,6 +160,7 @@ class ReorganizationAtomicityTests(unittest.TestCase):
                     "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
                     "FROM utxos ORDER BY txid, output_index"
                 ).fetchall()
+            with store._write_scope() as db:
                 db.execute(
                     "UPDATE block_transactions SET txid=? WHERE height=1 AND position=0",
                     (bytes.fromhex("ff" * 32),),
