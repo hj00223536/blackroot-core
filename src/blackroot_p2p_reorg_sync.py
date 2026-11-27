@@ -270,9 +270,10 @@ class MultiPeerReorganizationSync:
         for block_hash in released:
             # Keep a timed retry queued in case the node currently has no peers.
             self._requested_at[block_hash] = time.monotonic()
-            tried = self._tried_peers.get(block_hash)
-            if tried is not None:
-                tried.discard(peer_id)
-                if not tried:
-                    self._tried_peers.pop(block_hash, None)
+        # A disconnected session is no longer a candidate for any pending
+        # block, including requests that timed out before the disconnect.
+        for block_hash, tried in tuple(self._tried_peers.items()):
+            tried.discard(peer_id)
+            if not tried:
+                self._tried_peers.pop(block_hash, None)
         return released
