@@ -602,3 +602,8 @@ This is not a production P2P admission or resource ceiling. It does not bound ke
 
 
 Peer tracking now rolls back the managed-peer entry and closes the socket if asyncio task creation fails after peer construction; the unsubmitted coroutine is explicitly closed. A focused regression verifies socket closure and empty peer/task registries. This is a local failure-containment safeguard only; node-wide task ceilings and P2P stress/security gates remain OPEN.
+
+
+### Listener startup/shutdown race — OPEN
+
+Listener startup is single-flight, and a listener returned after shutdown has begun is immediately closed and awaited instead of being installed on an already-closed manager. Tests cover close-during-startup and concurrent startup attempts. This is lifecycle hardening only: backlog sizing, connection-rate limits, deployment bind policy, aggregate resource caps, stress tests, and independent review remain required. No public listener is authorized.
