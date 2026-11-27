@@ -348,3 +348,10 @@ accepted socket before propagating the setup error. Focused tests verify socket
 closure and queue-map cleanup. This is local setup cleanup only; it does not
 establish an inbound admission quota, global descriptor budget, or production
 P2P resource policy.
+
+
+## 25. Complete peer setup ownership and inbound callback containment
+
+The setup failure boundary now begins before per-peer resource-budget factory calls and includes both budget factories, PeerConnection construction, and application callback/queue installation. Any exception during these stages closes the accepted socket and removes/closes a partially registered queue. The inbound asyncio accept callback catches ordinary setup/registration exceptions, records them in the manager's bounded background-error history, and closes the socket rather than allowing an unhandled synchronous callback exception to escape. Regression tests cover a raising budget factory, an invalid budget-factory result, and inbound setup failure recording.
+
+This remains lifecycle hardening, not a node-wide resource policy. It does not select numeric caps, bound kernel accept backlog or connection rate, provide global descriptor/memory/work ceilings, or authorize public listener exposure.
