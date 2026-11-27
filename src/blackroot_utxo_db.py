@@ -886,10 +886,29 @@ class UTXOStore:
                 if block_hash != expected_hash:
                     raise ValueError("disconnect hashes must match active tips in tip-first order")
 
+                transaction_rows = db.execute(
+                    "SELECT txid, raw_transaction FROM block_transactions "
+                    "WHERE height=? ORDER BY position",
+                    (height,),
+                ).fetchall()
+                expected_created = set()
+                for stored_txid, raw_transaction in transaction_rows:
+                    transaction = Transaction.deserialize(bytes(raw_transaction))
+                    if transaction.txid != bytes(stored_txid):
+                        raise RuntimeError("stored transaction ID does not match reorganization body")
+                    expected_created.update(
+                        (transaction.txid, index)
+                        for index, _output in enumerate(transaction.outputs)
+                    )
                 created = db.execute(
                     "SELECT txid, output_index FROM block_undo_created WHERE height=?",
                     (height,),
                 ).fetchall()
+                recorded_created = {(bytes(txid), index) for txid, index in created}
+                if recorded_created != expected_created:
+                    raise RuntimeError(
+                        "reorganization undo-created records do not match stored block transactions"
+                    )
                 for txid, index in created:
                     db.execute(
                         "DELETE FROM utxos WHERE txid=? AND output_index=?",
