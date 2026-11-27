@@ -54,6 +54,17 @@ customer funds.
 - [ ] Establish reproducible builds, signed releases, and a reviewed dependency lock that pins every direct and transitive package to exact versions with verified hashes; the broad development constraint in `pyproject.toml` is not a release lock.
   vulnerability response, monitoring, backups, and operational runbooks.
 
+
+## Persistent network identity gate
+
+- [ ] Freeze and independently review a canonical, versioned network-identity specification covering network ID/role, Genesis commitments, all consensus parameters, serialization/script/address identifiers, P2P magic/protocol compatibility, and storage compatibility.
+- [ ] Define canonical digest vectors and authenticate the expected identity through an independently governed external pin with freshness, anti-rollback, rotation, revocation, and recovery rules.
+- [ ] Bind the authenticated identity atomically to persistent node state; reject missing or mismatched identity before state mutation or networking; define explicit backup-first migration for legacy databases.
+- [ ] Add adversarial tests for same-Genesis/different-network configurations, altered protocol parameters, missing/corrupt identity metadata, rollback pins, interrupted initialization/migration, and no-mutation failure behavior.
+- [ ] Complete independent implementation and security review before closing this gate.
+
+See [persistent network identity binding design](persistent-network-identity-binding-design.md). It is a proposal only; it does not select Mainnet constants or authorize production use.
+
 ## Genesis issuance authorization gate
 
 Use the [genesis activation package checklist](genesis-activation-package-checklist.md), [trust-anchor governance proposal](genesis-trust-anchor-governance-proposal.md), and [Genesis package semantic verification plan](genesis-package-semantic-verification-plan.md) as review aids. They are proposals/plans only and do not satisfy any approval, trust-anchor, semantic-verification, or issuance gate.
