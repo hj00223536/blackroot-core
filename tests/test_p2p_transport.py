@@ -4,7 +4,11 @@ import unittest
 
 from src.blackroot_p2p import encode_message
 from src.blackroot_p2p_handshake import VersionMessage, encode_version
-from src.blackroot_p2p_transport import PeerConnection, PeerProtocolError
+from src.blackroot_p2p_transport import (
+    PeerConnection,
+    PeerProtocolError,
+    _validate_control_payload_length,
+)
 
 MAGIC = bytes.fromhex("b2a1c3d4")
 
@@ -116,9 +120,16 @@ class PeerConnectionTests(unittest.IsolatedAsyncioTestCase):
                     await peer._read_message()
                 self.assertEqual(len(reader._buffer), 0)
 
+    def test_accepts_exact_inventory_payload_ceiling(self):
+        maximum = 3 + 50_000 * 36
+        for command in ("inv", "getdata", "notfound"):
+            with self.subTest(command=command):
+                command_field = command.encode("ascii").ljust(12, b"\\x00")
+                _validate_control_payload_length(command_field, maximum)
+
     async def test_rejects_oversized_inventory_before_body_read(self):
         reader = asyncio.StreamReader()
-        maximum = 5 + 50_000 * 36
+        maximum = 3 + 50_000 * 36
         command_field = b"inv" + bytes(9)
         reader.feed_data(
             MAGIC + command_field + struct.pack("<I", maximum + 1) + bytes(4)
