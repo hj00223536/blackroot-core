@@ -607,3 +607,6 @@ Peer tracking now rolls back the managed-peer entry and closes the socket if asy
 ### Listener startup/shutdown race — OPEN
 
 Listener startup is single-flight, and a listener returned after shutdown has begun is immediately closed and awaited instead of being installed on an already-closed manager. Tests cover close-during-startup and concurrent startup attempts. This is lifecycle hardening only: backlog sizing, connection-rate limits, deployment bind policy, aggregate resource caps, stress tests, and independent review remain required. No public listener is authorized.
+
+
+Shutdown now waits for any listener bind already in progress to finish its cleanup path before marking manager shutdown complete. The race regression asserts close remains pending until a delayed bind returns and the late listener has been closed. This lifecycle gate remains separate from production bind/backlog policy, stress evidence, and independent security review.
