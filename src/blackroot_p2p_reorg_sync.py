@@ -227,7 +227,8 @@ class MultiPeerReorganizationSync:
                 continue
             if self.pool.cancel(item.item_hash):
                 self._tried_peers.setdefault(item.item_hash, set()).add(peer_id)
-                self._requested_at.pop(item.item_hash, None)
+                # Retain a retry deadline even if no alternate peer is online.
+                self._requested_at[item.item_hash] = time.monotonic()
                 released.append(item.item_hash)
         return tuple(released)
 
@@ -261,7 +262,8 @@ class MultiPeerReorganizationSync:
         """Release assignments so another connected peer can be selected."""
         released = self.pool.release_peer(peer_id)
         for block_hash in released:
-            self._requested_at.pop(block_hash, None)
+            # Keep a timed retry queued in case the node currently has no peers.
+            self._requested_at[block_hash] = time.monotonic()
             tried = self._tried_peers.get(block_hash)
             if tried is not None:
                 tried.discard(peer_id)
