@@ -59,7 +59,7 @@ A production verifier must receive the expected trust-configuration digest from 
 6. bind the verification report to the exact trust-configuration digest and manifest digest;
 7. fail closed if trust data is unavailable, stale, malformed, or inconsistent.
 
-The current verifier prototype accepts caller-supplied key mappings and a revoked-key set. It does not parse or authenticate a trust-configuration artifact, enforce sequence numbers, establish key custody, or pin a trust-configuration digest. These are open implementation and review requirements.
+The current verifier prototype accepts caller-supplied key mappings and a revoked-key set. It snapshots the approval record and trust inputs before checking them, validates every configured key identifier against its exact 32-byte public key (including entries not selected by the current approval), and rejects malformed revoked-key identifiers. This prevents mutable mapping inputs and malformed unused entries from being silently accepted. It still does not parse or authenticate a trust-configuration artifact, enforce sequence numbers, establish key custody, or pin a trust-configuration digest. These remain open implementation and review requirements.
 
 ## 6. Separation of decisions
 
