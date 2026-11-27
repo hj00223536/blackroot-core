@@ -196,6 +196,7 @@ class PeerConnection:
         self.handshake = PeerHandshake(local_version)
         self._send_lock = asyncio.Lock()
         self._closed = False
+        self._close_task: asyncio.Task | None = None
         self.remote_version: VersionMessage | None = None
 
     @property
@@ -413,11 +414,22 @@ class PeerConnection:
             await self.close()
 
     async def close(self) -> None:
-        """Close the stream and release its transport resources."""
-        if not self._closed:
+        """Await one cancellation-shielded stream teardown shared by callers."""
+        if self._close_task is None:
             self._closed = True
-            self.writer.close()
-        # Release a decoded message not yet transferred to its handler.
+            try:
+                self._close_task = asyncio.create_task(self._close_impl())
+            except BaseException:
+                # Preserve synchronous ownership cleanup if task creation fails.
+                self.writer.close()
+                if not self._receive_dispatch_active:
+                    self._release_pending_receive_reservation()
+                raise
+        await asyncio.shield(self._close_task)
+
+    async def _close_impl(self) -> None:
+        """Close the writer once and release any receive reservation still owned here."""
+        self.writer.close()
         # An active handler retains the reservation until its own finally.
         if not self._receive_dispatch_active:
             self._release_pending_receive_reservation()
