@@ -181,7 +181,8 @@ class MultiPeerReorganizationSyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.store.tip(), original_tip)
         self.assertIsNone(self.sync.pool.assigned_peer(block_hash))
         self.assertNotIn(block_hash, self.sync.pool.pending_hashes)
-        self.assertNotIn(block_hash, self.sync._requested_at)
+        self.assertIn(block_hash, self.sync._requested_at)
+        self.assertIsInstance(self.sync._requested_at[block_hash], (int, float))
 
     async def test_transaction_invalid_fork_bodies_are_removed_from_archive(self):
         def mine_transactions(height, previous, timestamp, transactions):
