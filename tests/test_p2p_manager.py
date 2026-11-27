@@ -1,5 +1,6 @@
 import asyncio
 import unittest
+from unittest.mock import patch
 
 from src.blackroot_p2p_handshake import VersionMessage
 from src.blackroot_p2p_manager import PeerManager
@@ -160,6 +161,23 @@ class PeerManagerConfigurationTests(unittest.TestCase):
                 manager._new_peer(asyncio.StreamReader(), writer)
             self.assertTrue(writer.closed)
             self.assertEqual(manager.peer_count, 0)
+
+    def test_tracking_task_creation_failure_rolls_back_peer_and_socket(self):
+        class Writer:
+            closed = False
+            def close(self):
+                self.closed = True
+
+        writer = Writer()
+        manager = PeerManager(magic=MAGIC, local_version=version())
+        peer = manager._new_peer(asyncio.StreamReader(), writer)
+        with patch("src.blackroot_p2p_manager.asyncio.create_task",
+                   side_effect=RuntimeError("task creation failed")):
+            with self.assertRaisesRegex(RuntimeError, "task creation failed"):
+                manager._track(peer)
+        self.assertTrue(writer.closed)
+        self.assertEqual(manager.peer_count, 0)
+        self.assertEqual(manager._tasks, set())
 
     def test_inbound_setup_failure_is_recorded_and_socket_closed(self):
         class Writer:
