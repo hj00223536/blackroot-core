@@ -671,6 +671,22 @@ class PeerManagerTests(unittest.IsolatedAsyncioTestCase):
             [ValueError, RuntimeError, LookupError],
         )
 
+    async def test_peer_disconnect_releases_worker_admission_state(self):
+        manager = PeerManager(magic=MAGIC, local_version=version())
+        class FailingPeer:
+            async def run(self):
+                raise RuntimeError("disconnect")
+            async def close(self):
+                return None
+        peer = FailingPeer()
+        manager._peers.add(peer)
+        manager._application_workers_started.add(peer)
+        manager._application_queues[peer] = ReservedMessageQueue(max_items=1)
+        await manager._run_peer(peer)
+        self.assertNotIn(peer, manager._application_workers_started)
+        self.assertNotIn(peer, manager._application_queues)
+        self.assertNotIn(peer, manager.peers)
+
     async def test_background_error_history_is_bounded(self):
         for index in range(105):
             self.server_manager._background_errors.append(RuntimeError(str(index)))
