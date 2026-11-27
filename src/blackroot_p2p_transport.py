@@ -12,6 +12,7 @@ import inspect
 import math
 import secrets
 import struct
+import time
 from collections.abc import Awaitable, Callable
 
 from .blackroot_p2p import DEFAULT_MAX_PAYLOAD, HEADER_SIZE, decode_message, encode_message
@@ -70,6 +71,30 @@ def _validate_timeout(name: str, value: float) -> None:
         raise ValueError(f"{name} must be a finite positive number")
 
 
+class _TokenBucket:
+    """Small monotonic-clock token bucket owned by one peer connection."""
+
+    def __init__(self, rate: float, capacity: float, now: float) -> None:
+        self.rate = rate
+        self.capacity = capacity
+        self.tokens = capacity
+        self.updated_at = now
+
+    def refill(self, now: float) -> None:
+        if now > self.updated_at:
+            self.tokens = min(
+                self.capacity, self.tokens + (now - self.updated_at) * self.rate
+            )
+            self.updated_at = now
+
+    def can_consume(self, amount: float, now: float) -> bool:
+        self.refill(now)
+        return self.tokens >= amount
+
+    def consume(self, amount: float) -> None:
+        self.tokens -= amount
+
+
 class PeerProtocolError(ValueError):
     """Raised when a remote peer violates the session protocol."""
 
@@ -89,6 +114,13 @@ class PeerConnection:
         idle_timeout: float = 120.0,
         min_protocol_version: int = 1,
         on_message: MessageHandler | None = None,
+        control_messages_per_second: float = 20.0,
+        control_message_burst: float = 40.0,
+        data_messages_per_second: float = 20.0,
+        data_message_burst: float = 40.0,
+        data_bytes_per_second: float = 2 * 1024 * 1024,
+        data_bytes_burst: float = 4 * 1024 * 1024,
+        monotonic_clock: Callable[[], float] = time.monotonic,
     ) -> None:
         if not isinstance(magic, bytes) or len(magic) != 4:
             raise ValueError("network magic must be exactly four bytes")
@@ -110,6 +142,35 @@ class PeerConnection:
         self.idle_timeout = idle_timeout
         self.min_protocol_version = min_protocol_version
         self.on_message = on_message
+        rate_settings = (
+            ("control_messages_per_second", control_messages_per_second),
+            ("control_message_burst", control_message_burst),
+            ("data_messages_per_second", data_messages_per_second),
+            ("data_message_burst", data_message_burst),
+            ("data_bytes_per_second", data_bytes_per_second),
+            ("data_bytes_burst", data_bytes_burst),
+        )
+        for name, value in rate_settings:
+            _validate_timeout(name, value)
+        if not callable(monotonic_clock):
+            raise ValueError("monotonic_clock must be callable")
+        now = monotonic_clock()
+        if (
+            isinstance(now, bool)
+            or not isinstance(now, (int, float))
+            or not math.isfinite(now)
+        ):
+            raise ValueError("monotonic_clock must return a finite number")
+        self._monotonic_clock = monotonic_clock
+        self._control_message_bucket = _TokenBucket(
+            control_messages_per_second, control_message_burst, now
+        )
+        self._data_message_bucket = _TokenBucket(
+            data_messages_per_second, data_message_burst, now
+        )
+        self._data_byte_bucket = _TokenBucket(
+            data_bytes_per_second, data_bytes_burst, now
+        )
         self.handshake = PeerHandshake(local_version)
         self._send_lock = asyncio.Lock()
         self._closed = False
@@ -141,6 +202,31 @@ class PeerConnection:
         await self.send("ping", struct.pack("<Q", nonce))
         return nonce
 
+    def _consume_inbound_budget(self, command: str, payload_length: int) -> None:
+        """Charge this peer's message and byte budgets before reading its body."""
+        now = self._monotonic_clock()
+        if (
+            isinstance(now, bool)
+            or not isinstance(now, (int, float))
+            or not math.isfinite(now)
+        ):
+            raise PeerProtocolError("monotonic clock returned an invalid value")
+        if command in {"version", "verack", "ping", "pong"}:
+            bucket = self._control_message_bucket
+            if not bucket.can_consume(1, now):
+                raise PeerProtocolError("peer exceeded control-message rate limit")
+            bucket.consume(1)
+            return
+
+        message_bucket = self._data_message_bucket
+        byte_bucket = self._data_byte_bucket
+        message_ok = message_bucket.can_consume(1, now)
+        bytes_ok = byte_bucket.can_consume(payload_length, now)
+        if not message_ok or not bytes_ok:
+            raise PeerProtocolError("peer exceeded data-message rate limit")
+        message_bucket.consume(1)
+        byte_bucket.consume(payload_length)
+
     async def _read_message(self) -> tuple[str, bytes]:
         header = await self.reader.readexactly(HEADER_SIZE)
         if header[:4] != self.magic:
@@ -149,6 +235,9 @@ class PeerConnection:
         if length > self.max_payload:
             raise PeerProtocolError("message payload exceeds configured limit")
         _validate_control_payload_length(header[4:16], length)
+        self._consume_inbound_budget(
+            header[4:16].split(b"\\x00", 1)[0].decode("ascii"), length
+        )
         payload = await self.reader.readexactly(length)
         try:
             return decode_message(header + payload, self.magic, max_payload=self.max_payload)
