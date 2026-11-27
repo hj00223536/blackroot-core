@@ -252,3 +252,12 @@ selected tip, cumulative work, and replayed durable header set remain unchanged.
 This covers provider failure before persistence begins; clock synchronization,
 peer-time sampling quality, and production adjusted-time policy remain unresolved
 launch requirements.
+
+### Persistent-header tamper detection
+
+Regression coverage now mutates serialized header fields in SQLite while
+retaining the original stored block hash. Startup replay must reject the
+corrupted row on recomputed-hash mismatch. A separate reload test verifies
+that a failed replay does not replace or mutate the currently published
+in-memory header chain. This does not replace filesystem integrity controls,
+database backup/restore drills, or independent storage review.
