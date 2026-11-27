@@ -42,3 +42,17 @@ diversity policy. The peer cap is per manager process. Inbound sockets are
 not exposed to untrusted public networks until protocol parameters and
 security policy have undergone independent review. Consensus, genesis,
 transaction script, and wallet work remain incomplete.
+
+## Peer task failure isolation
+
+The manager supervises each peer task independently. Unexpected exceptions
+from a peer session are retained in a bounded in-memory diagnostic history
+(`background_errors`, newest 100 retained) and passed to the configured
+`on_peer_error` callback. Failures in the error callback, peer close path,
+or disconnect callback are also retained and do not prevent removal of the
+peer from the manager's active set. Cancellation still propagates after the
+cleanup path runs.
+
+This is process-local diagnostic evidence, not durable logging or a peer
+reputation/ban system. Operators must export diagnostics through their own
+logging/monitoring integration before production use.
