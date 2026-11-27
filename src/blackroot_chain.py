@@ -74,6 +74,7 @@ class HeaderChain:
         self.adjusted_time_provider = adjusted_time_provider
         self._nodes: dict[bytes, HeaderNode] = {}
         self._best_hash: bytes | None = None
+        self._batch_callback_active = False
         self.add_to_branch(genesis)
 
     @property
@@ -171,6 +172,8 @@ class HeaderChain:
         self, header: BlockHeader, *, adjusted_time: int | None = None,
         max_future_seconds: int = 7_200,
     ) -> str:
+        if self._batch_callback_active:
+            raise RuntimeError("on_commit callback must not mutate the header chain")
         if self.adjusted_time_provider is not None and adjusted_time is not None:
             raise ValueError(
                 "header chain must use its configured adjusted-time provider"
@@ -249,6 +252,8 @@ class HeaderChain:
         """
         if not isinstance(headers, list):
             raise TypeError("headers must be a list")
+        if self._batch_callback_active:
+            raise RuntimeError("nested batch mutation from on_commit is not allowed")
         if self.adjusted_time_provider is not None and adjusted_time is not None:
             raise ValueError(
                 "header chain must use its configured adjusted-time provider"
@@ -268,7 +273,11 @@ class HeaderChain:
                     max_future_seconds=max_future_seconds,
                 ))
             if on_commit is not None:
-                on_commit(self)
+                self._batch_callback_active = True
+                try:
+                    on_commit(self)
+                finally:
+                    self._batch_callback_active = False
         except BaseException:
             self._nodes = original_nodes
             self._best_hash = original_best_hash
