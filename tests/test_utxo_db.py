@@ -1257,6 +1257,11 @@ store.apply(tx)
 
         self.assertEqual(self.store.tip(), before_tip)
         self.assertEqual(self.store.count(), before_count)
+        with _managed_sqlite(self.db_path) as db:
+            db.execute(
+                "DELETE FROM block_undo_spent WHERE height=1 AND txid=? AND output_index=0",
+                (bytes.fromhex("de" * 32),),
+            )
         self.store.verify_integrity()
 
 
