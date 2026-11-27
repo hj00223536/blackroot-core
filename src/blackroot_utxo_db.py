@@ -381,6 +381,7 @@ class UTXOStore:
             # outputs are intentionally absent from this index: they predate
             # block history and require a separate authenticated manifest.
             active_transactions: dict[bytes, tuple[int, int, Transaction]] = {}
+            spent_history: set[OutPoint] = set()
             expected_parent = bytes(32)
             for expected_height, (height, block_hash, prev_hash, tx_count) in enumerate(blocks):
                 block_hash = bytes(block_hash)
@@ -424,6 +425,53 @@ class UTXOStore:
                 }
                 if recorded_created != expected_created:
                     raise RuntimeError("persisted block undo-created records do not match active transaction outputs")
+
+                block_inputs: set[OutPoint] = set()
+                expected_spent: set[OutPoint] = set()
+                for position, txid, _raw in tx_rows:
+                    if position == 0:
+                        continue
+                    tx = active_transactions[bytes(txid)][2]
+                    for txin in tx.inputs:
+                        previous = txin.previous_output
+                        if previous in block_inputs:
+                            raise RuntimeError("active block transaction history contains a duplicate spend")
+                        block_inputs.add(previous)
+                        source = active_transactions.get(previous.txid)
+                        if source is not None and source[0] < height:
+                            if previous.index >= len(source[2].outputs):
+                                raise RuntimeError("active transaction spends a nonexistent historical output")
+                            if previous in spent_history:
+                                raise RuntimeError("active transaction history spends an output more than once")
+                            expected_spent.add(previous)
+
+                spent_rows = db.execute(
+                    "SELECT txid, output_index, value, script_pubkey, created_height, "
+                    "is_coinbase, created_mtp FROM block_undo_spent WHERE height=?",
+                    (height,),
+                ).fetchall()
+                recorded_spent: set[OutPoint] = set()
+                for spent_txid, spent_index, spent_value, spent_script, spent_height, spent_coinbase, spent_mtp in spent_rows:
+                    spent_outpoint = OutPoint(bytes(spent_txid), spent_index)
+                    if spent_outpoint in recorded_spent or spent_outpoint not in block_inputs:
+                        raise RuntimeError("persisted block undo-spent record does not match a block input")
+                    recorded_spent.add(spent_outpoint)
+                    source = active_transactions.get(spent_outpoint.txid)
+                    if source is not None:
+                        source_height, _source_position, source_tx = source
+                        if source_height >= height or spent_outpoint.index >= len(source_tx.outputs):
+                            raise RuntimeError("persisted block undo-spent record references a non-parent output")
+                        source_output = source_tx.outputs[spent_outpoint.index]
+                        if (
+                            spent_value != source_output.value
+                            or bytes(spent_script) != source_output.script_pubkey
+                            or spent_height != source_height
+                            or spent_coinbase != int(_source_position == 0)
+                        ):
+                            raise RuntimeError("persisted block undo-spent data does not match its source output")
+                if not expected_spent.issubset(recorded_spent):
+                    raise RuntimeError("persisted block undo-spent records are missing historical inputs")
+                spent_history.update(block_inputs)
                 expected_parent = block_hash
 
             archived_bodies = db.execute(
