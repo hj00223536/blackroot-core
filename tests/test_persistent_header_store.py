@@ -271,5 +271,42 @@ class PersistentHeaderStoreTests(unittest.TestCase):
             self.assertEqual(store.chain.best_hash, self.genesis.hash)
 
 
+    def test_clock_provider_failure_during_admission_preserves_live_and_durable_state(self):
+        clock_state = {"broken": False}
+
+        def clock():
+            if clock_state["broken"]:
+                raise RuntimeError("clock unavailable during admission")
+            return 1_000_000
+
+        store = PersistentHeaderStore(
+            self.path, POW_LIMIT, self.genesis,
+            adjusted_time_provider=clock,
+        )
+        accepted = mine(self.genesis.hash, 2)
+        store.add_to_branch(accepted)
+        before_nodes = tuple(store.chain.nodes)
+        before_tip = store.chain.best_hash
+        before_work = store.chain.chainwork
+
+        clock_state["broken"] = True
+        rejected = mine(accepted.hash, 3)
+        with self.assertRaisesRegex(RuntimeError, "clock unavailable during admission"):
+            store.add_to_branch(rejected)
+
+        self.assertEqual(tuple(store.chain.nodes), before_nodes)
+        self.assertEqual(store.chain.best_hash, before_tip)
+        self.assertEqual(store.chain.chainwork, before_work)
+        self.assertIsNone(store.chain.node(rejected.hash))
+
+        clock_state["broken"] = False
+        reopened = PersistentHeaderStore(
+            self.path, POW_LIMIT, self.genesis,
+            adjusted_time_provider=clock,
+        )
+        self.assertEqual(reopened.chain.best_hash, before_tip)
+        self.assertIsNone(reopened.chain.node(rejected.hash))
+
+
 if __name__ == "__main__":
     unittest.main()
