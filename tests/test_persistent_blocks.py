@@ -8,7 +8,9 @@ from src.blackroot_blocks import Block, COINBASE_INDEX, ZERO_TXID
 from src.blackroot_chain import BlockHeader, HeaderChain
 from src.blackroot_consensus import block_subsidy, check_proof_of_work, decode_compact_target
 from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput, merkle_root
-from src.blackroot_script import N, _mul, _hash160, _push, legacy_sighash_all, p2pkh_script
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec, utils
+from src.blackroot_script import N, _hash160, _push, legacy_sighash_all, p2pkh_script
 from src.blackroot_utxo_db import UTXOStore
 
 
@@ -34,31 +36,21 @@ def coinbase(value, tag, script_pubkey=b'miner'):
     )
 
 
-def der_integer(value):
-    raw = value.to_bytes((value.bit_length() + 7) // 8, "big") or b"\x00"
-    if raw[0] & 0x80:
-        raw = b"\x00" + raw
-    return b"\x02" + bytes([len(raw)]) + raw
-
-
-def der_signature(r, s):
-    body = der_integer(r) + der_integer(s)
-    return b"\x30" + bytes([len(body)]) + body
-
-
 def signed_spend(previous, previous_output, value, private_key=1):
-    point = _mul(private_key)
-    pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
+    signing_key = ec.derive_private_key(private_key, ec.SECP256K1())
+    pubkey = signing_key.public_key().public_bytes(
+        serialization.Encoding.X962,
+        serialization.PublicFormat.CompressedPoint,
+    )
     unsigned = Transaction(1, (TxInput(previous),), (TxOutput(value, b"recipient"),))
     digest = legacy_sighash_all(unsigned, 0, previous_output.script_pubkey)
-    nonce = 2
-    nonce_point = _mul(nonce)
-    r = nonce_point[0] % N
-    s = (pow(nonce, N - 2, N) *
-         (int.from_bytes(digest, "big") + r * private_key)) % N
-    if s > N // 2:
-        s = N - s
-    signature = der_signature(r, s) + b"\x01"
+    der = signing_key.sign(
+        digest, ec.ECDSA(utils.Prehashed(hashes.SHA256()))
+    )
+    r_value, s_value = utils.decode_dss_signature(der)
+    if s_value > N // 2:
+        s_value = N - s_value
+    signature = utils.encode_dss_signature(r_value, s_value) + b"\x01"
     return Transaction(1, (TxInput(previous, _push(signature) + _push(pubkey)),),
                        unsigned.outputs)
 
@@ -157,8 +149,11 @@ class PersistentBlockTests(unittest.TestCase):
 
 
     def test_disconnect_tip_restores_spent_parent_utxo(self):
-        point = _mul(1)
-        pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
+        signing_key = ec.derive_private_key(1, ec.SECP256K1())
+        pubkey = signing_key.public_key().public_bytes(
+            serialization.Encoding.X962,
+            serialization.PublicFormat.CompressedPoint,
+        )
         locking_script = p2pkh_script(_hash160(pubkey))
         funding = OutPoint(bytes.fromhex("55" * 32), 0)
         previous_output = TxOutput(10_000, locking_script)
@@ -182,8 +177,11 @@ class PersistentBlockTests(unittest.TestCase):
 
 
     def test_persistent_store_rejects_immature_coinbase_spend_and_persists_origin(self):
-        point = _mul(1)
-        pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
+        signing_key = ec.derive_private_key(1, ec.SECP256K1())
+        pubkey = signing_key.public_key().public_bytes(
+            serialization.Encoding.X962,
+            serialization.PublicFormat.CompressedPoint,
+        )
         locking_script = p2pkh_script(_hash160(pubkey))
         genesis_cb = coinbase(0, b"\x00\x00")
         genesis = block_for([genesis_cb])
@@ -213,8 +211,11 @@ class PersistentBlockTests(unittest.TestCase):
 
 
     def test_persistent_store_accepts_coinbase_spend_at_height_101(self):
-        point = _mul(1)
-        pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
+        signing_key = ec.derive_private_key(1, ec.SECP256K1())
+        pubkey = signing_key.public_key().public_bytes(
+            serialization.Encoding.X962,
+            serialization.PublicFormat.CompressedPoint,
+        )
         locking_script = p2pkh_script(_hash160(pubkey))
         genesis_cb = coinbase(0, b"\x00\x00")
         previous = block_for([genesis_cb], timestamp=1)
@@ -304,8 +305,11 @@ class PersistentBlockTests(unittest.TestCase):
 
 
     def test_reorganization_rejects_immature_coinbase_spend_and_rolls_back(self):
-        point = _mul(1)
-        pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
+        signing_key = ec.derive_private_key(1, ec.SECP256K1())
+        pubkey = signing_key.public_key().public_bytes(
+            serialization.Encoding.X962,
+            serialization.PublicFormat.CompressedPoint,
+        )
         locking_script = p2pkh_script(_hash160(pubkey))
         genesis_cb = coinbase(0, b"\x00\x00")
         genesis = block_for([genesis_cb])
@@ -461,8 +465,11 @@ class PersistentBlockTests(unittest.TestCase):
         self.store.verify_integrity()
 
     def test_transaction_fees_are_not_counted_as_new_subsidy(self):
-        point = _mul(1)
-        pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
+        signing_key = ec.derive_private_key(1, ec.SECP256K1())
+        pubkey = signing_key.public_key().public_bytes(
+            serialization.Encoding.X962,
+            serialization.PublicFormat.CompressedPoint,
+        )
         locking_script = p2pkh_script(_hash160(pubkey))
         funding = OutPoint(bytes.fromhex("55" * 32), 0)
         previous_output = TxOutput(10_000, locking_script)
