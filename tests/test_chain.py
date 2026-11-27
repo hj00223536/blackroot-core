@@ -383,6 +383,43 @@ class HeaderChainTests(unittest.TestCase):
         self.assertEqual(chain.chainwork, before_work)
         self.assertIsNone(chain.node(first.hash))
 
+    def test_add_batch_callback_cannot_mutate_header_chain(self):
+        genesis = mine_header(ZERO_HASH, 1)
+        chain = HeaderChain(
+            POW_LIMIT, genesis, allow_unchecked_time_for_tests=True
+        )
+        first = mine_header(genesis.hash, 2)
+        callback_header = mine_header(first.hash, 3)
+
+        def callback(active_chain):
+            with self.assertRaisesRegex(
+                RuntimeError, "on_commit callback must not mutate"
+            ):
+                active_chain.add(callback_header)
+
+        accepted = chain.add_batch([first], on_commit=callback)
+        self.assertEqual(accepted, [first.display_hash])
+        self.assertEqual(chain.tip.hash, first.hash)
+        self.assertIsNone(chain.node(callback_header.hash))
+
+    def test_add_batch_callback_cannot_start_nested_batch(self):
+        genesis = mine_header(ZERO_HASH, 1)
+        chain = HeaderChain(
+            POW_LIMIT, genesis, allow_unchecked_time_for_tests=True
+        )
+        first = mine_header(genesis.hash, 2)
+        nested = mine_header(first.hash, 3)
+
+        def callback(active_chain):
+            with self.assertRaisesRegex(
+                RuntimeError, "nested batch mutation"
+            ):
+                active_chain.add_batch([nested])
+
+        chain.add_batch([first], on_commit=callback)
+        self.assertEqual(chain.tip.hash, first.hash)
+        self.assertIsNone(chain.node(nested.hash))
+
     def test_equal_work_fork_selection_is_deterministic(self):
         genesis = mine_header(ZERO_HASH, 1)
         chain = HeaderChain(POW_LIMIT, genesis, allow_unchecked_time_for_tests=True)
