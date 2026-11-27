@@ -1091,10 +1091,12 @@ class UTXOStore:
                     known_output = prior_outputs.get(outpoint)
                     if known_output is not None:
                         expected_value, expected_script, expected_height, expected_coinbase = known_output
+                        expected_mtp = expected_creation_mtp(expected_height)
                         if (
                             value != expected_value or bytes(script) != expected_script
                             or created_height != expected_height
                             or is_coinbase_flag != expected_coinbase
+                            or created_mtp != expected_mtp
                         ):
                             raise RuntimeError("reorganization undo-spent data does not match prior transaction output")
                 expected_known_spent = (
