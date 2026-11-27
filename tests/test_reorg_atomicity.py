@@ -133,6 +133,55 @@ class ReorganizationAtomicityTests(unittest.TestCase):
                 ).fetchall()
             self.assertEqual(after_utxos, before_utxos)
 
+    def test_reorganization_rejects_unreferenced_undo_spent_record(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = UTXOStore(Path(directory) / "chain.sqlite")
+            genesis = mined_block(0, ZERO_HASH, 1)
+            chain = HeaderChain(
+                POW_LIMIT, genesis.header,
+                adjusted_time_provider=lambda: 1_000_000,
+            )
+            old = mined_block(1, genesis.header.hash, 2)
+            chain.add(old.header)
+            store.connect_validated_block(genesis, 0, chain)
+            store.connect_validated_block(old, 1, chain)
+
+            fork_one = mined_block(1, genesis.header.hash, 3)
+            fork_two = mined_block(2, fork_one.header.hash, 4)
+            chain.add_to_branch(fork_one.header)
+            chain.add_to_branch(fork_two.header)
+            store.store_block_body(fork_one)
+            store.store_block_body(fork_two)
+
+            before_tip = store.tip()
+            before_headers = store.active_block_headers()
+            with store._connection_scope() as db:
+                before_utxos = db.execute(
+                    "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
+                    "FROM utxos ORDER BY txid, output_index"
+                ).fetchall()
+            with store._write_scope() as db:
+                db.execute(
+                    "INSERT INTO block_undo_spent "
+                    "(height, txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp) "
+                    "VALUES(1, ?, 0, 1234, ?, 0, 0, NULL)",
+                    (bytes.fromhex("ab" * 32), b"\x51"),
+                )
+
+            with self.assertRaisesRegex(
+                RuntimeError, "undo-spent records do not match block inputs"
+            ):
+                store.reorganize_to_best(chain)
+
+            self.assertEqual(store.tip(), before_tip)
+            self.assertEqual(store.active_block_headers(), before_headers)
+            with store._connection_scope() as db:
+                after_utxos = db.execute(
+                    "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
+                    "FROM utxos ORDER BY txid, output_index"
+                ).fetchall()
+            self.assertEqual(after_utxos, before_utxos)
+
     def test_reorganization_rejects_persisted_header_tampering(self):
         with tempfile.TemporaryDirectory() as directory:
             store = UTXOStore(Path(directory) / "chain.sqlite")
