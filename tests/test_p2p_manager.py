@@ -237,12 +237,12 @@ class PeerManagerTests(unittest.IsolatedAsyncioTestCase):
         peer._pending_receive_reservation = reservation
         await peer.handle_message("headers", b"header-data")
         await asyncio.wait_for(processed.wait(), timeout=1)
-        await asyncio.wait_for(worker, timeout=1) if False else asyncio.sleep(0)
         self.assertEqual(received, [("headers", b"header-data")])
         self.assertTrue(reservation.released)
         self.assertEqual(node_budget.bytes_in_use, 0)
         self.assertTrue(manager.application_queue_for(peer).qsize == 0)
         manager.application_queue_for(peer).close()
+        await asyncio.wait_for(worker, timeout=1)
         manager._peers.discard(peer)
 
     async def test_worker_handler_failure_is_recorded_and_closes_peer_queue(self):
