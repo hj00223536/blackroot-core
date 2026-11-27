@@ -24,7 +24,7 @@ The validator requires the caller to supply all of the following from a separate
 - expected sequence number;
 - expected predecessor digest (or null for sequence 1).
 
-The package cannot choose these values. A valid digest without an independently supplied pin is not trusted. A later configuration must match the exact expected sequence and predecessor digest; older or substituted configurations fail closed.
+The package cannot choose these values. A valid digest without an independently supplied pin is not trusted. Sequence 1 must have a null predecessor and a null externally expected predecessor. Every sequence greater than 1 must contain a canonical 32-byte predecessor digest and the caller must pin that exact digest; a later sequence with a null predecessor pin is rejected. A later configuration must match the exact expected sequence and predecessor digest; older, unlinked, or substituted configurations fail closed.
 
 ## Independent digest fixture
 
