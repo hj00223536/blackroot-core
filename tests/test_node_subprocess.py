@@ -113,6 +113,7 @@ class SeparateProcessNodeSmokeTests(unittest.TestCase):
                 first = start_node("node-a")
                 first_record = _read_json_line(first)
                 self.assertEqual(first_record["event"], "node_started")
+                self.assertEqual(os.stat(root / "node-a").st_mode & 0o777, 0o700)
                 self.assertEqual(first_record["listen_host"], "127.0.0.1")
                 self.assertGreater(first_record["listen_port"], 0)
 
