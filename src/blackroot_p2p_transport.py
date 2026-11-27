@@ -123,6 +123,7 @@ class PeerConnection:
         data_bytes_burst: float = 4 * 1024 * 1024,
         monotonic_clock: Callable[[], float] = time.monotonic,
         send_resource_budgets: tuple[ResourceBudget, ResourceBudget] | None = None,
+        receive_resource_budgets: tuple[ResourceBudget, ResourceBudget] | None = None,
     ) -> None:
         if not isinstance(magic, bytes) or len(magic) != 4:
             raise ValueError("network magic must be exactly four bytes")
@@ -172,6 +173,16 @@ class PeerConnection:
             ):
                 raise ValueError("send_resource_budgets must be a distinct (peer, node) budget pair")
         self._send_resource_budgets = send_resource_budgets
+        if receive_resource_budgets is not None:
+            if (
+                not isinstance(receive_resource_budgets, tuple)
+                or len(receive_resource_budgets) != 2
+                or any(not isinstance(item, ResourceBudget) for item in receive_resource_budgets)
+                or receive_resource_budgets[0] is receive_resource_budgets[1]
+            ):
+                raise ValueError("receive_resource_budgets must be a distinct (peer, node) budget pair")
+        self._receive_resource_budgets = receive_resource_budgets
+        self._pending_receive_reservation = None
         self._monotonic_clock = monotonic_clock
         self._control_message_bucket = _TokenBucket(
             control_messages_per_second, control_message_burst, now
@@ -276,16 +287,49 @@ class PeerConnection:
         if length > self.max_payload:
             raise PeerProtocolError("message payload exceeds configured limit")
         _validate_control_payload_length(header[4:16], length)
-        self._consume_inbound_budget(
-            header[4:16].split(b"\x00", 1)[0].decode("ascii"), length
-        )
-        payload = await self.reader.readexactly(length)
+        command = header[4:16].split(b"\\x00", 1)[0].decode("ascii")
+        self._consume_inbound_budget(command, length)
+
+        reservation = None
+        if self._receive_resource_budgets is not None:
+            if self._pending_receive_reservation is not None:
+                raise PeerProtocolError("previous inbound message reservation is still owned")
+            peer_budget, node_budget = self._receive_resource_budgets
+            reservation = reserve_resources(
+                (
+                    (peer_budget, 1, HEADER_SIZE + length),
+                    (node_budget, 1, HEADER_SIZE + length),
+                )
+            )
+            if reservation is None:
+                raise PeerProtocolError("inbound resource budget exhausted")
+
         try:
-            return decode_message(header + payload, self.magic, max_payload=self.max_payload)
-        except ValueError as exc:
-            raise PeerProtocolError(str(exc)) from exc
+            payload = await self.reader.readexactly(length)
+            try:
+                message = decode_message(
+                    header + payload, self.magic, max_payload=self.max_payload
+                )
+            except ValueError as exc:
+                raise PeerProtocolError(str(exc)) from exc
+            self._pending_receive_reservation = reservation
+            return message
+        except BaseException:
+            if reservation is not None:
+                reservation.release()
+            raise
 
     async def handle_message(self, command: str, payload: bytes) -> None:
+        """Dispatch a message and release its receive reservation on completion."""
+        try:
+            await self._handle_message(command, payload)
+        finally:
+            reservation = self._pending_receive_reservation
+            self._pending_receive_reservation = None
+            if reservation is not None:
+                reservation.release()
+
+    async def _handle_message(self, command: str, payload: bytes) -> None:
         """Apply one decoded message to the handshake or active session."""
         if command == "version":
             if self.handshake.remote_version is not None:
