@@ -149,6 +149,47 @@ class TestnetConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "invalid JSON constant"):
                 TestnetConfig.from_json_file(path)
 
+    def test_json_config_rejects_noncanonical_hex_fields(self):
+        settings = config()
+        header = settings.genesis_header
+        raw = {
+            "network_id": settings.network_id,
+            "message_magic": settings.message_magic.hex(),
+            "protocol_version": settings.protocol_version,
+            "genesis_header": {
+                "version": header.version,
+                "prev_hash": header.prev_hash.hex(),
+                "merkle_root": header.merkle_root.hex(),
+                "timestamp": header.timestamp,
+                "bits": header.bits,
+                "nonce": header.nonce,
+            },
+            "genesis_hash": settings.genesis_hash.hex(),
+            "pow_limit": hex(settings.pow_limit),
+            "p2p_port": settings.p2p_port,
+            "max_peers": settings.max_peers,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "testnet.json"
+            malformed = dict(raw)
+            malformed["message_magic"] = settings.message_magic.hex().upper()
+            path.write_text(json.dumps(malformed), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "message_magic"):
+                TestnetConfig.from_json_file(path)
+
+            malformed = dict(raw)
+            malformed["genesis_header"] = dict(raw["genesis_header"])
+            malformed["genesis_header"]["prev_hash"] = " " + header.prev_hash.hex()
+            path.write_text(json.dumps(malformed), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "prev_hash"):
+                TestnetConfig.from_json_file(path)
+
+            malformed = dict(raw)
+            malformed["pow_limit"] = "0X" + hex(settings.pow_limit)[2:]
+            path.write_text(json.dumps(malformed), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "pow_limit"):
+                TestnetConfig.from_json_file(path)
+
     def test_json_config_rejects_unknown_and_missing_fields(self):
         settings = config()
         header = settings.genesis_header
