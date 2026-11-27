@@ -121,6 +121,11 @@ class BlackrootNodeRuntime:
         return await self.sync.retry_expired(now=now)
 
     @property
+    def retry_loop_running(self) -> bool:
+        """Whether the supervised block-request retry task is currently active."""
+        return self._retry_task is not None and not self._retry_task.done()
+
+    @property
     def retry_last_error(self) -> Exception | None:
         """Most recent retry error, cleared after a successful retry."""
         return self._retry_last_error
