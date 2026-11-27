@@ -1329,6 +1329,45 @@ class UTXOStore:
             except RuntimeError as exc:
                 raise RuntimeError("disconnect undo preflight found invalid active transaction order") from exc
 
+            # Authenticate the historical header prefix before trusting it
+            # as the source of creation-MTP values in the undo journal.
+            from .blackroot_consensus import sha256d
+            prior_header_rows = db.execute(
+                "SELECT height, block_hash, prev_hash, header FROM blocks "
+                "WHERE height<? ORDER BY height",
+                (height,),
+            ).fetchall()
+            prior_timestamps = {}
+            prior_parent_hash = bytes(32)
+            for expected_height, row in enumerate(prior_header_rows):
+                prior_header_height, stored_hash, stored_parent, raw_header = row
+                prior_header = bytes(raw_header)
+                if prior_header_height != expected_height:
+                    raise RuntimeError("disconnect undo preflight prior header history is not contiguous")
+                if len(prior_header) != 80:
+                    raise RuntimeError("disconnect undo preflight prior header must be exactly 80 bytes")
+                if (
+                    sha256d(prior_header) != bytes(stored_hash)
+                    or prior_header[4:36] != prior_parent_hash
+                    or bytes(stored_parent) != prior_parent_hash
+                ):
+                    raise RuntimeError("disconnect undo preflight prior header hash or parent commitment is inconsistent")
+                prior_parent_hash = bytes(stored_hash)
+                prior_timestamps[prior_header_height] = int.from_bytes(
+                    prior_header[68:72], "little"
+                )
+
+            def expected_creation_mtp(source_height):
+                if source_height == 0:
+                    return None
+                parent_height = source_height - 1
+                first_height = max(0, parent_height - 10)
+                required_heights = range(first_height, parent_height + 1)
+                if any(item not in prior_timestamps for item in required_heights):
+                    raise RuntimeError("disconnect undo preflight cannot reconstruct historical creation MTP")
+                timestamps = sorted(prior_timestamps[item] for item in required_heights)
+                return timestamps[len(timestamps) // 2]
+
             spent = db.execute(
                 "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
                 "FROM block_undo_spent WHERE height=?",
@@ -1343,10 +1382,12 @@ class UTXOStore:
                 known_output = prior_outputs.get(outpoint)
                 if known_output is not None:
                     expected_value, expected_script, expected_height, expected_coinbase = known_output
+                    expected_mtp = expected_creation_mtp(expected_height)
                     if (
                         value != expected_value or bytes(script) != expected_script
                         or created_height != expected_height
                         or is_coinbase_flag != expected_coinbase
+                        or created_mtp != expected_mtp
                     ):
                         raise RuntimeError("disconnect undo-spent data does not match prior transaction output")
 
