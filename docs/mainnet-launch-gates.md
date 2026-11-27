@@ -261,3 +261,15 @@ corrupted row on recomputed-hash mismatch. A separate reload test verifies
 that a failed replay does not replace or mutate the currently published
 in-memory header chain. This does not replace filesystem integrity controls,
 database backup/restore drills, or independent storage review.
+
+
+### Persisted UTXO row integrity validation
+
+The explicit UTXO integrity audit now validates each persisted outpoint and
+its value, script type, creation height, coinbase flag, and creation MTP rather
+than relying only on SQLite schema constraints. A regression deliberately
+bypasses SQLite CHECK constraints, corrupts a stored transaction ID, and
+requires the integrity audit to fail closed. This is row-shape and metadata
+validation only; it does not prove that the complete live UTXO set equals an
+independent replay of every active block. Deterministic full UTXO replay and
+independent cross-implementation verification remain mandatory launch gates.
