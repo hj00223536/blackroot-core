@@ -243,6 +243,46 @@ class MultiPeerReorganizationSyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.sync.pool.assigned_peer(block_hash), retried[block_hash])
         self.assertEqual(self.peers[retried[block_hash]].sent[-1][0], "getdata")
 
+    async def test_timeout_prefers_an_alternate_connected_peer(self):
+        import time
+
+        assignments = await self.sync.request_missing_bodies(self.peers)
+        block_hash = self.fork_one.header.hash
+        original_peer = assignments[block_hash]
+        other_peer = "p2" if original_peer == "p1" else "p1"
+        retried = await self.sync.retry_expired_requests(
+            self.peers, timeout=5, now=time.monotonic() + 10
+        )
+        self.assertEqual(retried[block_hash], other_peer)
+        self.assertEqual(self.sync.pool.assigned_peer(block_hash), other_peer)
+
+    async def test_expired_request_waits_for_peer_and_retries_when_one_returns(self):
+        import time
+
+        assignments = await self.sync.request_missing_bodies(self.peers)
+        block_hash = self.fork_one.header.hash
+        original_peer = assignments[block_hash]
+        for peer in self.peers.values():
+            peer.connected = False
+
+        first_now = time.monotonic() + 10
+        self.assertEqual(
+            await self.sync.retry_expired_requests(
+                self.peers, timeout=5, now=first_now
+            ),
+            {},
+        )
+        self.assertIsNone(self.sync.pool.assigned_peer(block_hash))
+        self.assertEqual(self.sync._requested_at[block_hash], first_now)
+
+        self.peers["p1"].connected = True
+        retried = await self.sync.retry_expired_requests(
+            self.peers, timeout=5, now=first_now + 10
+        )
+        self.assertEqual(set(retried), {block_hash})
+        self.assertEqual(retried[block_hash], "p1")
+        self.assertEqual(self.sync.pool.assigned_peer(block_hash), "p1")
+
     async def test_expire_requests_rejects_nonpositive_timeout(self):
         with self.assertRaisesRegex(ValueError, "positive"):
             self.sync.expire_requests(0)
