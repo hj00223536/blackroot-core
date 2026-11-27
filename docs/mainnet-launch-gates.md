@@ -444,3 +444,25 @@ Lock-file hardening follow-up: `DataDirectoryLock` now uses `O_NOFOLLOW` where a
 ### Private node data-directory permissions
 
 `DataDirectoryLock` now requires the opened data directory to be owned by the current user and to exclude group/other permissions (0700 or stricter), and opens the lock file relative to a pinned directory descriptor. A regression covers rejection of a permissive 0755 directory before lock-file creation. This does not defend against the owning user or privileged local tampering, parent-path replacement before descriptor acquisition, hostile filesystems, or restored-backup rollback. Independent filesystem, ownership, backup/restore, and crash-recovery review remains OPEN; CI must pass on the exact commit.
+
+
+### SQLite online backup and restore gate — OPEN
+
+`tests/test_sqlite_online_backup.py` exercises SQLite's online backup API for
+an active WAL-mode source while its connection remains open, then checks the
+backup with `PRAGMA integrity_check` and `PRAGMA foreign_key_check`. Existing
+coverage also checks domain-level UTXO/archive validation and that validating a
+damaged backup does not mutate the source database.
+
+This is primitive-level test coverage, not a production backup/restore
+facility. There is no approved node-level backup command, authenticated
+backup manifest, atomic restore workflow, anti-rollback anchor, retention or
+off-host policy, encryption/key-management policy, or tested disaster-recovery
+runbook. A valid old backup can still be stale; database integrity alone does
+not prove that its chain tip is current or authorized. Production readiness
+requires coordinated backup of every required node artifact, manifest-bound
+checksums and schema/network/genesis identity, offline verification, restore
+into a fresh isolated directory, full chain/UTXO/trust-state validation,
+external anti-rollback freshness checks, atomic activation, and fault tests
+covering interruption at each step. Do not overwrite the live data directory
+during restore. CI must pass on the exact test commit; this gate remains OPEN.
