@@ -401,3 +401,8 @@ checks socket closure, queue closure, queue-registry removal, peer removal,
 and worker-state cleanup. This closes a local ownership leak only; it does
 not select production limits, make resource accounting mandatory, or close
 the P2P resource-policy gate. CI and independent review remain required.
+
+
+## 14. Shared PeerConnection teardown
+
+PeerConnection.close() now retains one teardown task and shields it from cancellation of individual callers. Concurrent peer-run and manager-shutdown paths await the same writer-close operation rather than independently awaiting wait_closed(). Regression tests cover concurrent close calls and cancellation of the first caller while a second caller waits. If task creation fails, the coroutine is closed and synchronous writer/reservation cleanup is attempted. This is not a node-wide resource policy and does not authorize public networking; CI, adversarial lifecycle testing, and independent review remain required.
