@@ -308,9 +308,15 @@ class UTXOStore:
             if bootstrap_row is None:
                 raise RuntimeError("bootstrap issuance metadata is missing")
             try:
-                bootstrap_issued = int(bootstrap_row[0])
+                raw_bootstrap_issued = bootstrap_row[0]
+                bootstrap_issued = int(raw_bootstrap_issued)
             except (TypeError, ValueError) as exc:
                 raise RuntimeError("bootstrap issuance metadata is malformed") from exc
+            if (
+                not isinstance(raw_bootstrap_issued, str)
+                or raw_bootstrap_issued != str(bootstrap_issued)
+            ):
+                raise RuntimeError("bootstrap issuance metadata is malformed")
             if bootstrap_issued < 0 or bootstrap_issued > TOTAL_SUPPLY_CAP:
                 raise RuntimeError("bootstrap issuance metadata exceeds total supply cap")
             if bootstrap_issued + output.value > TOTAL_SUPPLY_CAP:
