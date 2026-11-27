@@ -1125,6 +1125,7 @@ class UTXOStore:
                 raise RuntimeError("disconnect undo preflight cannot find active block transactions")
             expected_created = set()
             block_inputs = set()
+            active_transactions: dict[bytes, tuple[int, int, Transaction]] = {}
             for expected_position, (position, stored_txid, raw_transaction) in enumerate(transaction_rows):
                 if position != expected_position:
                     raise RuntimeError("disconnect undo preflight found non-contiguous transaction positions")
@@ -1134,6 +1135,7 @@ class UTXOStore:
                     raise RuntimeError("disconnect undo preflight found malformed transaction data") from exc
                 if transaction.txid != bytes(stored_txid):
                     raise RuntimeError("disconnect undo preflight transaction ID mismatch")
+                active_transactions[transaction.txid] = (height, position, transaction)
                 expected_created.update(
                     (transaction.txid, index)
                     for index, _output in enumerate(transaction.outputs)
@@ -1167,6 +1169,7 @@ class UTXOStore:
                     raise RuntimeError("disconnect undo preflight found malformed prior transaction") from exc
                 if prior_tx.txid != bytes(prior_txid):
                     raise RuntimeError("disconnect undo preflight prior transaction ID mismatch")
+                active_transactions[prior_tx.txid] = (prior_height, prior_position, prior_tx)
                 if prior_position > 0:
                     for txin in prior_tx.inputs:
                         outpoint = (txin.previous_output.txid, txin.previous_output.index)
@@ -1177,6 +1180,14 @@ class UTXOStore:
                     prior_outputs[(prior_tx.txid, output_index)] = (
                         output.value, output.script_pubkey, prior_height, int(prior_position == 0)
                     )
+
+            # Check dependencies across the entire active prefix plus this tip.
+            # A persisted earlier transaction must not be allowed to reference an
+            # output created by this (or any later) block before disconnect mutates UTXOs.
+            try:
+                _validate_active_transaction_order(active_transactions)
+            except RuntimeError as exc:
+                raise RuntimeError("disconnect undo preflight found invalid active transaction order") from exc
 
             spent = db.execute(
                 "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
