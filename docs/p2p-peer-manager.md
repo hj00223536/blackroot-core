@@ -56,3 +56,15 @@ cleanup path runs.
 This is process-local diagnostic evidence, not durable logging or a peer
 reputation/ban system. Operators must export diagnostics through their own
 logging/monitoring integration before production use.
+
+
+## Local CLI retry supervision
+
+The local node CLI starts `BlackrootNodeRuntime.start_retry_loop()` before it
+publishes its startup record. The startup JSON exposes `block_retry_loop: true`
+only when the supervised task is active. Runtime users embedding the library
+rather than using the CLI must start the loop themselves and stop it through
+`runtime.close()`. This supervises the existing request-timeout retry path; it
+does not add a maximum attempt count, exponential backoff, peer scoring, or
+production peer discovery. The CLI remains loopback-only and is not a public
+Mainnet launcher.
