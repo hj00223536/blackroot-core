@@ -86,17 +86,19 @@ class UTXOStoreTests(unittest.TestCase):
                 self.assertEqual(self.store.count(), before_count)
 
     def test_invalid_p2pkh_signature_cannot_mutate_active_chain_or_utxos(self):
-        from src.blackroot_blocks import Block, COINBASE_INDEX, ZERO_TXID
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import ec, utils
+        from src.blackroot_blocks import Block, COINBASE_INDEX
         from src.blackroot_chain import BlockHeader
         from src.blackroot_consensus import block_subsidy
-        from src.blackroot_script import (
-            N, _mul, _hash160, _push, legacy_sighash_all, p2pkh_script,
-        )
+        from src.blackroot_script import _hash160, _push, legacy_sighash_all, p2pkh_script
         from src.blackroot_transactions import merkle_root
 
-        private_key = 7
-        point = _mul(private_key)
-        pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
+        private_key = ec.derive_private_key(7, ec.SECP256K1())
+        pubkey = private_key.public_key().public_bytes(
+            serialization.Encoding.X962,
+            serialization.PublicFormat.CompressedPoint,
+        )
         spend_funding = OutPoint(bytes.fromhex("41" * 32), 0)
         funding_output = TxOutput(900, p2pkh_script(_hash160(pubkey)))
         self.store.add_genesis_output(spend_funding, funding_output)
@@ -110,7 +112,7 @@ class UTXOStoreTests(unittest.TestCase):
 
         genesis_coinbase = Transaction(
             1,
-            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\x01\x01"),),
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
             (TxOutput(block_subsidy(0), b"genesis-miner"),),
         )
         genesis = block(bytes(32), 1, (genesis_coinbase,))
@@ -120,31 +122,24 @@ class UTXOStoreTests(unittest.TestCase):
             1, (TxInput(spend_funding),), (TxOutput(800, b"recipient"),)
         )
         digest = legacy_sighash_all(unsigned, 0, funding_output.script_pubkey)
-        nonce = 11
-        nonce_point = _mul(nonce)
-        r = nonce_point[0] % N
-        s = (pow(nonce, N - 2, N) *
-             (int.from_bytes(digest, "big") + r * private_key)) % N
-        if s > N // 2:
-            s = N - s
-
-        def der_integer(value):
-            raw = value.to_bytes((value.bit_length() + 7) // 8, "big") or b"\x00"
-            if raw[0] & 0x80:
-                raw = b"\x00" + raw
-            return b"\x02" + bytes([len(raw)]) + raw
-
-        body = der_integer(r) + der_integer(s)
-        signature = b"\x30" + bytes([len(body)]) + body + b"\x01"
+        der_signature = private_key.sign(
+            digest, ec.ECDSA(utils.Prehashed(hashes.SHA256()))
+        )
+        r_value, s_value = utils.decode_dss_signature(der_signature)
+        from src.blackroot_script import N
+        if s_value > N // 2:
+            s_value = N - s_value
+        der_signature = utils.encode_dss_signature(r_value, s_value)
+        signature = der_signature + b"\\x01"
         signed_input = TxInput(spend_funding, _push(signature) + _push(pubkey))
         invalid_signature = bytearray(signed_input.script_sig)
-        invalid_signature[2] ^= 1
+        invalid_signature[5] ^= 1
         invalid_spend = Transaction(
             1, (TxInput(spend_funding, bytes(invalid_signature)),), unsigned.outputs
         )
         coinbase = Transaction(
             1,
-            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\x01\x02"),),
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x02"),),
             (TxOutput(block_subsidy(1) + 100, b"miner"),),
         )
         candidate = block(genesis.header.hash, 2, (coinbase, invalid_spend))
