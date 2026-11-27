@@ -156,6 +156,7 @@ class PeerManager:
         self._outbound_reservations = 0
         self._closing = False
         self._close_complete = asyncio.Event()
+        self._close_task: asyncio.Task | None = None
         self._background_errors: deque[Exception] = deque(maxlen=100)
 
     @property
@@ -394,15 +395,24 @@ class PeerManager:
             self._outbound_reservations -= 1
 
     async def close(self) -> None:
-        """Stop accepting peers and await the single shared shutdown operation."""
-        if self._closing:
-            await self._close_complete.wait()
-            return
-        self._closing = True
-        try:
-            await self._close_impl()
-        finally:
-            self._close_complete.set()
+        """Await one shielded shutdown task shared by all close callers.
+
+        Cancelling an individual caller must not cancel the manager's teardown
+        or signal completion before sockets, peer sessions, and workers stop.
+        """
+        if self._close_task is None:
+            self._closing = True
+
+            async def run_shutdown() -> None:
+                try:
+                    await self._close_impl()
+                finally:
+                    self._close_complete.set()
+
+            # No await occurs between checking and assigning this task, so
+            # concurrent callers on this event loop join the same operation.
+            self._close_task = asyncio.create_task(run_shutdown())
+        await asyncio.shield(self._close_task)
 
     async def _close_impl(self) -> None:
         """Perform manager shutdown once; callers synchronize through close()."""
