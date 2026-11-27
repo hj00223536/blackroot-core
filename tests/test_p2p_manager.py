@@ -262,10 +262,13 @@ class PeerManagerTests(unittest.IsolatedAsyncioTestCase):
         with patch("src.blackroot_p2p_manager.asyncio.start_server", side_effect=delayed_start):
             starting = asyncio.create_task(manager.start_server())
             await asyncio.wait_for(started.wait(), timeout=1)
-            await manager.close()
+            closing = asyncio.create_task(manager.close())
+            await asyncio.sleep(0)
+            self.assertFalse(closing.done())
             release.set()
             with self.assertRaisesRegex(RuntimeError, "closed during listener startup"):
                 await asyncio.wait_for(starting, timeout=1)
+            await asyncio.wait_for(closing, timeout=1)
 
         self.assertTrue(server.closed)
         self.assertFalse(manager.listening)
