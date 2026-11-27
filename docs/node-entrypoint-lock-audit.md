@@ -87,3 +87,18 @@ The suite remains a process-termination test: it does not simulate sudden
 power loss, torn sectors, controller-cache loss, filesystem corruption, or
 restore from backup. CI must pass on the exact commit before this evidence is
 accepted.
+
+
+## SQLite ownership and hard-link preflight
+
+The locked opener now rejects pre-existing database and SQLite sidecar paths
+that are not regular files, are not owned by the current UID, or have a link
+count other than one. Tests cover hard-link aliases for the database and WAL
+sidecar. These checks reduce accidental or pre-positioned aliasing of files
+outside the private data directory.
+
+The checks remain pathname preflight and are not an atomic open-with-no-follow
+contract. They do not eliminate TOCTOU replacement, same-UID manipulation,
+privileged tampering, unsafe parent aliases, or hostile filesystem behavior.
+SQLite-created files are not yet opened through a verified descriptor-relative
+interface. This is not a complete filesystem security boundary.
