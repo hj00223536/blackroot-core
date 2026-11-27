@@ -390,3 +390,14 @@ The retained outbound-dial lifecycle now has a focused failure-injection regress
 ## 30. Outbound dial caller-cancellation regression
 
 A second regression cancels the coroutine awaiting `PeerManager.connect()` while its retained dial is blocked. Cancellation propagates to the dial task; the dial task is removed from the manager registry, the outbound reservation returns to zero, and the shutdown-drain event is signalled. Together with the manager-shutdown cancellation and task-creation-failure tests, this covers the three local dial lifecycle exits: explicit caller cancellation, manager shutdown, and task-creation failure. These tests do not bound connection churn or prove behavior under OS-level socket exhaustion; those remain measured stress and deployment-policy work.
+
+
+## 13. Peer tracking task-creation rollback follow-up
+
+The manager's peer-tracking failure path now also closes and unregisters the
+per-peer application queue and clears worker bookkeeping when creation of the
+retained peer-session task fails. A focused failure-injection regression
+checks socket closure, queue closure, queue-registry removal, peer removal,
+and worker-state cleanup. This closes a local ownership leak only; it does
+not select production limits, make resource accounting mandatory, or close
+the P2P resource-policy gate. CI and independent review remain required.
