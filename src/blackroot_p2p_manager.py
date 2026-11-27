@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+import inspect
 import secrets
 from collections import deque
 from dataclasses import replace
@@ -149,6 +150,8 @@ class PeerManager:
         self._server: asyncio.AbstractServer | None = None
         self._peers: set[PeerConnection] = set()
         self._application_queues: dict[PeerConnection, ReservedMessageQueue] = {}
+        self._application_worker_tasks: dict[PeerConnection, asyncio.Task] = {}
+        self._application_workers_started: set[PeerConnection] = set()
         self._tasks: set[asyncio.Task] = set()
         self._outbound_reservations = 0
         self._closing = False
@@ -175,6 +178,55 @@ class PeerManager:
             return self._application_queues[peer]
         except KeyError as exc:
             raise KeyError("peer has no application message queue") from exc
+
+    def start_application_worker(
+        self, peer: PeerConnection, handler: Callable[[str, bytes], object]
+    ) -> asyncio.Task:
+        """Start the one retained consumer task for a peer's bounded queue.
+
+        The worker is not restarted after failure. Handler failure closes the
+        peer and queue; manager shutdown cancels and awaits active workers.
+        """
+        if self._closing:
+            raise RuntimeError("peer manager is closing")
+        if not callable(handler):
+            raise TypeError("application handler must be callable")
+        queue = self.application_queue_for(peer)
+        if peer not in self._peers:
+            raise RuntimeError("application worker requires a managed peer")
+        if peer in self._application_workers_started:
+            raise RuntimeError("application worker has already been started")
+        self._application_workers_started.add(peer)
+
+        async def consume_messages() -> None:
+            try:
+                while True:
+                    async with queue.consume() as message:
+                        if message is None:
+                            return
+                        result = handler(message.command, message.payload)
+                        if inspect.isawaitable(result):
+                            await result
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                self._background_errors.append(exc)
+                try:
+                    await self._report_error(exc)
+                except Exception as callback_error:
+                    self._background_errors.append(callback_error)
+                queue.close()
+                await peer.close()
+
+        task = asyncio.create_task(consume_messages())
+        self._application_worker_tasks[peer] = task
+
+        def worker_finished(done: asyncio.Task) -> None:
+            if self._application_worker_tasks.get(peer) is done:
+                self._application_worker_tasks.pop(peer, None)
+
+        task.add_done_callback(worker_finished)
+        return task
 
     @property
     def listening(self) -> bool:
@@ -344,4 +396,10 @@ class PeerManager:
         tasks = tuple(self._tasks)
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+        worker_tasks = tuple(self._application_worker_tasks.values())
+        for task in worker_tasks:
+            task.cancel()
+        if worker_tasks:
+            await asyncio.gather(*worker_tasks, return_exceptions=True)
+        self._application_worker_tasks.clear()
         self._peers.clear()
