@@ -149,6 +149,8 @@ class PeerManager:
         self.on_peer_disconnected = on_peer_disconnected
         self._server: asyncio.AbstractServer | None = None
         self._server_starting = False
+        self._server_start_complete = asyncio.Event()
+        self._server_start_complete.set()
         self._peers: set[PeerConnection] = set()
         self._application_queues: dict[PeerConnection, ReservedMessageQueue] = {}
         self._application_worker_tasks: dict[PeerConnection, asyncio.Task] = {}
@@ -382,6 +384,7 @@ class PeerManager:
         if self._server is not None or self._server_starting:
             raise RuntimeError("peer listener is already started or starting")
         self._server_starting = True
+        self._server_start_complete.clear()
         server = None
         try:
             server = await asyncio.start_server(self._accept, host, port)
@@ -402,6 +405,7 @@ class PeerManager:
             raise
         finally:
             self._server_starting = False
+            self._server_start_complete.set()
 
     def _accept(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         if self._closing or self._load() >= self.max_peers:
@@ -466,6 +470,9 @@ class PeerManager:
 
     async def _close_impl(self) -> None:
         """Perform manager shutdown once; callers synchronize through close()."""
+        # A bind already in progress must finish its own close path before
+        # shutdown can report completion; start_server rejects late installs.
+        await self._server_start_complete.wait()
         if self._server is not None:
             self._server.close()
             await self._server.wait_closed()
