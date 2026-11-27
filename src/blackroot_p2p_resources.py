@@ -1,7 +1,8 @@
 """Synchronous, event-loop-local P2P resource reservation primitives.
 
-These primitives do not choose policy limits and are not wired into transport.
-Callers must supply reviewed capacities and define reservation ownership.
+Transport and application-queue paths can use these primitives when callers
+explicitly inject peer and node budgets. They choose no policy limits, provide
+no thread/process coordination, and require explicit reservation ownership.
 """
 from __future__ import annotations
 
