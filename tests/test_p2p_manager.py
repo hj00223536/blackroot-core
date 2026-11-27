@@ -3,7 +3,8 @@ import unittest
 
 from src.blackroot_p2p_handshake import VersionMessage
 from src.blackroot_p2p_manager import PeerManager
-from src.blackroot_p2p_resources import ResourceBudget
+from src.blackroot_p2p_resources import ResourceBudget, reserve_resources
+from src.blackroot_p2p_queue import ReservedMessageQueue
 
 MAGIC = bytes.fromhex("b2a1c3d4")
 
@@ -98,6 +99,23 @@ class PeerManagerConfigurationTests(unittest.TestCase):
         self.assertIs(second._receive_resource_budgets[1], receive_node)
         self.assertIsNot(first._receive_resource_budgets[0], second._receive_resource_budgets[0])
 
+    def test_application_queue_requires_receive_budgets_and_exclusive_handler(self):
+        with self.assertRaisesRegex(ValueError, "requires receive resource budgets"):
+            PeerManager(
+                magic=MAGIC, local_version=version(),
+                application_queue_factory=lambda peer: ReservedMessageQueue(max_items=2),
+            )
+        receive_node = ResourceBudget(max_items=8, max_bytes=8192, name="receive-node")
+        factory = lambda: ResourceBudget(max_items=4, max_bytes=4096, name="receive-peer")
+        with self.assertRaisesRegex(ValueError, "cannot be combined"):
+            PeerManager(
+                magic=MAGIC, local_version=version(),
+                receive_node_budget=receive_node,
+                receive_peer_budget_factory=factory,
+                application_queue_factory=lambda peer: ReservedMessageQueue(max_items=2),
+                on_message=lambda command, payload: None,
+            )
+
     def test_rejects_non_callable_handlers(self):
         for kwargs in ({"on_message": 1}, {"on_peer_error": 1}):
             with self.subTest(kwargs=kwargs), self.assertRaises(TypeError):
@@ -118,6 +136,73 @@ class PeerManagerTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         await self.client_manager.close()
         await self.server_manager.close()
+
+    async def test_application_queue_receives_transferred_peer_reservation(self):
+        node_budget = ResourceBudget(max_items=8, max_bytes=8192, name="receive-node")
+        peer_budgets = []
+        manager = PeerManager(
+            magic=MAGIC,
+            local_version=version(),
+            receive_node_budget=node_budget,
+            receive_peer_budget_factory=lambda: peer_budgets.append(
+                ResourceBudget(max_items=4, max_bytes=4096, name="receive-peer")
+            ) or peer_budgets[-1],
+            application_queue_factory=lambda peer: ReservedMessageQueue(max_items=2),
+        )
+        peer = manager._new_peer(asyncio.StreamReader(), object())
+        peer.handshake.local_version_sent = True
+        peer.handshake.remote_version = version()
+        peer.handshake.local_verack_sent = True
+        peer.handshake.remote_verack_received = True
+        peer.handshake._refresh_complete()
+        reservation = reserve_resources(
+            ((peer._receive_resource_budgets[0], 1, 35),
+             (peer._receive_resource_budgets[1], 1, 35))
+        )
+        peer._pending_receive_reservation = reservation
+        await peer.handle_message("inv", b"inventory")
+        queue = manager.application_queue_for(peer)
+        self.assertEqual(queue.qsize, 1)
+        self.assertFalse(reservation.released)
+        self.assertEqual(node_budget.bytes_in_use, 35)
+        message = await queue.get()
+        self.assertEqual((message.command, message.payload), ("inv", b"inventory"))
+        queue.task_done()
+        self.assertTrue(reservation.released)
+        self.assertEqual(node_budget.bytes_in_use, 0)
+        queue.close()
+
+    async def test_application_queue_full_releases_rejected_message_reservation(self):
+        node_budget = ResourceBudget(max_items=8, max_bytes=8192, name="receive-node")
+        manager = PeerManager(
+            magic=MAGIC,
+            local_version=version(),
+            receive_node_budget=node_budget,
+            receive_peer_budget_factory=lambda: ResourceBudget(
+                max_items=4, max_bytes=4096, name="receive-peer"
+            ),
+            application_queue_factory=lambda peer: ReservedMessageQueue(max_items=1),
+        )
+        peer = manager._new_peer(asyncio.StreamReader(), object())
+        peer.handshake.local_version_sent = True
+        peer.handshake.remote_version = version()
+        peer.handshake.local_verack_sent = True
+        peer.handshake.remote_verack_received = True
+        peer.handshake._refresh_complete()
+        peer_budget, shared_budget = peer._receive_resource_budgets
+        first = reserve_resources(((peer_budget, 1, 30), (shared_budget, 1, 30)))
+        peer._pending_receive_reservation = first
+        await peer.handle_message("inv", b"first")
+        rejected = reserve_resources(((peer_budget, 1, 31), (shared_budget, 1, 31)))
+        peer._pending_receive_reservation = rejected
+        with self.assertRaises(asyncio.QueueFull):
+            await peer.handle_message("inv", b"second")
+        self.assertTrue(rejected.released)
+        self.assertEqual(node_budget.bytes_in_use, 30)
+        queue = manager.application_queue_for(peer)
+        queue.close()
+        self.assertTrue(first.released)
+        self.assertEqual(node_budget.bytes_in_use, 0)
 
     async def test_inbound_and_outbound_peers_complete_handshake(self):
         host, port, *_ = await self.server_manager.start_server("127.0.0.1", 0)
