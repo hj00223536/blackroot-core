@@ -8,6 +8,7 @@ Neither mode is a production-ready consensus node.
 from __future__ import annotations
 
 from pathlib import Path
+import stat
 from typing import Callable
 
 from .blackroot_blocks import Block
@@ -135,13 +136,34 @@ class PersistentNodeState:
         and compatibility, and do not provide this process-ownership guarantee.
         """
         directory = Path(data_dir).expanduser().resolve()
-        database = Path(database_path).expanduser().resolve()
-        if database.parent != directory:
+        requested_database = Path(database_path).expanduser()
+        if not requested_database.is_absolute():
+            requested_database = Path.cwd() / requested_database
+        if requested_database.parent.resolve() != directory:
             raise ValueError(
                 "locked node database must be directly inside the data directory"
             )
+        # Preserve the final path component: resolve() here would silently
+        # follow a database symlink before SQLite opens it.
+        database = directory / requested_database.name
         lock = DataDirectoryLock(directory).acquire()
         try:
+            # The private, locked directory prevents unprivileged path swaps;
+            # reject pre-existing symlinks and special files before SQLite opens
+            # the database or its WAL sidecars.
+            for candidate in (
+                database,
+                Path(str(database) + "-wal"),
+                Path(str(database) + "-shm"),
+            ):
+                try:
+                    candidate_stat = candidate.lstat()
+                except FileNotFoundError:
+                    continue
+                if not stat.S_ISREG(candidate_stat.st_mode):
+                    raise RuntimeError(
+                        f"SQLite database path must be a regular non-symlink file: {candidate.name}"
+                    )
             return cls(
                 database,
                 database,
