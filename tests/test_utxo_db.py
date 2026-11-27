@@ -1395,7 +1395,7 @@ store.apply(tx)
             fee = 100 if height == 1 else 10 if height == 2 else 0
             coinbase = Transaction(
                 1,
-                (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
+                (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\x01\x01"),),
                 (TxOutput(block_subsidy(height) + fee, b"miner"),),
             )
             all_transactions = (coinbase,) + tuple(transactions)
