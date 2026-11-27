@@ -43,3 +43,14 @@ Before closing this gate:
 ## Lock-file path hardening follow-up
 
 The lock acquisition now requests `O_NOFOLLOW` where the platform exposes it, converts symlink-loop rejection into a fail-closed error, rejects directory paths, and verifies the opened lock descriptor is a regular file before attempting `flock`. Regression tests cover a symlink to an unrelated file and a directory at the lock-file path. This reduces lock-path redirection and invalid-file risks; it does not replace restrictive data-directory permissions, protection against privileged local tampering, or filesystem-specific review. CI is pending.
+
+
+## Data-directory permission enforcement follow-up
+
+The lock now inspects the opened directory descriptor and fails closed unless the
+directory is owned by the current process user and has no group/other permission
+bits (mode 0700 or stricter). A regression verifies that a 0755 directory is
+rejected before the lock file is created. This is a local filesystem hygiene
+control; it does not protect against the owning user, root, privileged malware,
+unsafe parent-directory replacement, hostile mounts, or rollback of restored
+backups. The production storage and backup threat model still requires review.
