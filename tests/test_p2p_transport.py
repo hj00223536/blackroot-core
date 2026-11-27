@@ -57,6 +57,12 @@ class FakeClock:
 
 class PeerConnectionTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
+    async def test_receive_dispatch_state_starts_inactive_and_resets_after_error(self):
+        self.assertFalse(self.peer._receive_dispatch_active)
+        with self.assertRaisesRegex(PeerProtocolError, "before handshake completion"):
+            await self.peer.handle_message("headers", b"payload")
+        self.assertFalse(self.peer._receive_dispatch_active)
+
         self.writer = FakeWriter()
         self.peer = PeerConnection(
             asyncio.StreamReader(),
