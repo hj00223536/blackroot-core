@@ -1032,5 +1032,81 @@ store.apply(tx)
             self.store.verify_integrity()
 
 
+    def test_verify_integrity_rejects_same_block_forward_transaction_reference(self):
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import ec, utils
+        from src.blackroot_blocks import Block, COINBASE_INDEX
+        from src.blackroot_chain import BlockHeader
+        from src.blackroot_consensus import block_subsidy
+        from src.blackroot_script import _hash160, _push, legacy_sighash_all, p2pkh_script, N
+        from src.blackroot_transactions import merkle_root
+
+        private_key = ec.derive_private_key(17, ec.SECP256K1())
+        pubkey = private_key.public_key().public_bytes(
+            serialization.Encoding.X962,
+            serialization.PublicFormat.CompressedPoint,
+        )
+        script = p2pkh_script(_hash160(pubkey))
+        funding = OutPoint(bytes.fromhex("53" * 32), 0)
+        self.store.add_genesis_output(funding, TxOutput(900, script))
+
+        def signed_spend(previous, amount):
+            unsigned = Transaction(1, (TxInput(previous),), (TxOutput(amount, script),))
+            digest = legacy_sighash_all(unsigned, 0, script)
+            der = private_key.sign(digest, ec.ECDSA(utils.Prehashed(hashes.SHA256())))
+            rv, sv = utils.decode_dss_signature(der)
+            if sv > N // 2:
+                sv = N - sv
+            sig = utils.encode_dss_signature(rv, sv) + b"\\x01"
+            return Transaction(
+                1, (TxInput(previous, _push(sig) + _push(pubkey)),), unsigned.outputs
+            )
+
+        first = signed_spend(funding, 850)
+        second = signed_spend(OutPoint(first.txid, 0), 800)
+        coinbase = Transaction(
+            1,
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
+            (TxOutput(block_subsidy(0) + 100, b"miner"),),
+        )
+        transactions = (coinbase, first, second)
+        header = BlockHeader(
+            1, bytes(32), merkle_root(tx.txid for tx in transactions),
+            1, 0x207fffff, 0,
+        )
+        self.store.connect_block(Block(header, transactions), 0)
+
+        reordered = (coinbase, second, first)
+        altered_header = BlockHeader(
+            header.version, header.prev_hash,
+            merkle_root(tx.txid for tx in reordered),
+            header.timestamp, header.bits, header.nonce,
+        )
+        with _managed_sqlite(self.db_path) as db:
+            db.execute(
+                "UPDATE block_transactions SET position=3 WHERE height=0 AND position=1"
+            )
+            db.execute(
+                "UPDATE block_transactions SET position=1 WHERE height=0 AND position=2"
+            )
+            db.execute(
+                "UPDATE block_transactions SET position=2 WHERE height=0 AND position=3"
+            )
+            for position, tx in enumerate(reordered):
+                if position:
+                    db.execute(
+                        "UPDATE block_transactions SET txid=?, raw_transaction=? "
+                        "WHERE height=0 AND position=?",
+                        (tx.txid, tx.serialize(), position),
+                    )
+            db.execute(
+                "UPDATE blocks SET header=?, block_hash=? WHERE height=0",
+                (altered_header.serialize(), altered_header.hash),
+            )
+
+        with self.assertRaisesRegex(RuntimeError, "not earlier in chain order"):
+            self.store.verify_integrity()
+
+
 if __name__ == "__main__":
     unittest.main()
