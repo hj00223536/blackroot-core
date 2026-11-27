@@ -82,6 +82,39 @@ class ReservedMessageQueueTests(unittest.IsolatedAsyncioTestCase):
         queue.task_done()
         self.assertEqual((budget.items_in_use, budget.bytes_in_use), (0, 0))
 
+    async def test_consume_context_releases_on_worker_cancellation(self):
+        budget, reservation = self.make_reservation()
+        queue = ReservedMessageQueue(max_items=1)
+        queue.put_nowait("inv", b"payload", reservation)
+        started = asyncio.Event()
+
+        async def worker():
+            async with queue.consume() as message:
+                self.assertEqual(message.payload, b"payload")
+                started.set()
+                await asyncio.Event().wait()
+
+        task = asyncio.create_task(worker())
+        await started.wait()
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        self.assertEqual((budget.items_in_use, budget.bytes_in_use), (0, 0))
+        await queue.join()
+        queue.close()
+
+    async def test_cancelled_waiter_releases_consumer_slot(self):
+        queue = ReservedMessageQueue(max_items=1)
+        first = asyncio.create_task(queue.get())
+        await asyncio.sleep(0)
+        first.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await first
+        replacement = asyncio.create_task(queue.get())
+        await asyncio.sleep(0)
+        queue.close()
+        self.assertIsNone(await replacement)
+
     async def test_rejects_multiple_concurrent_consumers(self):
         queue = ReservedMessageQueue(max_items=1)
         first = asyncio.create_task(queue.get())
