@@ -1613,5 +1613,41 @@ store.apply(tx)
         self.assertIsNotNone(self.store.get(output))
 
 
+    def test_disconnect_tip_rejects_truncated_persisted_header_without_mutation(self):
+        from src.blackroot_blocks import Block, COINBASE_INDEX
+        from src.blackroot_chain import BlockHeader
+        from src.blackroot_consensus import block_subsidy
+        from src.blackroot_transactions import merkle_root
+
+        coinbase = Transaction(
+            1,
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
+            (TxOutput(block_subsidy(0), b"disconnect-header-length-guard"),),
+        )
+        header = BlockHeader(
+            1, bytes(32), merkle_root((coinbase.txid,)),
+            1, 0x207fffff, 0,
+        )
+        block = Block(header, (coinbase,))
+        self.store.connect_block(block, 0)
+        output = OutPoint(coinbase.txid, 0)
+        before_tip = self.store.tip()
+        before_count = self.store.count()
+        self.assertIsNotNone(self.store.get(output))
+
+        with _managed_sqlite(self.db_path) as db:
+            db.execute(
+                "UPDATE blocks SET header=? WHERE height=0",
+                (header.serialize()[:-1],),
+            )
+
+        with self.assertRaisesRegex(RuntimeError, "header must be exactly 80 bytes"):
+            self.store.disconnect_tip(block.header.hash)
+
+        self.assertEqual(self.store.tip(), before_tip)
+        self.assertEqual(self.store.count(), before_count)
+        self.assertIsNotNone(self.store.get(output))
+
+
 if __name__ == "__main__":
     unittest.main()
