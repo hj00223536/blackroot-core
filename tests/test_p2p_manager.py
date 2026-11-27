@@ -479,6 +479,33 @@ class PeerManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(node_budget.bytes_in_use, 0)
         self.assertTrue(queue.closed)
 
+    async def test_worker_task_creation_failure_rolls_back_admission_marker(self):
+        manager = PeerManager(magic=MAGIC, local_version=version())
+        queue = ReservedMessageQueue(max_items=1)
+
+        class Peer:
+            async def close(self):
+                return None
+
+        peer = Peer()
+        manager._peers.add(peer)
+        manager._application_queues[peer] = queue
+        captured = []
+
+        def fail_create_task(coroutine):
+            captured.append(coroutine)
+            raise RuntimeError("worker task creation failed")
+
+        with patch("src.blackroot_p2p_manager.asyncio.create_task",
+                   side_effect=fail_create_task):
+            with self.assertRaisesRegex(RuntimeError, "worker task creation failed"):
+                manager.start_application_worker(peer, lambda command, payload: None)
+
+        self.assertNotIn(peer, manager._application_workers_started)
+        self.assertNotIn(peer, manager._application_worker_tasks)
+        self.assertEqual(len(captured), 1)
+        self.assertIsNone(captured[0].cr_frame)
+
     async def test_worker_handler_failure_is_recorded_and_closes_peer_queue(self):
         node_budget = ResourceBudget(max_items=8, max_bytes=8192, name="receive-node")
         manager = PeerManager(
