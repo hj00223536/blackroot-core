@@ -8,12 +8,13 @@ from __future__ import annotations
 import asyncio
 import math
 import secrets
+from collections import deque
 from dataclasses import replace
 from typing import Callable
 
 from .blackroot_p2p import DEFAULT_MAX_PAYLOAD
 from .blackroot_p2p_handshake import VersionMessage
-from .blackroot_p2p_transport import MessageHandler, PeerConnection, PeerProtocolError
+from .blackroot_p2p_transport import MessageHandler, PeerConnection
 
 
 class PeerManager:
@@ -119,6 +120,12 @@ class PeerManager:
         self._tasks: set[asyncio.Task] = set()
         self._outbound_reservations = 0
         self._closing = False
+        self._background_errors: deque[Exception] = deque(maxlen=100)
+
+    @property
+    def background_errors(self) -> tuple[Exception, ...]:
+        """Recent peer-task and callback failures, oldest first (bounded)."""
+        return tuple(self._background_errors)
 
     @property
     def peer_count(self) -> int:
@@ -189,15 +196,28 @@ class PeerManager:
     async def _run_peer(self, peer: PeerConnection) -> None:
         try:
             await peer.run()
-        except (PeerProtocolError, TimeoutError, OSError, ConnectionError) as exc:
-            await self._report_error(exc)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self._background_errors.append(exc)
+            try:
+                await self._report_error(exc)
+            except Exception as callback_error:
+                self._background_errors.append(callback_error)
         finally:
-            await peer.close()
-            self._peers.discard(peer)
-            if self.on_peer_disconnected is not None:
-                result = self.on_peer_disconnected(peer)
-                if asyncio.iscoroutine(result):
-                    await result
+            try:
+                await peer.close()
+            except Exception as close_error:
+                self._background_errors.append(close_error)
+            finally:
+                self._peers.discard(peer)
+                if self.on_peer_disconnected is not None:
+                    try:
+                        result = self.on_peer_disconnected(peer)
+                        if asyncio.iscoroutine(result):
+                            await result
+                    except Exception as callback_error:
+                        self._background_errors.append(callback_error)
 
     async def start_server(self, host: str = "127.0.0.1", port: int = 0) -> tuple:
         """Start an inbound TCP listener and return its bound socket address."""
