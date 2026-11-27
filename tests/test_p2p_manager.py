@@ -139,6 +139,47 @@ class PeerManagerConfigurationTests(unittest.TestCase):
         self.assertTrue(writer.closed)
         self.assertEqual(manager._application_queues, {})
 
+    def test_budget_factory_failure_closes_socket_before_peer_construction(self):
+        class Writer:
+            closed = False
+            def close(self):
+                self.closed = True
+
+        for factory in (
+            lambda: (_ for _ in ()).throw(RuntimeError("budget factory failed")),
+            lambda: object(),
+        ):
+            writer = Writer()
+            manager = PeerManager(
+                magic=MAGIC,
+                local_version=version(),
+                send_node_budget=ResourceBudget(max_items=4, max_bytes=4096, name="send-node"),
+                send_peer_budget_factory=factory,
+            )
+            with self.assertRaises((RuntimeError, TypeError)):
+                manager._new_peer(asyncio.StreamReader(), writer)
+            self.assertTrue(writer.closed)
+            self.assertEqual(manager.peer_count, 0)
+
+    def test_inbound_setup_failure_is_recorded_and_socket_closed(self):
+        class Writer:
+            closed = False
+            def close(self):
+                self.closed = True
+
+        writer = Writer()
+        manager = PeerManager(
+            magic=MAGIC,
+            local_version=version(),
+            receive_node_budget=ResourceBudget(max_items=4, max_bytes=4096, name="receive-node"),
+            receive_peer_budget_factory=lambda: (_ for _ in ()).throw(RuntimeError("factory failed")),
+        )
+        manager._accept(asyncio.StreamReader(), writer)
+        self.assertTrue(writer.closed)
+        self.assertEqual(manager.peer_count, 0)
+        self.assertEqual(len(manager.background_errors), 1)
+        self.assertIn("factory failed", str(manager.background_errors[0]))
+
     def test_application_queue_factory_must_return_fresh_queue_per_peer(self):
         shared_queue = ReservedMessageQueue(max_items=2)
         manager = PeerManager(
