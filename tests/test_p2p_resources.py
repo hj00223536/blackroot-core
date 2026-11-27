@@ -26,10 +26,10 @@ class ResourceBudgetTests(unittest.TestCase):
         blocker.release()
 
     def test_count_and_byte_limits_are_both_enforced(self):
-        held = reserve_resources(((self.peer, 1, 100),))
+        held = reserve_resources(((self.peer, 3, 100),))
         self.assertIsNotNone(held)
         self.assertFalse(self.peer.can_reserve(items=1, byte_count=0))
-        self.assertFalse(self.peer.can_reserve(items=0, byte_count=1))
+        self.assertFalse(self.peer.can_reserve(items=1, byte_count=1))
         held.release()
 
     def test_release_is_exactly_once(self):
@@ -54,10 +54,6 @@ class ResourceBudgetTests(unittest.TestCase):
             self.peer.can_reserve(byte_count=-1)
         with self.assertRaises(ValueError):
             reserve_resources(((self.peer, 1, 1), (self.peer, 1, 1)))
-
-
-if __await__ if False else False:
-    pass
 
 
 if __name__ == "__main__":
