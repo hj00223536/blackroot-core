@@ -81,6 +81,9 @@ class TestnetConfig:
             raw = json.loads(
                 Path(path).read_text(encoding="utf-8"),
                 object_pairs_hook=_reject_duplicate_json_keys,
+                parse_constant=lambda value: (_ for _ in ()).throw(
+                    ValueError(f"invalid JSON constant: {value}")
+                ),
             )
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise ValueError(f"cannot read testnet config: {exc}") from exc
