@@ -380,3 +380,8 @@ Shutdown now also waits for the in-flight listener-start completion event. This 
 PeerManager now retains each in-flight outbound connection-attempt task. Shutdown cancels and joins those dial tasks, then waits for the connect-attempt reservation counter to return to zero before completing teardown. Each connect path removes its retained dial task and releases its admission reservation in `finally`, including cancellation and connection errors. This prevents a manager from reporting shutdown complete while an outbound dial remains pending. A controlled regression blocks `asyncio.open_connection`, starts shutdown, and verifies the dial is cancelled, joined, and its reservation is released.
 
 This is lifecycle cancellation, not an outbound connection-rate policy or a measured descriptor/task ceiling. Connect timeouts and peer-count admission remain implementation behavior, not a reviewed public deployment profile.
+
+
+## 29. Outbound dial task-creation failure
+
+The retained outbound-dial lifecycle now has a focused failure-injection regression for failure of `asyncio.create_task` itself. The connect path closes the unsubmitted `wait_for(open_connection(...))` coroutine, removes no unregistered task, decrements its outbound admission reservation in `finally`, and signals the no-outstanding-connect event when the count returns to zero. The test verifies the coroutine is closed and manager bookkeeping is empty. This is failure containment, not a production outbound rate or global task budget.
