@@ -42,8 +42,15 @@ class DataDirectoryLock:
         # Pin the directory inode, then open the lock relative to that descriptor.
         dir_fd = os.open(self.data_dir, directory_flags)
         try:
-            if not stat.S_ISDIR(os.fstat(dir_fd).st_mode):
+            directory_stat = os.fstat(dir_fd)
+            if not stat.S_ISDIR(directory_stat.st_mode):
                 raise RuntimeError("data directory must be a directory")
+            if hasattr(os, "getuid") and directory_stat.st_uid != os.getuid():
+                raise RuntimeError("data directory must be owned by the current user")
+            if stat.S_IMODE(directory_stat.st_mode) & 0o077:
+                raise RuntimeError(
+                    "data directory permissions must exclude group and other access (mode 0700 or stricter)"
+                )
             flags = os.O_CREAT | os.O_RDWR
             if hasattr(os, "O_CLOEXEC"):
                 flags |= os.O_CLOEXEC
