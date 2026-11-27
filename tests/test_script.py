@@ -4,7 +4,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, utils
 
 from src.blackroot_script import (
-    N, _hash160, _push, legacy_sighash_all, p2pkh_script,
+    N, _der_signature, _hash160, _push, legacy_sighash_all, p2pkh_script,
     verify_p2pkh_input, validate_transaction_scripts,
 )
 from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput
@@ -63,6 +63,19 @@ class P2PKHScriptTests(unittest.TestCase):
             1, (TxInput(self.previous, b"\x4c\x01"),), tx.outputs
         )
         self.assertFalse(verify_p2pkh_input(malformed, 0, self.previous_output))
+
+    def test_der_parser_rejects_noncanonical_and_trailing_encodings(self):
+        tx = self.signed_tx()
+        signature = tx.inputs[0].script_sig
+        signature_length = signature[0]
+        der = signature[1:1 + signature_length - 1]
+        self.assertIsNotNone(_der_signature(der))
+        self.assertIsNone(_der_signature(der + b"\x00"))
+        self.assertIsNone(_der_signature(b"\x30\x00"))
+        # A positive DER INTEGER may not contain an unnecessary leading zero.
+        self.assertIsNone(_der_signature(
+            b"\x30\x07\x02\x02\x00\x01\x02\x01\x01"
+        ))
 
     def test_rejects_curve_invalid_pubkey_even_when_hash_matches(self):
         tx = self.signed_tx()
