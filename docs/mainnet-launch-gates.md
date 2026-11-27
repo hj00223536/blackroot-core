@@ -625,3 +625,6 @@ The manager now retains, cancels, and joins outbound dial tasks during shutdown,
 ### Outbound dial task-creation rollback — OPEN
 
 A failure-injection regression now covers failure to create the retained dial task. The unsubmitted coroutine is closed, the outbound reservation is released, and the shutdown-drain event returns to the set state. This is a local bookkeeping invariant only; global task/descriptor ceilings, measured load testing, production outbound policies, and independent review remain open.
+
+
+Outbound dial lifecycle coverage was extended with a caller-cancellation regression: cancelling a task awaiting `connect()` cancels its retained socket dial and releases the outbound reservation. Together with shutdown cancellation and task-creation failure tests, these are focused lifecycle checks only. OS-level socket exhaustion, connection churn, global task/descriptor ceilings, measured hardware profiles, and independent review remain OPEN.
