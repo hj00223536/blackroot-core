@@ -8,6 +8,10 @@ from __future__ import annotations
 import hashlib
 import struct
 
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import ec, utils
+
 from .blackroot_transactions import OutPoint, Transaction, TxOutput
 from .blackroot_consensus import sha256d
 
@@ -176,15 +180,25 @@ def verify_p2pkh_input(tx: Transaction, input_index: int, previous_output: TxOut
         return False
     if _hash160(pubkey) != script[3:23]:
         return False
-    point = _parse_pubkey(pubkey)
     parsed = _der_signature(signature_with_type[:-1])
-    if point is None or parsed is None:
+    if parsed is None:
         return False
-    r, s = parsed
-    z = int.from_bytes(legacy_sighash_all(tx, input_index, script), "big")
-    w = pow(s, N - 2, N)
-    candidate = _add(_mul((z * w) % N), _mul((r * w) % N, point))
-    return candidate is not None and candidate[0] % N == r
+    # Delegate curve-point parsing and ECDSA verification to the maintained
+    # cryptography/OpenSSL backend. Keep the consensus-specific strict-DER,
+    # low-S, key-hash, and SIGHASH_ALL checks above this boundary.
+    digest = legacy_sighash_all(tx, input_index, script)
+    try:
+        public_key = ec.EllipticCurvePublicKey.from_encoded_point(
+            ec.SECP256K1(), pubkey
+        )
+        public_key.verify(
+            signature_with_type[:-1],
+            digest,
+            ec.ECDSA(utils.Prehashed(hashes.SHA256())),
+        )
+    except (InvalidSignature, ValueError):
+        return False
+    return True
 
 
 def validate_transaction_scripts(tx: Transaction, utxos: dict[OutPoint, TxOutput]) -> None:
