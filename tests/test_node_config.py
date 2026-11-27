@@ -103,6 +103,35 @@ class TestnetConfigTests(unittest.TestCase):
             loaded = TestnetConfig.from_json_file(path)
         self.assertEqual(loaded, settings)
 
+    def test_json_config_rejects_duplicate_object_keys(self):
+        settings = config()
+        header = settings.genesis_header
+        raw = {
+            "network_id": settings.network_id,
+            "message_magic": settings.message_magic.hex(),
+            "protocol_version": settings.protocol_version,
+            "genesis_header": {
+                "version": header.version, "prev_hash": header.prev_hash.hex(),
+                "merkle_root": header.merkle_root.hex(), "timestamp": header.timestamp,
+                "bits": header.bits, "nonce": header.nonce,
+            },
+            "genesis_hash": settings.genesis_hash.hex(),
+            "pow_limit": hex(settings.pow_limit),
+            "p2p_port": settings.p2p_port,
+            "max_peers": settings.max_peers,
+        }
+        encoded = json.dumps(raw)
+        encoded = encoded.replace(
+            '"network_id":',
+            '"network_id": "shadow-network", "network_id":',
+            1,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "testnet.json"
+            path.write_text(encoded, encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "duplicate JSON object key"):
+                TestnetConfig.from_json_file(path)
+
     def test_json_config_rejects_unknown_and_missing_fields(self):
         settings = config()
         header = settings.genesis_header
