@@ -208,6 +208,7 @@ class PeerConnection:
             )
             if reservation is None:
                 raise PeerProtocolError("outbound resource budget exhausted")
+        write_started = False
         try:
             # Encoding happens only after both budgets have admitted the exact
             # frame size. The reservation remains owned through drain completion.
@@ -218,7 +219,16 @@ class PeerConnection:
                 if self._closed:
                     raise ConnectionError("peer connection is closed")
                 self.writer.write(frame)
+                write_started = True
                 await self.writer.drain()
+        except BaseException:
+            # Once handed to the stream transport, a cancelled/failed drain has
+            # ambiguous delivery and retained-buffer ownership. Fail closed by
+            # closing this peer before releasing the reservation.
+            if write_started and not self._closed:
+                self._closed = True
+                self.writer.close()
+            raise
         finally:
             if reservation is not None:
                 reservation.release()
