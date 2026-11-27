@@ -558,3 +558,5 @@ A synchronous count-and-byte reservation primitive has been added in
 integrated into P2P transport/manager reads, writes, callbacks, or shutdown;
 it is not a production policy and does not close the aggregate-resource gate.
 See section 12 of `docs/p2p-node-wide-resource-policy-design.md`.
+
+Outbound send accounting is now available as an opt-in PeerConnection capability using explicit peer and shared node budgets. It is not wired through PeerManager, is not mandatory, and does not account inbound payloads or application handlers. The P2P node-wide resource gate remains OPEN.
