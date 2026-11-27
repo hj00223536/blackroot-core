@@ -319,7 +319,7 @@ class PeerConnection:
                 reservation.release()
             raise
 
-    def take_receive_reservation(self) -> ResourceReservation | None:
+    def take_receive_reservation(self) -> ResourceReservation:
         """Transfer the current inbound reservation to an application-owned consumer.
 
         Call only from the active message handler, before retaining payload data
@@ -330,6 +330,8 @@ class PeerConnection:
         if not self._receive_dispatch_active:
             raise PeerProtocolError("receive reservation can only be transferred during dispatch")
         reservation = self._pending_receive_reservation
+        if reservation is None:
+            raise PeerProtocolError("no receive reservation is available to transfer")
         self._pending_receive_reservation = None
         return reservation
 
