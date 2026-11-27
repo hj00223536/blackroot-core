@@ -204,6 +204,89 @@ class PeerManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(first.released)
         self.assertEqual(node_budget.bytes_in_use, 0)
 
+    async def test_managed_application_worker_consumes_and_releases_message(self):
+        node_budget = ResourceBudget(max_items=8, max_bytes=8192, name="receive-node")
+        manager = PeerManager(
+            magic=MAGIC,
+            local_version=version(),
+            receive_node_budget=node_budget,
+            receive_peer_budget_factory=lambda: ResourceBudget(
+                max_items=4, max_bytes=4096, name="receive-peer"
+            ),
+            application_queue_factory=lambda peer: ReservedMessageQueue(max_items=2),
+        )
+        peer = manager._new_peer(asyncio.StreamReader(), object())
+        manager._peers.add(peer)
+        peer.handshake.local_version_sent = True
+        peer.handshake.remote_version = version()
+        peer.handshake.local_verack_sent = True
+        peer.handshake.remote_verack_received = True
+        peer.handshake._refresh_complete()
+        received = []
+        processed = asyncio.Event()
+
+        async def handler(command, payload):
+            received.append((command, payload))
+            processed.set()
+
+        worker = manager.start_application_worker(peer, handler)
+        reservation = reserve_resources(
+            ((peer._receive_resource_budgets[0], 1, 27),
+             (peer._receive_resource_budgets[1], 1, 27))
+        )
+        peer._pending_receive_reservation = reservation
+        await peer.handle_message("headers", b"header-data")
+        await asyncio.wait_for(processed.wait(), timeout=1)
+        await asyncio.wait_for(worker, timeout=1) if False else asyncio.sleep(0)
+        self.assertEqual(received, [("headers", b"header-data")])
+        self.assertTrue(reservation.released)
+        self.assertEqual(node_budget.bytes_in_use, 0)
+        self.assertTrue(manager.application_queue_for(peer).qsize == 0)
+        manager.application_queue_for(peer).close()
+        manager._peers.discard(peer)
+
+    async def test_worker_handler_failure_is_recorded_and_closes_peer_queue(self):
+        node_budget = ResourceBudget(max_items=8, max_bytes=8192, name="receive-node")
+        manager = PeerManager(
+            magic=MAGIC,
+            local_version=version(),
+            receive_node_budget=node_budget,
+            receive_peer_budget_factory=lambda: ResourceBudget(
+                max_items=4, max_bytes=4096, name="receive-peer"
+            ),
+            application_queue_factory=lambda peer: ReservedMessageQueue(max_items=2),
+        )
+        class Writer:
+            def close(self):
+                pass
+            async def wait_closed(self):
+                pass
+        peer = manager._new_peer(asyncio.StreamReader(), Writer())
+        manager._peers.add(peer)
+
+        async def broken_handler(command, payload):
+            raise RuntimeError("application handler failed")
+
+        worker = manager.start_application_worker(peer, broken_handler)
+        queue = manager.application_queue_for(peer)
+        peer.handshake.local_version_sent = True
+        peer.handshake.remote_version = version()
+        peer.handshake.local_verack_sent = True
+        peer.handshake.remote_verack_received = True
+        peer.handshake._refresh_complete()
+        reservation = reserve_resources(
+            ((peer._receive_resource_budgets[0], 1, 25),
+             (peer._receive_resource_budgets[1], 1, 25))
+        )
+        peer._pending_receive_reservation = reservation
+        await peer.handle_message("inv", b"payload")
+        await asyncio.wait_for(worker, timeout=1)
+        self.assertTrue(reservation.released)
+        self.assertTrue(queue.closed)
+        self.assertTrue(peer._closed)
+        self.assertTrue(any("application handler failed" in str(e) for e in manager.background_errors))
+        manager._peers.discard(peer)
+
     async def test_inbound_and_outbound_peers_complete_handshake(self):
         host, port, *_ = await self.server_manager.start_server("127.0.0.1", 0)
         outbound = await self.client_manager.connect(host, port)
