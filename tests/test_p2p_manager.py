@@ -795,6 +795,25 @@ class PeerManagerTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.gather(writer.wait_closed(), return_exceptions=True)
             await manager.close()
 
+    async def test_outbound_dial_task_creation_failure_releases_reservation(self):
+        manager = PeerManager(magic=MAGIC, local_version=version())
+        captured = []
+
+        def fail_create_task(coroutine):
+            captured.append(coroutine)
+            raise RuntimeError("dial task creation failed")
+
+        with patch("src.blackroot_p2p_manager.asyncio.create_task",
+                   side_effect=fail_create_task):
+            with self.assertRaisesRegex(RuntimeError, "dial task creation failed"):
+                await manager.connect("127.0.0.1", 30303)
+
+        self.assertEqual(manager._outbound_reservations, 0)
+        self.assertEqual(manager._dial_tasks, set())
+        self.assertTrue(manager._outbound_connects_complete.is_set())
+        self.assertEqual(len(captured), 1)
+        self.assertIsNone(captured[0].cr_frame)
+
     async def test_manager_shutdown_cancels_and_joins_inflight_outbound_dial(self):
         manager = PeerManager(
             magic=MAGIC, local_version=version(), connect_timeout=30
