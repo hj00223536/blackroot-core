@@ -123,18 +123,24 @@ instrumented stress and fault tests on the supported deployment platforms.
 ## Focused test gaps identified
 
 Existing tests cover peer handshakes, configured peer-count admission, rate
-bucket propagation, and bounded background-error history. They do not yet
-prove hard global limits because no node-wide limits exist. Before changing
-code, add tests alongside an approved resource policy for:
+bucket propagation, bounded background-error history, concurrent inbound and
+outbound admission races, and slow/incomplete handshake cleanup. In particular,
+the manager tests exercise concurrent outbound dials, inbound accept bursts,
+and a mixed-direction race at the configured peer cap. Transport tests exercise
+timeouts while a header or version payload is incomplete, and the manager test
+checks that a timed-out inbound peer releases its managed peer slot.
 
-1. simultaneous inbound and outbound connection races at each hard quota;
-2. bounded pending handshakes and connection churn, including slow/incomplete
-   headers and version handshakes;
-3. aggregate bytes/messages/work across many individually compliant peers;
-4. bounded pending send calls/bytes with slow readers and blocked drains;
-5. total memory, task, socket, and file-descriptor ceilings under adversarial
+These are focused correctness tests using local asyncio streams and short test
+timeouts. They are not load tests and do not prove hard global resource limits;
+no node-wide limits exist. Remaining validation work, to be paired with an
+approved resource policy, includes:
+
+1. repeated connection churn and bounded pending handshakes/dials under load;
+2. aggregate bytes/messages/work across many individually compliant peers;
+3. bounded pending send calls/bytes with slow readers and blocked drains;
+4. total memory, task, socket, and file-descriptor ceilings under adversarial
    load, including clean shutdown after overload;
-6. fairness and backpressure so one peer cannot monopolize global capacity.
+5. fairness and backpressure so one peer cannot monopolize global capacity.
 
 No numeric policy is selected by this audit. Values must follow documented
 hardware profiles, measured workloads, operator requirements, and independent
