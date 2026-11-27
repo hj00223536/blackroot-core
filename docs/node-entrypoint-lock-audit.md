@@ -54,3 +54,23 @@ rejected before the lock file is created. This is a local filesystem hygiene
 control; it does not protect against the owning user, root, privileged malware,
 unsafe parent-directory replacement, hostile mounts, or rollback of restored
 backups. The production storage and backup threat model still requires review.
+
+
+## SQLite pathname preflight follow-up
+
+The locked state opener now checks the caller-supplied final data-directory
+component before resolving it, rejecting a final-component symlink or special
+file. It also uses the database basename under the locked directory without
+resolving the final database component, then rejects pre-existing database,
+WAL, SHM, and rollback-journal paths unless each is a regular file. Tests cover
+a symlinked data directory, database file, and WAL sidecar.
+
+These are **preflight checks, not race-free file-descriptor confinement**.
+SQLite still opens the database and creates sidecars by pathname after the
+checks. Parent path components may be aliases, and a same-UID process or
+privileged actor may be able to replace paths or modify the directory. This
+change does not establish protection against TOCTOU races, hard-link aliasing,
+hostile filesystems/mounts, or privileged tampering. A production-grade
+descriptor-relative database-opening design and SQLite WAL compatibility
+review remain required before this storage gate can close. No physical
+power-loss or device-failure guarantee is inferred from process-crash tests.
