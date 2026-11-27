@@ -552,3 +552,9 @@ shutdown accounting tests, adversarial aggregate-load tests, and independent
 security review.
 
 The node-wide P2P resource design now specifies the required send/receive reservation ownership contract, including reservation-before-frame-allocation, bounded single-writer queues, byte as well as waiter quotas, receive ownership transfer to asynchronous handlers, exact-once cancellation/shutdown release, and observable invariants. This remains a design proposal only; it is not implemented or approved, and no production numeric limits have been selected. See `docs/p2p-node-wide-resource-policy-design.md`, section 11.
+
+A synchronous count-and-byte reservation primitive has been added in
+`src/blackroot_p2p_resources.py` with focused unit tests. It is not yet
+integrated into P2P transport/manager reads, writes, callbacks, or shutdown;
+it is not a production policy and does not close the aggregate-resource gate.
+See section 12 of `docs/p2p-node-wide-resource-policy-design.md`.
