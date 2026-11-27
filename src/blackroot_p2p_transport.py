@@ -183,6 +183,7 @@ class PeerConnection:
                 raise ValueError("receive_resource_budgets must be a distinct (peer, node) budget pair")
         self._receive_resource_budgets = receive_resource_budgets
         self._pending_receive_reservation = None
+        self._receive_dispatch_active = False
         self._monotonic_clock = monotonic_clock
         self._control_message_bucket = _TokenBucket(
             control_messages_per_second, control_message_burst, now
