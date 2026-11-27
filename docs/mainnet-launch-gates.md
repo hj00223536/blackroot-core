@@ -24,6 +24,7 @@ customer funds.
   backup-first migration, restore drills, multi-process stress, operational
   shutdown/recovery behavior, and independent review are complete.
 - [ ] Validate every block header and body before it can affect active state.
+- [ ] Implement deterministic active-chain replay verification from the frozen genesis and compare the reconstructed UTXO set, provenance, issuance, active tip, and undo metadata with persisted state; fail closed on any mismatch.
 - [ ] Complete side-branch storage, per-block UTXO undo, chainwork selection,
   deterministic reorganization, and adversarial crash/recovery testing.
 - [ ] Add peer-to-peer protocol framing, peer limits, DoS controls, peer
