@@ -113,10 +113,12 @@ def validate_trust_configuration(
         raise ValueError("trust configuration sequence does not match pinned sequence")
 
     previous = config_snapshot["previous_config_digest"]
-    if expected_previous_config_digest is None:
-        if previous is not None:
+    if expected_sequence == 1:
+        if expected_previous_config_digest is not None or previous is not None:
             raise ValueError("initial trust configuration must not name a predecessor")
     else:
+        if expected_previous_config_digest is None:
+            raise ValueError("later trust configurations require a pinned predecessor")
         expected_previous = _hex(
             expected_previous_config_digest, "expected_previous_config_digest", 64
         )
