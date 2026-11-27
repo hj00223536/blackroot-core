@@ -135,7 +135,21 @@ class PersistentNodeState:
         the locked directory. Legacy constructors remain available for tests
         and compatibility, and do not provide this process-ownership guarantee.
         """
-        directory = Path(data_dir).expanduser().resolve()
+        requested_directory = Path(data_dir).expanduser()
+        if not requested_directory.is_absolute():
+            requested_directory = Path.cwd() / requested_directory
+        # Check the caller-supplied final component before resolve() can
+        # dereference it. Parent components may still be aliases; see the
+        # residual filesystem/path-race limitation in the launch audit.
+        try:
+            directory_stat = requested_directory.lstat()
+        except FileNotFoundError:
+            directory_stat = None
+        if directory_stat is not None and not stat.S_ISDIR(directory_stat.st_mode):
+            raise RuntimeError(
+                "locked node data directory must be a real directory, not a symlink or special file"
+            )
+        directory = requested_directory.resolve()
         requested_database = Path(database_path).expanduser()
         if not requested_database.is_absolute():
             requested_database = Path.cwd() / requested_database
