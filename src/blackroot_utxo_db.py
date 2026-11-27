@@ -410,6 +410,9 @@ class UTXOStore:
                     or reconstructed.header.prev_hash != prev_hash
                 ):
                     raise RuntimeError("persisted active block header does not match its chain record")
+                from .blackroot_transactions import merkle_root
+                if merkle_root(tx.txid for tx in reconstructed.transactions) != reconstructed.header.merkle_root:
+                    raise RuntimeError("persisted active block transactions do not match the header merkle root")
                 for expected_position, (position, txid, raw_transaction) in enumerate(tx_rows):
                     if position != expected_position:
                         raise RuntimeError("UTXO transaction positions are not contiguous")
