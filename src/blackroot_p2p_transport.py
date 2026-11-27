@@ -40,7 +40,7 @@ _COMMAND_MAX_PAYLOADS = {
     b"headers" + bytes(5): 3 + MAX_HEADERS_PER_MESSAGE * 81,
     b"getheaders" + bytes(2): 4 + 1 + MAX_BLOCK_LOCATOR_HASHES * 32 + 32,
 }
-_INVENTORY_MAX_PAYLOAD = 5 + MAX_INVENTORY_ITEMS * 36
+_INVENTORY_MAX_PAYLOAD = 3 + MAX_INVENTORY_ITEMS * 36
 for _command in ("inv", "getdata", "notfound"):
     _COMMAND_MAX_PAYLOADS[_command.encode("ascii").ljust(12, b"\x00")] = _INVENTORY_MAX_PAYLOAD
 
