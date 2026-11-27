@@ -34,6 +34,13 @@ class PeerManager:
         on_peer_message_factory: Callable[[PeerConnection], MessageHandler] | None = None,
         on_peer_error: Callable[[Exception], object] | None = None,
         on_peer_disconnected: Callable[[PeerConnection], object] | None = None,
+        control_messages_per_second: float = 20.0,
+        control_message_burst: float = 40.0,
+        data_messages_per_second: float = 20.0,
+        data_message_burst: float = 40.0,
+        data_bytes_per_second: float = 2 * 1024 * 1024,
+        data_bytes_burst: float = 4 * 1024 * 1024,
+        monotonic_clock: Callable[[], float] | None = None,
     ) -> None:
         if not isinstance(magic, bytes) or len(magic) != 4:
             raise ValueError("network magic must be exactly four bytes")
@@ -63,6 +70,23 @@ class PeerManager:
             or min_protocol_version < 1
         ):
             raise ValueError("minimum protocol version must be a positive integer")
+        for name, value in (
+            ("control_messages_per_second", control_messages_per_second),
+            ("control_message_burst", control_message_burst),
+            ("data_messages_per_second", data_messages_per_second),
+            ("data_message_burst", data_message_burst),
+            ("data_bytes_per_second", data_bytes_per_second),
+            ("data_bytes_burst", data_bytes_burst),
+        ):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value <= 0
+            ):
+                raise ValueError(f"{name} must be a finite positive number")
+        if monotonic_clock is not None and not callable(monotonic_clock):
+            raise ValueError("monotonic_clock must be callable")
         if on_message is not None and not callable(on_message):
             raise TypeError("on_message must be callable")
         if on_peer_error is not None and not callable(on_peer_error):
@@ -75,6 +99,13 @@ class PeerManager:
         self.handshake_timeout = handshake_timeout
         self.idle_timeout = idle_timeout
         self.min_protocol_version = min_protocol_version
+        self.control_messages_per_second = control_messages_per_second
+        self.control_message_burst = control_message_burst
+        self.data_messages_per_second = data_messages_per_second
+        self.data_message_burst = data_message_burst
+        self.data_bytes_per_second = data_bytes_per_second
+        self.data_bytes_burst = data_bytes_burst
+        self.monotonic_clock = monotonic_clock
         if on_peer_message_factory is not None and not callable(on_peer_message_factory):
             raise TypeError("on_peer_message_factory must be callable")
         self.on_message = on_message
@@ -125,6 +156,17 @@ class PeerManager:
             idle_timeout=self.idle_timeout,
             min_protocol_version=self.min_protocol_version,
             on_message=self.on_message,
+            control_messages_per_second=self.control_messages_per_second,
+            control_message_burst=self.control_message_burst,
+            data_messages_per_second=self.data_messages_per_second,
+            data_message_burst=self.data_message_burst,
+            data_bytes_per_second=self.data_bytes_per_second,
+            data_bytes_burst=self.data_bytes_burst,
+            **(
+                {"monotonic_clock": self.monotonic_clock}
+                if self.monotonic_clock is not None
+                else {}
+            ),
         )
         if self.on_peer_message_factory is not None:
             peer.on_message = self.on_peer_message_factory(peer)
