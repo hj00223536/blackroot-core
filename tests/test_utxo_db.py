@@ -777,7 +777,7 @@ store.apply(tx)
 
         with self.assertRaisesRegex(
             RuntimeError,
-            "persisted pre-activation UTXO value exceeds authenticated issuance accounting",
+            "persisted pre-activation UTXO value exceeds recorded issuance accounting",
         ):
             self.store.verify_integrity()
 
