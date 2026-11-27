@@ -31,6 +31,13 @@ def _reject_json_float(value: str):
     raise ValueError(f"floating-point JSON value is forbidden: {value}")
 
 
+def _decode_lower_hex(value: object, field: str, length: int) -> bytes:
+    if (not isinstance(value, str) or len(value) != length
+            or any(char not in "0123456789abcdef" for char in value)):
+        raise ValueError(f"{field} must be exactly {length} lowercase hex characters")
+    return bytes.fromhex(value)
+
+
 @dataclass(frozen=True)
 class TestnetConfig:
     """A fully explicit testnet identity and bounded local P2P configuration."""
@@ -120,15 +127,25 @@ class TestnetConfig:
                     )
             genesis_header = BlockHeader(
                 version=header["version"],
-                prev_hash=bytes.fromhex(header["prev_hash"]),
-                merkle_root=bytes.fromhex(header["merkle_root"]),
+                prev_hash=_decode_lower_hex(header["prev_hash"], "genesis_header.prev_hash", 64),
+                merkle_root=_decode_lower_hex(header["merkle_root"], "genesis_header.merkle_root", 64),
                 timestamp=header["timestamp"],
                 bits=header["bits"],
                 nonce=header["nonce"],
             )
-            magic = bytes.fromhex(raw["message_magic"])
-            genesis_hash = bytes.fromhex(raw["genesis_hash"])
-            pow_limit = int(raw["pow_limit"], 16) if isinstance(raw["pow_limit"], str) else raw["pow_limit"]
+            magic = _decode_lower_hex(raw["message_magic"], "message_magic", 8)
+            genesis_hash = _decode_lower_hex(raw["genesis_hash"], "genesis_hash", 64)
+            if isinstance(raw["pow_limit"], str):
+                encoded_limit = raw["pow_limit"]
+                if (not encoded_limit.startswith("0x")
+                        or len(encoded_limit) <= 2
+                        or any(char not in "0123456789abcdef" for char in encoded_limit[2:])):
+                    raise ValueError("pow_limit must use canonical lowercase 0x hexadecimal")
+                pow_limit = int(encoded_limit, 16)
+                if hex(pow_limit) != encoded_limit:
+                    raise ValueError("pow_limit must use canonical lowercase 0x hexadecimal")
+            else:
+                pow_limit = raw["pow_limit"]
         except (TypeError, ValueError, KeyError) as exc:
             raise ValueError(f"invalid hex or numeric testnet config field: {exc}") from exc
         return cls(
