@@ -124,7 +124,7 @@ class PeerConnectionTests(unittest.IsolatedAsyncioTestCase):
         maximum = 3 + 50_000 * 36
         for command in ("inv", "getdata", "notfound"):
             with self.subTest(command=command):
-                command_field = command.encode("ascii").ljust(12, b"\\x00")
+                command_field = command.encode("ascii").ljust(12, b"\x00")
                 _validate_control_payload_length(command_field, maximum)
 
     async def test_rejects_oversized_inventory_before_body_read(self):
