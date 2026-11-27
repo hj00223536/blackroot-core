@@ -4,6 +4,7 @@ import unittest
 
 from src.blackroot_p2p import encode_message
 from src.blackroot_p2p_handshake import VersionMessage, encode_version
+from src.blackroot_p2p_resources import ResourceBudget
 from src.blackroot_p2p_transport import (
     PeerConnection,
     PeerProtocolError,
@@ -29,6 +30,17 @@ class FakeWriter:
 
     async def wait_closed(self):
         return None
+
+
+class BlockingWriter(FakeWriter):
+    def __init__(self):
+        super().__init__()
+        self.drain_started = asyncio.Event()
+        self.release_drain = asyncio.Event()
+
+    async def drain(self):
+        self.drain_started.set()
+        await self.release_drain.wait()
 
 
 def version(nonce, protocol=1):
@@ -177,6 +189,55 @@ class PeerConnectionTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(PeerProtocolError, "data-message rate limit"):
             await peer._read_message()
         self.assertEqual(len(reader._buffer), 0)
+
+
+    async def test_send_reserves_peer_and_node_budgets_until_drain(self):
+        writer = BlockingWriter()
+        peer_budget = ResourceBudget(max_items=1, max_bytes=64, name="peer-send")
+        node_budget = ResourceBudget(max_items=1, max_bytes=64, name="node-send")
+        peer = PeerConnection(
+            asyncio.StreamReader(), writer, magic=MAGIC, local_version=version(303),
+            send_resource_budgets=(peer_budget, node_budget),
+        )
+        task = asyncio.create_task(peer.send("ping", b"12345678"))
+        await writer.drain_started.wait()
+        self.assertEqual(peer_budget.items_in_use, 1)
+        self.assertEqual(peer_budget.bytes_in_use, 32)
+        self.assertEqual(node_budget.items_in_use, 1)
+        with self.assertRaisesRegex(PeerProtocolError, "resource budget exhausted"):
+            await peer.send("pong", b"abcdefgh")
+        writer.release_drain.set()
+        await task
+        self.assertEqual((peer_budget.items_in_use, peer_budget.bytes_in_use), (0, 0))
+        self.assertEqual((node_budget.items_in_use, node_budget.bytes_in_use), (0, 0))
+
+    async def test_send_cancellation_releases_reserved_capacity(self):
+        writer = BlockingWriter()
+        peer_budget = ResourceBudget(max_items=1, max_bytes=64, name="peer-send")
+        node_budget = ResourceBudget(max_items=1, max_bytes=64, name="node-send")
+        peer = PeerConnection(
+            asyncio.StreamReader(), writer, magic=MAGIC, local_version=version(304),
+            send_resource_budgets=(peer_budget, node_budget),
+        )
+        task = asyncio.create_task(peer.send("ping", b"12345678"))
+        await writer.drain_started.wait()
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
+        self.assertEqual((peer_budget.items_in_use, peer_budget.bytes_in_use), (0, 0))
+        self.assertEqual((node_budget.items_in_use, node_budget.bytes_in_use), (0, 0))
+
+    async def test_send_encoding_failure_releases_reserved_capacity(self):
+        peer_budget = ResourceBudget(max_items=1, max_bytes=64, name="peer-send")
+        node_budget = ResourceBudget(max_items=1, max_bytes=64, name="node-send")
+        peer = PeerConnection(
+            asyncio.StreamReader(), FakeWriter(), magic=MAGIC, local_version=version(305),
+            send_resource_budgets=(peer_budget, node_budget),
+        )
+        with self.assertRaises(ValueError):
+            await peer.send("INVALID COMMAND", b"x")
+        self.assertEqual((peer_budget.items_in_use, peer_budget.bytes_in_use), (0, 0))
+        self.assertEqual((node_budget.items_in_use, node_budget.bytes_in_use), (0, 0))
 
     async def test_version_verack_handshake_completes(self):
         await self.peer.send("version", encode_version(version(101)))
