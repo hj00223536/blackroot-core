@@ -34,6 +34,14 @@ customer funds.
 - [ ] Build mining software and independently reproduce the genesis block from
   frozen parameters. Never silently change genesis or consensus constants.
 - [ ] Add independent implementations or cross-client consensus test vectors.
+- [ ] Freeze transaction and block serialization limits as normative protocol
+  rules, then verify CompactSize canonical boundaries, transaction byte layout,
+  txid byte order, Merkle odd-leaf handling, and parser rejection behavior
+  against independently sourced, versioned vectors. Include maximum-size and
+  over-limit cases, truncated fields, trailing bytes, duplicate inputs, and
+  integer boundary cases. The current 4,000,000-byte transaction parser limit
+  and 10,000-byte script-vector limit are implementation bounds, not approved
+  Mainnet protocol parameters; do not treat them as frozen consensus rules.
 - [ ] Complete external security review, fuzzing, property tests, fault
   injection, and a public testnet period with documented incident handling.
 - [ ] Establish reproducible builds, signed releases, and a reviewed dependency lock that pins every direct and transitive package to exact versions with verified hashes; the broad development constraint in `pyproject.toml` is not a release lock.
