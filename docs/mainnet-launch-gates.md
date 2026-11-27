@@ -342,3 +342,11 @@ block hash to match the altered header; the audit must still reject the record
 because the transaction body no longer commits to that root. This validates
 internal persistence consistency only: it does not replace independent header
 consensus validation, full UTXO replay, or external implementation review.
+
+
+The active-chain integrity audit also checks transaction dependency order:
+an input referencing a transaction recorded in the same block must reference
+an earlier transaction position, and the referenced output index must exist.
+Inputs may not resolve to a transaction later in the active chain. This is a
+persistence-consistency check, not a substitute for full script, maturity,
+sequence-lock, or consensus validation during block connection.
