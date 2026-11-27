@@ -125,7 +125,9 @@ class MultiPeerReorganizationSync:
                     encode_inventory([InventoryVector(INV_TYPE_BLOCK, block_hash)]),
                 )
             except Exception:
+                self._tried_peers.setdefault(block_hash, set()).add(peer_id)
                 self.pool.cancel(block_hash)
+                self._requested_at[block_hash] = time.monotonic()
                 raise
             self._requested_at[block_hash] = time.monotonic()
             requested[block_hash] = peer_id
@@ -157,7 +159,7 @@ class MultiPeerReorganizationSync:
             # The caller may disconnect the peer; another peer can then retry.
             self._tried_peers.setdefault(block_hash, set()).add(peer_id)
             self.pool.cancel(block_hash)
-            self._requested_at.pop(block_hash, None)
+            self._requested_at[block_hash] = time.monotonic()
             raise
         self._requested_at.pop(block_hash, None)
         self._tried_peers.pop(block_hash, None)
@@ -185,7 +187,13 @@ class MultiPeerReorganizationSync:
         self, peers: Mapping[object, object], timeout: float, *, now: float | None = None
     ) -> dict[bytes, object]:
         """Reassign timed-out fork bodies to currently connected peers."""
+        if (not isinstance(timeout, (int, float)) or isinstance(timeout, bool)
+                or not math.isfinite(timeout) or timeout <= 0):
+            raise ValueError("timeout must be a positive number")
         current = time.monotonic() if now is None else now
+        if (not isinstance(current, (int, float)) or isinstance(current, bool)
+                or not math.isfinite(current)):
+            raise ValueError("now must be a finite monotonic timestamp")
         expiring_peers = {
             block_hash: self.pool.assigned_peer(block_hash)
             for block_hash, requested_at in self._requested_at.items()
