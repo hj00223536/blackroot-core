@@ -524,5 +524,29 @@ class HeaderChainTests(unittest.TestCase):
         self.assertIsNone(chain.node(wrong_side_header.hash))
 
 
+    def test_add_batch_rolls_back_when_commit_callback_raises(self):
+        genesis = mine_header(ZERO_HASH, 1)
+        chain = HeaderChain(
+            POW_LIMIT, genesis, allow_unchecked_time_for_tests=True
+        )
+        before_nodes = chain.nodes
+        before_tip = chain.best_hash
+        before_work = chain.chainwork
+        first = mine_header(genesis.hash, 2)
+        second = mine_header(first.hash, 3)
+
+        def fail_commit(_chain):
+            raise RuntimeError("simulated commit failure")
+
+        with self.assertRaisesRegex(RuntimeError, "simulated commit failure"):
+            chain.add_batch([first, second], on_commit=fail_commit)
+
+        self.assertEqual(chain.nodes, before_nodes)
+        self.assertEqual(chain.best_hash, before_tip)
+        self.assertEqual(chain.chainwork, before_work)
+        self.assertIsNone(chain.node(first.hash))
+        self.assertIsNone(chain.node(second.hash))
+
+
 if __name__ == "__main__":
     unittest.main()
