@@ -16,6 +16,7 @@ from .blackroot_p2p import DEFAULT_MAX_PAYLOAD
 from .blackroot_p2p_handshake import VersionMessage
 from .blackroot_p2p_transport import MessageHandler, PeerConnection
 from .blackroot_p2p_resources import ResourceBudget
+from .blackroot_p2p_queue import ReservedMessageQueue
 
 
 class PeerManager:
@@ -47,6 +48,7 @@ class PeerManager:
         send_peer_budget_factory: Callable[[], ResourceBudget] | None = None,
         receive_node_budget: ResourceBudget | None = None,
         receive_peer_budget_factory: Callable[[], ResourceBudget] | None = None,
+        application_queue_factory: Callable[[PeerConnection], ReservedMessageQueue] | None = None,
     ) -> None:
         if not isinstance(magic, bytes) or len(magic) != 4:
             raise ValueError("network magic must be exactly four bytes")
@@ -105,6 +107,13 @@ class PeerManager:
                 raise ValueError(
                     f"{direction} node budget and peer budget factory must be configured together"
                 )
+        if application_queue_factory is not None and not callable(application_queue_factory):
+            raise TypeError("application_queue_factory must be callable")
+        if application_queue_factory is not None:
+            if receive_node_budget is None:
+                raise ValueError("application queue requires receive resource budgets")
+            if on_message is not None or on_peer_message_factory is not None:
+                raise ValueError("application queue cannot be combined with message callbacks")
         if on_message is not None and not callable(on_message):
             raise TypeError("on_message must be callable")
         if on_peer_error is not None and not callable(on_peer_error):
@@ -128,6 +137,7 @@ class PeerManager:
         self.send_peer_budget_factory = send_peer_budget_factory
         self.receive_node_budget = receive_node_budget
         self.receive_peer_budget_factory = receive_peer_budget_factory
+        self.application_queue_factory = application_queue_factory
         if on_peer_message_factory is not None and not callable(on_peer_message_factory):
             raise TypeError("on_peer_message_factory must be callable")
         self.on_message = on_message
@@ -138,6 +148,7 @@ class PeerManager:
         self.on_peer_disconnected = on_peer_disconnected
         self._server: asyncio.AbstractServer | None = None
         self._peers: set[PeerConnection] = set()
+        self._application_queues: dict[PeerConnection, ReservedMessageQueue] = {}
         self._tasks: set[asyncio.Task] = set()
         self._outbound_reservations = 0
         self._closing = False
@@ -157,6 +168,13 @@ class PeerManager:
     def peers(self) -> tuple[PeerConnection, ...]:
         """Snapshot of managed peer sessions."""
         return tuple(self._peers)
+
+    def application_queue_for(self, peer: PeerConnection) -> ReservedMessageQueue:
+        """Return the opt-in bounded application queue associated with a peer."""
+        try:
+            return self._application_queues[peer]
+        except KeyError as exc:
+            raise KeyError("peer has no application message queue") from exc
 
     @property
     def listening(self) -> bool:
@@ -210,7 +228,23 @@ class PeerManager:
                 else {}
             ),
         )
-        if self.on_peer_message_factory is not None:
+        if self.application_queue_factory is not None:
+            queue = self.application_queue_factory(peer)
+            if not isinstance(queue, ReservedMessageQueue):
+                raise TypeError("application_queue_factory must return a ReservedMessageQueue")
+            self._application_queues[peer] = queue
+
+            def enqueue_application_message(command: str, payload: bytes) -> None:
+                reservation = peer.take_receive_reservation()
+                try:
+                    queue.put_nowait(command, payload, reservation)
+                except BaseException:
+                    if not reservation.released:
+                        reservation.release()
+                    raise
+
+            peer.on_message = enqueue_application_message
+        elif self.on_peer_message_factory is not None:
             peer.on_message = self.on_peer_message_factory(peer)
         return peer
 
@@ -245,6 +279,9 @@ class PeerManager:
             except Exception as close_error:
                 self._background_errors.append(close_error)
             finally:
+                queue = self._application_queues.pop(peer, None)
+                if queue is not None:
+                    queue.close()
                 self._peers.discard(peer)
                 if self.on_peer_disconnected is not None:
                     try:
