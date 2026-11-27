@@ -60,7 +60,7 @@ customer funds.
 - [ ] Define and approve hard peer-count, inbound/outbound, node-wide bandwidth/work, handshake, queue, memory, and file-descriptor budgets based on measured deployment envelopes.
 - [ ] Add adversarial load, churn, slow-peer, aggregate-rate, resource-exhaustion, and shutdown tests; independently review the final policy.
 
-See [P2P resource-boundary audit](p2p-resource-boundary-audit.md). The current peer manager's per-peer controls do not establish node-wide DoS resistance or authorize public binding.
+See [P2P resource-boundary audit](p2p-resource-boundary-audit.md). The source review confirms that peer count is configurable without a hard ceiling; inbound and outbound peers share one count rather than separately approved quotas; each peer owns independent rate buckets and a receive task; frame-size limits do not cap aggregate resident payloads; and pending writes/handshakes have no node-wide budgets. These are source-level findings, not measured capacity results. The current peer manager's per-peer controls do not establish node-wide DoS resistance or authorize public binding.
 
 ## Persistent network identity gate
 
