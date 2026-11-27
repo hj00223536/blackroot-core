@@ -236,7 +236,7 @@ class PeerConnection:
             raise PeerProtocolError("message payload exceeds configured limit")
         _validate_control_payload_length(header[4:16], length)
         self._consume_inbound_budget(
-            header[4:16].split(b"\\x00", 1)[0].decode("ascii"), length
+            header[4:16].split(b"\x00", 1)[0].decode("ascii"), length
         )
         payload = await self.reader.readexactly(length)
         try:
