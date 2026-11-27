@@ -420,6 +420,35 @@ class UTXOStore:
                 if merkle_root(tx.txid for tx in archived_block.transactions) != archived_block.header.merkle_root:
                     raise RuntimeError("archived block body merkle root is corrupt")
 
+            # SQLite CHECK constraints are not a substitute for validating
+            # persisted UTXO rows: they can be bypassed by a damaged or
+            # externally modified database. Validate the consensus-facing
+            # fields again during every explicit integrity audit.
+            utxo_rows = db.execute(
+                "SELECT txid, output_index, value, script_pubkey, created_height, "
+                "is_coinbase, created_mtp FROM utxos"
+            ).fetchall()
+            active_tip = db.execute(
+                "SELECT MAX(height) FROM blocks"
+            ).fetchone()[0]
+            for txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp in utxo_rows:
+                if not isinstance(txid, (bytes, bytearray)) or len(txid) != 32:
+                    raise RuntimeError("persisted UTXO transaction ID is malformed")
+                if not isinstance(output_index, int) or output_index < 0 or output_index > 0xFFFFFFFF:
+                    raise RuntimeError("persisted UTXO output index is malformed")
+                if not isinstance(value, int) or value < 0 or value > TOTAL_SUPPLY_CAP:
+                    raise RuntimeError("persisted UTXO value is malformed")
+                if not isinstance(script_pubkey, (bytes, bytearray)):
+                    raise RuntimeError("persisted UTXO script is malformed")
+                if not isinstance(created_height, int) or created_height < 0:
+                    raise RuntimeError("persisted UTXO creation height is malformed")
+                if active_tip is not None and created_height > active_tip:
+                    raise RuntimeError("persisted UTXO creation height exceeds active tip")
+                if not isinstance(is_coinbase, int) or is_coinbase not in (0, 1):
+                    raise RuntimeError("persisted UTXO coinbase flag is malformed")
+                if created_mtp is not None and (not isinstance(created_mtp, int) or created_mtp < 0):
+                    raise RuntimeError("persisted UTXO creation median-time-past is malformed")
+
             foreign_key_errors = db.execute("PRAGMA foreign_key_check").fetchall()
             if foreign_key_errors:
                 raise RuntimeError(
