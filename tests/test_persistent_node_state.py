@@ -781,6 +781,41 @@ class PersistentNodeStateTests(unittest.TestCase):
             )
         self.assertEqual(list(real_dir.iterdir()), [])
 
+    def test_locked_lifecycle_rejects_database_hard_link(self):
+        data_dir = self.root / "locked-node"
+        data_dir.mkdir(mode=0o700)
+        target = self.root / "outside.sqlite"
+        target.write_bytes(b"must remain untouched")
+        database = data_dir / "node.sqlite"
+        try:
+            database.hardlink_to(target)
+        except (NotImplementedError, OSError) as exc:
+            self.skipTest(f"hard links are unsupported: {exc}")
+        with self.assertRaisesRegex(RuntimeError, "hard-link aliases"):
+            PersistentNodeState.open_locked(
+                data_dir, database, POW_LIMIT, self.genesis_block.header,
+                adjusted_time_provider=lambda: 1_000_000,
+            )
+        self.assertEqual(target.read_bytes(), b"must remain untouched")
+
+    def test_locked_lifecycle_rejects_wal_hard_link(self):
+        data_dir = self.root / "locked-node"
+        data_dir.mkdir(mode=0o700)
+        target = self.root / "outside-wal"
+        target.write_bytes(b"must remain untouched")
+        database = data_dir / "node.sqlite"
+        wal = Path(str(database) + "-wal")
+        try:
+            wal.hardlink_to(target)
+        except (NotImplementedError, OSError) as exc:
+            self.skipTest(f"hard links are unsupported: {exc}")
+        with self.assertRaisesRegex(RuntimeError, "hard-link aliases"):
+            PersistentNodeState.open_locked(
+                data_dir, database, POW_LIMIT, self.genesis_block.header,
+                adjusted_time_provider=lambda: 1_000_000,
+            )
+        self.assertEqual(target.read_bytes(), b"must remain untouched")
+
     def test_locked_lifecycle_rejects_database_outside_locked_directory(self):
         data_dir = self.root / "locked-node"
         outside = self.root / "outside.sqlite"
