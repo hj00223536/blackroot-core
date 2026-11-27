@@ -260,7 +260,9 @@ class MultiPeerReorganizationSync:
                     encode_inventory([InventoryVector(INV_TYPE_BLOCK, block_hash)]),
                 )
             except Exception:
+                self._tried_peers.setdefault(block_hash, set()).add(peer_id)
                 self.pool.cancel(block_hash)
+                self._requested_at[block_hash] = time.monotonic()
                 raise
             self._requested_at[block_hash] = time.monotonic()
             retried[block_hash] = peer_id
