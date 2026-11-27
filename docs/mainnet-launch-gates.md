@@ -381,3 +381,14 @@ regression removes one required undo-created row and verifies that the active
 tip and UTXO set remain unchanged. This guards one class of persisted undo
 corruption; it is not a substitute for deterministic full UTXO replay or
 fault-injection at every database write boundary.
+
+### Reorganization spent-output undo history preflight
+
+Before disconnecting an active block, reorganization now cross-checks spent
+undo rows against the block's non-coinbase inputs, rejects duplicate inputs and
+inputs already spent in earlier active blocks, and checks known historical
+output value, script, creation height, and coinbase provenance. It derives the
+required undo set only from historical outputs not already spent in the prior
+active prefix. Bootstrap-origin outputs remain unauthenticated without a
+separate authenticated bootstrap manifest, and this check is not full UTXO
+replay or a substitute for consensus validation.
