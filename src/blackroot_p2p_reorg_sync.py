@@ -38,6 +38,7 @@ class MultiPeerReorganizationSync:
         self.store = store
         self.pool = request_pool or MultiPeerBlockRequestPool()
         self._requested_at: dict[bytes, float] = {}
+        self._tried_peers: dict[bytes, set[object]] = {}
 
     def missing_best_branch_bodies(self) -> tuple[bytes, ...]:
         active = self.store.tip()
@@ -82,6 +83,16 @@ class MultiPeerReorganizationSync:
             self.store.discard_block_bodies(tuple(header.hash for header in connect))
             raise
 
+    def _available_peers(self, block_hash: bytes, peers: Mapping[object, object]) -> list[object]:
+        connected = [peer_id for peer_id, peer in peers.items()
+                     if getattr(peer, "connected", False)]
+        tried = self._tried_peers.get(block_hash, set())
+        available = [peer_id for peer_id in connected if peer_id not in tried]
+        if not available and connected:
+            self._tried_peers.pop(block_hash, None)
+            available = connected
+        return available
+
     async def request_missing_bodies(self, peers: Mapping[object, object]) -> dict[bytes, object]:
         """Request all currently missing bodies; return hash-to-peer assignments."""
         requested = {}
@@ -90,6 +101,10 @@ class MultiPeerReorganizationSync:
         # Header selection can change while old fork requests are outstanding.
         # Release work that no longer belongs to the selected best branch so
         # obsolete downloads cannot consume the bounded global/per-peer budget.
+        for tracked_hash in set(self._requested_at) | set(self._tried_peers):
+            if tracked_hash not in wanted:
+                self._requested_at.pop(tracked_hash, None)
+                self._tried_peers.pop(tracked_hash, None)
         for pending_hash in self.pool.pending_hashes:
             if pending_hash not in wanted:
                 self.pool.cancel(pending_hash)
@@ -100,10 +115,9 @@ class MultiPeerReorganizationSync:
             # the same body twice.
             if self.pool.assigned_peer(block_hash) is not None:
                 continue
-            available = [
-                peer_id for peer_id, peer in peers.items()
-                if getattr(peer, "connected", False)
-            ]
+            available = self._available_peers(block_hash, peers)
+            if not available:
+                continue
             peer_id = self.pool.assign(block_hash, available)
             try:
                 await peers[peer_id].send(
@@ -141,10 +155,12 @@ class MultiPeerReorganizationSync:
         except Exception:
             # Invalid or unpersistable responses must not pin the request slot.
             # The caller may disconnect the peer; another peer can then retry.
+            self._tried_peers.setdefault(block_hash, set()).add(peer_id)
             self.pool.cancel(block_hash)
             self._requested_at.pop(block_hash, None)
             raise
         self._requested_at.pop(block_hash, None)
+        self._tried_peers.pop(block_hash, None)
         return self._activate_if_complete()
 
     def expire_requests(self, timeout: float, *, now: float | None = None) -> tuple[bytes, ...]:
