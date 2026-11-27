@@ -252,6 +252,45 @@ class PeerConnectionTests(unittest.IsolatedAsyncioTestCase):
             await peer._read_message()
         self.assertEqual(len(reader._buffer), 0)
 
+    async def test_handshake_timeout_closes_peer_when_header_is_incomplete(self):
+        reader = asyncio.StreamReader()
+        writer = FakeWriter()
+        reader.feed_data(b"\\x01\\x02\\x03")
+        peer = PeerConnection(
+            reader,
+            writer,
+            magic=MAGIC,
+            local_version=version(101),
+            handshake_timeout=0.02,
+            idle_timeout=1,
+        )
+
+        with self.assertRaisesRegex(TimeoutError, "handshake timeout"):
+            await peer.run()
+
+        self.assertTrue(writer.closed)
+        self.assertTrue(peer._closed)
+
+    async def test_handshake_timeout_closes_peer_when_payload_is_incomplete(self):
+        reader = asyncio.StreamReader()
+        writer = FakeWriter()
+        frame = encode_message(MAGIC, "version", encode_version(version(202)))
+        reader.feed_data(frame[:24] + frame[24:26])
+        peer = PeerConnection(
+            reader,
+            writer,
+            magic=MAGIC,
+            local_version=version(101),
+            handshake_timeout=0.02,
+            idle_timeout=1,
+        )
+
+        with self.assertRaisesRegex(TimeoutError, "handshake timeout"):
+            await peer.run()
+
+        self.assertTrue(writer.closed)
+        self.assertTrue(peer._closed)
+
     async def test_rejects_application_message_before_handshake(self):
         with self.assertRaisesRegex(PeerProtocolError, "before handshake"):
             await self.peer.handle_message("ping", struct.pack("<Q", 7))
