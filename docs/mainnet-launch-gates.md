@@ -293,3 +293,15 @@ source-output consistency check for extant rows, not a complete replay: it
 cannot prove that no unspent output is missing, that spent outputs are absent,
 or that all provenance and undo records are correct. Full deterministic replay
 from an authenticated genesis/bootstrap manifest remains a launch gate.
+
+
+### Persisted block undo-created integrity
+
+The UTXO integrity audit now derives the expected set of created outpoints
+from every transaction in each active block and requires the persisted
+`block_undo_created` rows for that height to match exactly. Regression
+coverage deletes a required undo row and then injects an extra output index;
+both cases must fail closed. This validates the created-output index used by
+disconnect/reorganization, but does not yet reconstruct spent-output undo
+records or independently replay the complete UTXO state. Full deterministic
+replay and spent-undo verification remain mandatory launch gates.
