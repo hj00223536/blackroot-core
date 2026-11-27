@@ -1,5 +1,6 @@
 import hashlib
 import unittest
+from collections.abc import Mapping
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 from cryptography.hazmat.primitives import serialization
@@ -91,6 +92,26 @@ class Ed25519PublishedVectorTests(unittest.TestCase):
             key.verify(signature, b"changed")
 
 
+class MutatingApprovalRecord(Mapping):
+    def __init__(self, values):
+        self.values = dict(values)
+        self.reads = {}
+
+    def __iter__(self):
+        return iter(self.values)
+
+    def __len__(self):
+        return len(self.values)
+
+    def __getitem__(self, key):
+        count = self.reads.get(key, 0) + 1
+        self.reads[key] = count
+        value = self.values[key]
+        if key == "manifest_digest" and count > 1:
+            return "ff" * 32
+        return value
+
+
 class GenesisApprovalTests(unittest.TestCase):
     def setUp(self):
         self.private = Ed25519PrivateKey.from_private_bytes(_SEED)
@@ -117,6 +138,12 @@ class GenesisApprovalTests(unittest.TestCase):
             trusted_public_keys=self.trust,
             **kwargs,
         )
+
+    def test_verification_uses_one_snapshot_of_mutable_record(self):
+        supplied = MutatingApprovalRecord(self.record)
+        self.assertEqual(self.verify(supplied), self.key_id)
+        self.assertEqual(supplied.reads.get("manifest_digest"), 1)
+
 
     def test_valid_detached_signature(self):
         self.assertEqual(self.verify(), self.key_id)
