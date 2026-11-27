@@ -21,6 +21,26 @@ from .blackroot_sqlite import SQLiteTransactionConnection
 from .blackroot_monetary import TOTAL_SUPPLY_CAP, block_subsidy
 
 
+def _validate_active_transaction_order(active_transactions: dict[bytes, tuple[int, int, Transaction]]) -> None:
+    """Reject active-chain inputs that point to same-or-later transactions."""
+    for spending_height, spending_position, spending_tx in active_transactions.values():
+        if spending_position == 0:
+            continue
+        for txin in spending_tx.inputs:
+            source = active_transactions.get(txin.previous_output.txid)
+            if source is None:
+                continue
+            source_height, source_position, source_tx = source
+            if source_height > spending_height or (
+                source_height == spending_height and source_position >= spending_position
+            ):
+                raise RuntimeError(
+                    "active block input references a transaction that is not earlier in chain order"
+                )
+            if txin.previous_output.index >= len(source_tx.outputs):
+                raise RuntimeError("active block spends a nonexistent earlier output")
+
+
 class UTXOStore:
     SCHEMA_VERSION = 5
 
@@ -502,26 +522,9 @@ class UTXOStore:
                 spent_history.update(block_inputs)
                 expected_parent = block_hash
 
-            # The height-ordered pass above can only resolve transactions
-            # already encountered. Re-scan after the complete active transaction
-            # index exists so a corrupted earlier block cannot point forward to
-            # a transaction that appears in a later block.
-            for spending_txid, (spending_height, spending_position, spending_tx) in active_transactions.items():
-                if spending_position == 0:
-                    continue
-                for txin in spending_tx.inputs:
-                    source = active_transactions.get(txin.previous_output.txid)
-                    if source is None:
-                        continue
-                    source_height, source_position, source_tx = source
-                    if source_height > spending_height or (
-                        source_height == spending_height and source_position >= spending_position
-                    ):
-                        raise RuntimeError(
-                            "active block input references a transaction that is not earlier in chain order"
-                        )
-                    if txin.previous_output.index >= len(source_tx.outputs):
-                        raise RuntimeError("active block spends a nonexistent earlier output")
+            # Resolve dependencies again after every active transaction is indexed;
+            # otherwise a corrupted earlier block could point into a later block.
+            _validate_active_transaction_order(active_transactions)
 
             archived_bodies = db.execute(
                 "SELECT block_hash, raw_block, serialized_size FROM block_bodies"
