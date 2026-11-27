@@ -319,15 +319,22 @@ class PeerConnection:
                 reservation.release()
             raise
 
+    def _release_pending_receive_reservation(self) -> None:
+        reservation = self._pending_receive_reservation
+        self._pending_receive_reservation = None
+        if reservation is not None:
+            reservation.release()
+
     async def handle_message(self, command: str, payload: bytes) -> None:
         """Dispatch a message and release its receive reservation on completion."""
+        if self._receive_dispatch_active:
+            raise PeerProtocolError("message handler is already active")
+        self._receive_dispatch_active = True
         try:
             await self._handle_message(command, payload)
         finally:
-            reservation = self._pending_receive_reservation
-            self._pending_receive_reservation = None
-            if reservation is not None:
-                reservation.release()
+            self._receive_dispatch_active = False
+            self._release_pending_receive_reservation()
 
     async def _handle_message(self, command: str, payload: bytes) -> None:
         """Apply one decoded message to the handshake or active session."""
@@ -394,6 +401,10 @@ class PeerConnection:
         if not self._closed:
             self._closed = True
             self.writer.close()
+        # Release a decoded message not yet transferred to its handler.
+        # An active handler retains the reservation until its own finally.
+        if not self._receive_dispatch_active:
+            self._release_pending_receive_reservation()
         wait_closed = getattr(self.writer, "wait_closed", None)
         if callable(wait_closed):
             try:
