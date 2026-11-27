@@ -381,9 +381,15 @@ class UTXOStore:
             if bootstrap_row is None:
                 raise RuntimeError("persisted bootstrap issuance metadata is malformed")
             try:
-                bootstrap_issued = int(bootstrap_row[0])
+                raw_bootstrap_issued = bootstrap_row[0]
+                bootstrap_issued = int(raw_bootstrap_issued)
             except (TypeError, ValueError) as exc:
                 raise RuntimeError("persisted bootstrap issuance metadata is malformed") from exc
+            if bootstrap_issued >= 0 and (
+                not isinstance(raw_bootstrap_issued, str)
+                or raw_bootstrap_issued != str(bootstrap_issued)
+            ):
+                raise RuntimeError("persisted bootstrap issuance metadata is malformed")
             if bootstrap_issued < 0 or issued < 0 or bootstrap_issued + issued > TOTAL_SUPPLY_CAP:
                 raise RuntimeError("persisted cumulative issuance exceeds total supply cap")
             active_block_count = db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0]
