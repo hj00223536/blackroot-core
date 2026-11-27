@@ -93,6 +93,8 @@ class ReservedMessageQueue:
             self._consumer_task = task
         elif self._consumer_task is not task:
             raise RuntimeError("ReservedMessageQueue supports exactly one consumer")
+        if self._inflight is not None:
+            raise RuntimeError("previous message must be acknowledged before the next get")
         if self._closed and self._queue.empty():
             return None
         item = await self._queue.get()
