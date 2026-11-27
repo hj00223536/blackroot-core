@@ -336,3 +336,15 @@ partially completed teardown.
 ## 23. Per-peer queue identity
 
 The manager now requires `application_queue_factory` to return a pristine, unused queue for each peer. It rejects a queue that is already assigned to another managed peer, has been closed, contains queued messages, or has already established a consumer/in-flight message. This prevents two peer dispatch paths from accidentally sharing a single-consumer queue and prevents reassigning a previously closed queue. A focused test verifies that a factory returning one shared queue is rejected on the second peer. This identity check is local to the manager instance and does not replace global resource accounting.
+
+
+## 24. Peer setup failure cleanup
+
+Peer construction now treats application callback/queue setup as a failure-atomic
+step. If a queue factory returns an invalid, reused, or non-pristine queue, or
+a per-peer message-handler factory fails or returns a non-callable value, the
+manager removes and closes any queue it had registered and closes the newly
+accepted socket before propagating the setup error. Focused tests verify socket
+closure and queue-map cleanup. This is local setup cleanup only; it does not
+establish an inbound admission quota, global descriptor budget, or production
+P2P resource policy.
