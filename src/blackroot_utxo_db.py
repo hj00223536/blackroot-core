@@ -1048,23 +1048,31 @@ class UTXOStore:
                 # Recompute creation MTP for outputs whose source transaction is
                 # present in the persisted active-chain history. MTP belongs to
                 # the source block's parent, not the block that later spends it.
+                from .blackroot_consensus import sha256d
                 prior_header_rows = db.execute(
-                    "SELECT height, header FROM blocks WHERE height<? ORDER BY height",
+                    "SELECT height, block_hash, prev_hash, header FROM blocks "
+                    "WHERE height<? ORDER BY height",
                     (height,),
                 ).fetchall()
                 prior_timestamps = {}
-                for prior_header_height, prior_header in prior_header_rows:
-                    prior_header = bytes(prior_header)
+                prior_parent_hash = bytes(32)
+                for expected_height, row in enumerate(prior_header_rows):
+                    prior_header_height, stored_hash, stored_parent, raw_header = row
+                    prior_header = bytes(raw_header)
+                    if prior_header_height != expected_height:
+                        raise RuntimeError("reorganization prior block header history is not contiguous")
                     if len(prior_header) != 80:
                         raise RuntimeError("reorganization prior block header must be exactly 80 bytes")
+                    if (
+                        sha256d(prior_header) != bytes(stored_hash)
+                        or prior_header[4:36] != prior_parent_hash
+                        or bytes(stored_parent) != prior_parent_hash
+                    ):
+                        raise RuntimeError("reorganization prior block header hash or parent commitment is inconsistent")
+                    prior_parent_hash = bytes(stored_hash)
                     prior_timestamps[prior_header_height] = int.from_bytes(
                         prior_header[68:72], "little"
                     )
-                if prior_header_rows and (
-                    len(prior_header_rows) != prior_header_rows[-1][0] + 1
-                    or any(row[0] != index for index, row in enumerate(prior_header_rows))
-                ):
-                    raise RuntimeError("reorganization prior block header history is not contiguous")
 
                 def expected_creation_mtp(source_height):
                     if source_height == 0:
