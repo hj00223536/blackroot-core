@@ -49,8 +49,14 @@ def verify_genesis_approval_record(
     to raw 32-byte public keys. Trust-anchor governance remains external.
     Returns the verified key id; raises ValueError on every invalid condition.
     """
-    if not isinstance(record, Mapping) or set(record) != _FIELDS:
+    if not isinstance(record, Mapping):
         raise ValueError("approval record fields mismatch")
+    # Snapshot caller-controlled mappings once so field validation and
+    # signature verification cannot observe different values.
+    record_snapshot = dict(record)
+    if set(record_snapshot) != _FIELDS:
+        raise ValueError("approval record fields mismatch")
+    record = record_snapshot
     if type(record["record_version"]) is not int or record["record_version"] != 1:
         raise ValueError("unsupported approval record version")
     network = _hex32(record["network_id"], "network_id")
