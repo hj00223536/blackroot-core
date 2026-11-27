@@ -731,6 +731,41 @@ class PersistentNodeStateTests(unittest.TestCase):
         finally:
             reopened.close()
 
+    def test_locked_lifecycle_rejects_database_symlink(self):
+        data_dir = self.root / "locked-node"
+        data_dir.mkdir(mode=0o700)
+        target = self.root / "outside.sqlite"
+        target.write_bytes(b"must remain untouched")
+        database = data_dir / "node.sqlite"
+        try:
+            database.symlink_to(target)
+        except (NotImplementedError, OSError) as exc:
+            self.skipTest(f"symbolic links are unsupported: {exc}")
+        with self.assertRaisesRegex(RuntimeError, "regular non-symlink file"):
+            PersistentNodeState.open_locked(
+                data_dir, database, POW_LIMIT, self.genesis_block.header,
+                adjusted_time_provider=lambda: 1_000_000,
+            )
+        self.assertEqual(target.read_bytes(), b"must remain untouched")
+
+    def test_locked_lifecycle_rejects_wal_sidecar_symlink(self):
+        data_dir = self.root / "locked-node"
+        data_dir.mkdir(mode=0o700)
+        target = self.root / "outside-wal"
+        target.write_bytes(b"must remain untouched")
+        database = data_dir / "node.sqlite"
+        wal = Path(str(database) + "-wal")
+        try:
+            wal.symlink_to(target)
+        except (NotImplementedError, OSError) as exc:
+            self.skipTest(f"symbolic links are unsupported: {exc}")
+        with self.assertRaisesRegex(RuntimeError, "regular non-symlink file"):
+            PersistentNodeState.open_locked(
+                data_dir, database, POW_LIMIT, self.genesis_block.header,
+                adjusted_time_provider=lambda: 1_000_000,
+            )
+        self.assertEqual(target.read_bytes(), b"must remain untouched")
+
     def test_locked_lifecycle_rejects_database_outside_locked_directory(self):
         data_dir = self.root / "locked-node"
         outside = self.root / "outside.sqlite"
