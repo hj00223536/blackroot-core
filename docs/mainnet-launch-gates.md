@@ -358,3 +358,15 @@ and no later transaction may have the null-prevout coinbase form. This check
 protects the stored transaction ordering audit; it does not independently
 revalidate subsidy limits, coinbase maturity, or the complete block consensus
 rules.
+
+
+### Reorganization atomicity regression
+
+A regression test now creates an active two-block chain, disconnects its tip,
+connects one replacement block, and then deliberately fails validation while
+connecting the next replacement block (missing input). The expected behavior
+is full transaction rollback: the original tip and its UTXO must remain, the
+partially connected replacement output must not remain, and the integrity
+audit must still pass. This test is added but must pass in CI before its result
+can be treated as verified; it does not replace crash/fault injection against
+process termination or storage-device failures.
