@@ -1116,5 +1116,57 @@ store.apply(tx)
             self.store.verify_integrity()
 
 
+    def test_reorganization_failure_restores_original_chain_and_utxos(self):
+        from src.blackroot_blocks import Block, COINBASE_INDEX
+        from src.blackroot_chain import BlockHeader
+        from src.blackroot_consensus import block_subsidy
+        from src.blackroot_transactions import merkle_root
+
+        def coinbase(height, tag):
+            return Transaction(
+                1,
+                (TxInput(OutPoint(bytes(32), COINBASE_INDEX), bytes((tag, 1))),),
+                (TxOutput(block_subsidy(height), b"miner-" + bytes((tag,))),),
+            )
+
+        def make_block(parent_hash, height, transactions, timestamp, nonce):
+            all_transactions = (coinbase(height, nonce % 250 + 1),) + tuple(transactions)
+            header = BlockHeader(
+                1, parent_hash, merkle_root(tx.txid for tx in all_transactions),
+                timestamp, 0x207fffff, nonce,
+            )
+            return Block(header, all_transactions)
+
+        genesis = make_block(bytes(32), 0, (), 1, 1)
+        old_tip = make_block(genesis.header.hash, 1, (), 2, 2)
+        self.store.connect_block(genesis, 0)
+        self.store.connect_block(old_tip, 1)
+        original_output = OutPoint(old_tip.transactions[0].txid, 0)
+        self.assertIsNotNone(self.store.get(original_output))
+        original_count = self.store.count()
+
+        replacement_one = make_block(genesis.header.hash, 1, (), 3, 3)
+        missing_input = OutPoint(bytes.fromhex("ab" * 32), 0)
+        invalid_spend = Transaction(
+            1, (TxInput(missing_input),), (TxOutput(1, b"invalid"),)
+        )
+        replacement_two = make_block(
+            replacement_one.header.hash, 2, (invalid_spend,), 4, 4
+        )
+
+        with self.assertRaisesRegex(ValueError, "does not exist"):
+            self.store.reorganize(
+                (old_tip.header.hash,), (replacement_one, replacement_two)
+            )
+
+        self.assertEqual(self.store.tip(), (1, old_tip.header.hash))
+        self.assertEqual(self.store.count(), original_count)
+        self.assertIsNotNone(self.store.get(original_output))
+        self.assertIsNone(
+            self.store.get(OutPoint(replacement_one.transactions[0].txid, 0))
+        )
+        self.store.verify_integrity()
+
+
 if __name__ == "__main__":
     unittest.main()
