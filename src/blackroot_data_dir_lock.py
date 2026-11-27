@@ -31,7 +31,7 @@ class DataDirectoryLock:
                 "this platform does not provide POSIX flock; refusing unsafe node startup"
             ) from exc
 
-        self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.data_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         directory_flags = os.O_RDONLY
         if hasattr(os, "O_DIRECTORY"):
             directory_flags |= os.O_DIRECTORY
