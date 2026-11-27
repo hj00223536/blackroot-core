@@ -1113,21 +1113,102 @@ class UTXOStore:
             if block_hash != expected_tip_hash:
                 raise ValueError("expected tip hash does not match stored tip")
 
+            # Validate all inverse records before mutating the live UTXO set.
+            # A corrupt undo journal must never be able to mint arbitrary outputs
+            # or restore an unrelated outpoint during a tip disconnect.
+            transaction_rows = db.execute(
+                "SELECT position, txid, raw_transaction FROM block_transactions "
+                "WHERE height=? ORDER BY position",
+                (height,),
+            ).fetchall()
+            if not transaction_rows:
+                raise RuntimeError("disconnect undo preflight cannot find active block transactions")
+            expected_created = set()
+            block_inputs = set()
+            for expected_position, (position, stored_txid, raw_transaction) in enumerate(transaction_rows):
+                if position != expected_position:
+                    raise RuntimeError("disconnect undo preflight found non-contiguous transaction positions")
+                try:
+                    transaction = Transaction.deserialize(bytes(raw_transaction))
+                except (TypeError, ValueError) as exc:
+                    raise RuntimeError("disconnect undo preflight found malformed transaction data") from exc
+                if transaction.txid != bytes(stored_txid):
+                    raise RuntimeError("disconnect undo preflight transaction ID mismatch")
+                expected_created.update(
+                    (transaction.txid, index)
+                    for index, _output in enumerate(transaction.outputs)
+                )
+                if position > 0:
+                    for txin in transaction.inputs:
+                        outpoint = (txin.previous_output.txid, txin.previous_output.index)
+                        if outpoint in block_inputs:
+                            raise RuntimeError("disconnect undo preflight found duplicate block inputs")
+                        block_inputs.add(outpoint)
+
             created = db.execute(
                 "SELECT txid, output_index FROM block_undo_created WHERE height=?",
                 (height,),
             ).fetchall()
-            for txid, index in created:
-                db.execute(
-                    "DELETE FROM utxos WHERE txid=? AND output_index=?",
-                    (txid, index),
-                )
+            recorded_created = {(bytes(txid), index) for txid, index in created}
+            if recorded_created != expected_created:
+                raise RuntimeError("disconnect undo-created records do not match active block outputs")
+
+            prior_outputs = {}
+            prior_spent = set()
+            prior_rows = db.execute(
+                "SELECT bt.txid, bt.raw_transaction, bt.height, bt.position "
+                "FROM block_transactions bt WHERE bt.height<? ORDER BY bt.height, bt.position",
+                (height,),
+            ).fetchall()
+            for prior_txid, raw_transaction, prior_height, prior_position in prior_rows:
+                try:
+                    prior_tx = Transaction.deserialize(bytes(raw_transaction))
+                except (TypeError, ValueError) as exc:
+                    raise RuntimeError("disconnect undo preflight found malformed prior transaction") from exc
+                if prior_tx.txid != bytes(prior_txid):
+                    raise RuntimeError("disconnect undo preflight prior transaction ID mismatch")
+                if prior_position > 0:
+                    for txin in prior_tx.inputs:
+                        outpoint = (txin.previous_output.txid, txin.previous_output.index)
+                        if outpoint in prior_spent:
+                            raise RuntimeError("disconnect undo preflight found duplicate prior spend")
+                        prior_spent.add(outpoint)
+                for output_index, output in enumerate(prior_tx.outputs):
+                    prior_outputs[(prior_tx.txid, output_index)] = (
+                        output.value, output.script_pubkey, prior_height, int(prior_position == 0)
+                    )
 
             spent = db.execute(
                 "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
                 "FROM block_undo_spent WHERE height=?",
                 (height,),
             ).fetchall()
+            recorded_spent = set()
+            for txid, index, value, script, created_height, is_coinbase_flag, created_mtp in spent:
+                outpoint = (bytes(txid), index)
+                if outpoint in recorded_spent or outpoint not in block_inputs:
+                    raise RuntimeError("disconnect undo-spent records do not match active block inputs")
+                recorded_spent.add(outpoint)
+                known_output = prior_outputs.get(outpoint)
+                if known_output is not None:
+                    expected_value, expected_script, expected_height, expected_coinbase = known_output
+                    if (
+                        value != expected_value or bytes(script) != expected_script
+                        or created_height != expected_height
+                        or is_coinbase_flag != expected_coinbase
+                    ):
+                        raise RuntimeError("disconnect undo-spent data does not match prior transaction output")
+
+            expected_known_spent = set(prior_outputs).difference(prior_spent).intersection(block_inputs)
+            if not expected_known_spent.issubset(recorded_spent):
+                raise RuntimeError("disconnect undo-spent records are missing known historical inputs")
+
+            for txid, index in created:
+                db.execute(
+                    "DELETE FROM utxos WHERE txid=? AND output_index=?",
+                    (txid, index),
+                )
+
             for txid, index, value, script, created_height, is_coinbase_flag, created_mtp in spent:
                 db.execute(
                     "INSERT INTO utxos(txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp) "
