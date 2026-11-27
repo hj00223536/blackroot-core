@@ -83,8 +83,11 @@ reopen validator. These tools do not perform production cutover; backup
 restoration drills, large-dataset testing, migration fault injection, and
 independent review remain required. Header replay verification does not by
 itself validate historical external adjusted-time inputs or establish peer
-agreement. The pure-Python signature code is not suitable for production key
-handling.
+agreement. The P2PKH prototype now delegates secp256k1 ECDSA verification to the
+`cryptography` library/OpenSSL backend and has local strict-DER regression
+coverage. This is not a complete Script engine, does not provide production
+wallet key management, and has not yet passed independent cross-client vectors
+or external cryptographic review.
 
 **Decision rule:** keep all development isolated from real funds until every
 blocking item is implemented, independently tested, reviewed, and approved.
