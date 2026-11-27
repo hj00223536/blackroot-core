@@ -1,39 +1,32 @@
 import unittest
 
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec, utils
+
 from src.blackroot_script import (
-    G, N, _mul, _hash160, _push, legacy_sighash_all, p2pkh_script,
+    N, _hash160, _push, legacy_sighash_all, p2pkh_script,
     verify_p2pkh_input, validate_transaction_scripts,
 )
 from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput
 
 
-def der_integer(value):
-    raw = value.to_bytes((value.bit_length() + 7) // 8, "big") or b"\x00"
-    if raw[0] & 0x80:
-        raw = b"\x00" + raw
-    return b"\x02" + bytes([len(raw)]) + raw
-
-
-def der_signature(r, s):
-    body = der_integer(r) + der_integer(s)
-    return b"\x30" + bytes([len(body)]) + body
-
-
-def sign_for_test(digest, private_key, nonce):
-    z = int.from_bytes(digest, "big")
-    point = _mul(nonce)
-    r = point[0] % N
-    s = (pow(nonce, N - 2, N) * (z + r * private_key)) % N
+def sign_for_test(digest, private_key):
+    signature = private_key.sign(
+        digest, ec.ECDSA(utils.Prehashed(hashes.SHA256()))
+    )
+    r, s = utils.decode_dss_signature(signature)
     if s > N // 2:
         s = N - s
-    return der_signature(r, s)
+    return utils.encode_dss_signature(r, s)
 
 
 class P2PKHScriptTests(unittest.TestCase):
     def setUp(self):
-        self.private_key = 1
-        point = _mul(self.private_key)
-        self.pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
+        self.private_key = ec.derive_private_key(1, ec.SECP256K1())
+        self.pubkey = self.private_key.public_key().public_bytes(
+            serialization.Encoding.X962,
+            serialization.PublicFormat.CompressedPoint,
+        )
         self.previous = OutPoint(bytes.fromhex("12" * 32), 0)
         self.previous_output = TxOutput(100_000, p2pkh_script(_hash160(self.pubkey)))
 
@@ -43,7 +36,7 @@ class P2PKHScriptTests(unittest.TestCase):
             (TxOutput(90_000, b"\x51"),),
         )
         digest = legacy_sighash_all(unsigned, 0, self.previous_output.script_pubkey)
-        signature = sign_for_test(digest, self.private_key, 2) + b"\x01"
+        signature = sign_for_test(digest, self.private_key) + b"\x01"
         script_sig = _push(signature) + _push(self.pubkey)
         return Transaction(
             1, (TxInput(self.previous, script_sig),),
