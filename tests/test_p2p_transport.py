@@ -645,6 +645,31 @@ class PeerConnectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(peer._close_task.done())
         self.assertEqual(writer.wait_calls, 1)
 
+    async def test_task_creation_failure_does_not_retry_writer_close(self):
+        class CountingWriter(FakeWriter):
+            def __init__(self):
+                super().__init__()
+                self.close_calls = 0
+
+            def close(self):
+                self.close_calls += 1
+                super().close()
+
+        writer = CountingWriter()
+        peer = PeerConnection(
+            asyncio.StreamReader(), writer, magic=MAGIC, local_version=version(903)
+        )
+        with patch(
+            "src.blackroot_p2p_transport.asyncio.create_task",
+            side_effect=RuntimeError("task creation failed"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "task creation failed"):
+                await peer.close()
+        self.assertEqual(writer.close_calls, 1)
+        with self.assertRaisesRegex(RuntimeError, "previously failed"):
+            await peer.close()
+        self.assertEqual(writer.close_calls, 1)
+
     async def test_close_is_idempotent(self):
         await self.peer.close()
         await self.peer.close()
