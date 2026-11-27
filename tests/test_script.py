@@ -71,6 +71,21 @@ class P2PKHScriptTests(unittest.TestCase):
         )
         self.assertFalse(verify_p2pkh_input(malformed, 0, self.previous_output))
 
+    def test_rejects_curve_invalid_pubkey_even_when_hash_matches(self):
+        tx = self.signed_tx()
+        invalid_pubkey = b"\x02" + b"\xff" * 32
+        signature = tx.inputs[0].script_sig
+        signature_length = signature[0]
+        signature_push = signature[1:1 + signature_length]
+        malformed_sig = _push(signature_push) + _push(invalid_pubkey)
+        malformed_tx = Transaction(
+            1, (TxInput(self.previous, malformed_sig),), tx.outputs
+        )
+        previous = TxOutput(
+            100_000, p2pkh_script(_hash160(invalid_pubkey))
+        )
+        self.assertFalse(verify_p2pkh_input(malformed_tx, 0, previous))
+
     def test_rejects_unsupported_sighash_and_high_s(self):
         tx = self.signed_tx()
         bad_input = TxInput(self.previous, tx.inputs[0].script_sig[:-1] + b"\x02")
