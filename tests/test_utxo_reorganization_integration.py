@@ -27,7 +27,7 @@ from src.blackroot_consensus import block_subsidy, check_proof_of_work, decode_c
 from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput, merkle_root
 from src.blackroot_utxo_db import UTXOStore
 from src.blackroot_sqlite import SQLiteTransactionCoordinator
-from src.blackroot_script import _mul, _hash160, p2pkh_script
+from src.blackroot_script import _hash160, p2pkh_script
 from test_blocks import signed_spend
 
 BITS = 0x207FFFFF
@@ -352,8 +352,13 @@ Path(result).write_text(outcome)
         genesis = mined_block(0, ZERO_HASH, 1)
         headers = HeaderChain(POW_LIMIT, genesis.header, adjusted_time_provider=lambda: 1_000_000)
 
-        point = _mul(1)
-        pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import ec
+        private_key = ec.derive_private_key(1, ec.SECP256K1())
+        pubkey = private_key.public_key().public_bytes(
+            serialization.Encoding.X962,
+            serialization.PublicFormat.CompressedPoint,
+        )
         funding = OutPoint(bytes.fromhex("a1" * 32), 0)
         previous_output = TxOutput(10_000, p2pkh_script(_hash160(pubkey)))
         store.add_genesis_output(funding, previous_output)
