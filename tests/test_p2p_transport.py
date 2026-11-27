@@ -35,6 +35,14 @@ def version(nonce, protocol=1):
     return VersionMessage(protocol, 0, 1_800_000_000, nonce, 0, "/blackroot:test/")
 
 
+class FakeClock:
+    def __init__(self, now=0.0):
+        self.now = now
+
+    def __call__(self):
+        return self.now
+
+
 class PeerConnectionTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.writer = FakeWriter()
@@ -66,6 +74,109 @@ class PeerConnectionTests(unittest.IsolatedAsyncioTestCase):
                         local_version=version(101),
                         handshake_timeout=timeout,
                     )
+
+    def test_control_message_bucket_enforces_burst_and_refills(self):
+        clock = FakeClock()
+        peer = PeerConnection(
+            asyncio.StreamReader(),
+            FakeWriter(),
+            magic=MAGIC,
+            local_version=version(101),
+            control_messages_per_second=1,
+            control_message_burst=2,
+            monotonic_clock=clock,
+        )
+        peer._consume_inbound_budget("ping", 8)
+        peer._consume_inbound_budget("pong", 8)
+        with self.assertRaisesRegex(PeerProtocolError, "control-message rate limit"):
+            peer._consume_inbound_budget("ping", 8)
+        clock.now += 1
+        peer._consume_inbound_budget("ping", 8)
+
+    def test_data_message_and_byte_budgets_are_atomic(self):
+        clock = FakeClock()
+        peer = PeerConnection(
+            asyncio.StreamReader(),
+            FakeWriter(),
+            magic=MAGIC,
+            local_version=version(101),
+            data_messages_per_second=1,
+            data_message_burst=2,
+            data_bytes_per_second=1,
+            data_bytes_burst=4,
+            monotonic_clock=clock,
+        )
+        with self.assertRaisesRegex(PeerProtocolError, "data-message rate limit"):
+            peer._consume_inbound_budget("block", 5)
+        # A byte-budget rejection must not consume the separate message token.
+        peer._consume_inbound_budget("block", 4)
+        with self.assertRaisesRegex(PeerProtocolError, "data-message rate limit"):
+            peer._consume_inbound_budget("headers", 1)
+        clock.now += 1
+        peer._consume_inbound_budget("headers", 1)
+
+    def test_rate_budgets_are_isolated_per_peer(self):
+        clock = FakeClock()
+        peers = [
+            PeerConnection(
+                asyncio.StreamReader(),
+                FakeWriter(),
+                magic=MAGIC,
+                local_version=version(nonce),
+                data_messages_per_second=1,
+                data_message_burst=1,
+                data_bytes_per_second=10,
+                data_bytes_burst=10,
+                monotonic_clock=clock,
+            )
+            for nonce in (101, 202)
+        ]
+        peers[0]._consume_inbound_budget("block", 10)
+        with self.assertRaisesRegex(PeerProtocolError, "data-message rate limit"):
+            peers[0]._consume_inbound_budget("block", 1)
+        peers[1]._consume_inbound_budget("block", 10)
+
+    def test_rejects_invalid_rate_limit_configuration(self):
+        for setting in ("control_messages_per_second", "data_message_burst", "data_bytes_burst"):
+            with self.subTest(setting=setting):
+                with self.assertRaisesRegex(ValueError, "finite positive"):
+                    PeerConnection(
+                        asyncio.StreamReader(),
+                        FakeWriter(),
+                        magic=MAGIC,
+                        local_version=version(101),
+                        **{setting: 0},
+                    )
+        with self.assertRaisesRegex(ValueError, "monotonic_clock must be callable"):
+            PeerConnection(
+                asyncio.StreamReader(),
+                FakeWriter(),
+                magic=MAGIC,
+                local_version=version(101),
+                monotonic_clock=None,
+            )
+
+    async def test_rate_limit_rejects_before_reading_payload_body(self):
+        reader = asyncio.StreamReader()
+        command_field = b"inv" + bytes(9)
+        frame_header = MAGIC + command_field + struct.pack("<I", 1) + bytes(4)
+        reader.feed_data(frame_header + b"x" + frame_header)
+        peer = PeerConnection(
+            reader,
+            FakeWriter(),
+            magic=MAGIC,
+            local_version=version(101),
+            data_messages_per_second=1,
+            data_message_burst=1,
+            data_bytes_per_second=1,
+            data_bytes_burst=1,
+            monotonic_clock=FakeClock(),
+        )
+        command, payload = await peer._read_message()
+        self.assertEqual((command, payload), ("inv", b"x"))
+        with self.assertRaisesRegex(PeerProtocolError, "data-message rate limit"):
+            await peer._read_message()
+        self.assertEqual(len(reader._buffer), 0)
 
     async def test_version_verack_handshake_completes(self):
         await self.peer.send("version", encode_version(version(101)))
