@@ -302,3 +302,17 @@ These checks cover the UTXO database's SQLite and stored-record consistency. The
 On open, PersistentHeaderStore now runs SQLite's full PRAGMA integrity_check and foreign_key_check before reading metadata or replaying the header DAG. It then validates the configured schema version, proof-of-work limit and genesis identity, and replays every stored header to re-check its hash, proof of work, linkage, height and cumulative chainwork. A missing genesis or inconsistent replay is rejected rather than silently repaired.
 
 This detects SQLite structural problems and invalid persisted header records. It is not a substitute for independent consensus review, filesystem durability testing, or atomic coordination with the separate UTXO database.
+
+
+### Retry source rotation and offline recovery
+
+Fork-body requests remember peers that timed out, returned `notfound`, or
+supplied an invalid body. A retry prefers a different connected peer; after
+every currently connected peer has been tried, the source set is reset for a
+new attempt cycle so a temporarily small peer set cannot permanently stall
+synchronization. If no peer is connected when a request expires, its retry
+deadline is retained and the runtime's supervised timer can retry after a
+connection returns. Failed sends and rejected bodies also retain a retry
+deadline rather than silently dropping the block request. This is bounded by
+the request pool's pending-request limit; it is not a permanent peer ban,
+reputation score, exponential backoff, or Sybil defense.
