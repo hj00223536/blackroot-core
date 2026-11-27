@@ -540,6 +540,12 @@ class UTXOStore:
             raise TypeError("block must be a Block")
         if not isinstance(height, int) or isinstance(height, bool) or height < 0:
             raise ValueError("height must be a non-negative integer")
+        if median_time_past is not None and (
+            not isinstance(median_time_past, int)
+            or isinstance(median_time_past, bool)
+            or median_time_past < 0
+        ):
+            raise ValueError("median_time_past must be a non-negative integer or None")
         with self._write_scope() as db:
             tip = db.execute(
                 "SELECT height, block_hash FROM blocks ORDER BY height DESC LIMIT 1"
@@ -721,6 +727,13 @@ class UTXOStore:
             or len(median_time_past_values) != len(connect_blocks)
         ):
             raise ValueError("median-time-past values must match replacement block count")
+        if median_time_past_values is not None and any(
+            value is not None and (
+                not isinstance(value, int) or isinstance(value, bool) or value < 0
+            )
+            for value in median_time_past_values
+        ):
+            raise ValueError("each median-time-past value must be a non-negative integer or None")
 
         with self._write_scope() as db:
             for expected_hash in disconnect_hashes:
