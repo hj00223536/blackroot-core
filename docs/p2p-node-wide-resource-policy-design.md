@@ -385,3 +385,8 @@ This is lifecycle cancellation, not an outbound connection-rate policy or a meas
 ## 29. Outbound dial task-creation failure
 
 The retained outbound-dial lifecycle now has a focused failure-injection regression for failure of `asyncio.create_task` itself. The connect path closes the unsubmitted `wait_for(open_connection(...))` coroutine, removes no unregistered task, decrements its outbound admission reservation in `finally`, and signals the no-outstanding-connect event when the count returns to zero. The test verifies the coroutine is closed and manager bookkeeping is empty. This is failure containment, not a production outbound rate or global task budget.
+
+
+## 30. Outbound dial caller-cancellation regression
+
+A second regression cancels the coroutine awaiting `PeerManager.connect()` while its retained dial is blocked. Cancellation propagates to the dial task; the dial task is removed from the manager registry, the outbound reservation returns to zero, and the shutdown-drain event is signalled. Together with the manager-shutdown cancellation and task-creation-failure tests, this covers the three local dial lifecycle exits: explicit caller cancellation, manager shutdown, and task-creation failure. These tests do not bound connection churn or prove behavior under OS-level socket exhaustion; those remain measured stress and deployment-policy work.
