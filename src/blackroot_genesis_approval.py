@@ -51,8 +51,17 @@ def verify_genesis_approval_record(
     """
     if not isinstance(record, Mapping):
         raise ValueError("approval record fields mismatch")
-    # Snapshot caller-controlled mappings once so field validation and
-    # signature verification cannot observe different values.
+    if not isinstance(trusted_public_keys, Mapping):
+        raise ValueError("trusted public-key configuration must be a mapping")
+    try:
+        # Snapshot all caller-controlled trust inputs. A caller must still pin
+        # and authenticate this configuration outside this verifier.
+        trusted_keys_snapshot = dict(trusted_public_keys)
+        revoked_keys_snapshot = frozenset(revoked_key_ids)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("trusted public-key configuration is malformed") from exc
+    # Snapshot caller-controlled record once so validation and signature
+    # verification cannot observe different values.
     record_snapshot = dict(record)
     if set(record_snapshot) != _FIELDS:
         raise ValueError("approval record fields mismatch")
@@ -74,9 +83,9 @@ def verify_genesis_approval_record(
 
     key_id = record["signing_key_id"]
     _hex32(key_id, "signing_key_id")
-    if key_id in revoked_key_ids:
+    if key_id in revoked_keys_snapshot:
         raise ValueError("approval signing key is revoked")
-    public_bytes = trusted_public_keys.get(key_id)
+    public_bytes = trusted_keys_snapshot.get(key_id)
     if not isinstance(public_bytes, bytes) or len(public_bytes) != 32:
         raise ValueError("approval key is not present in trusted public-key configuration")
     if hashlib.sha256(public_bytes).hexdigest() != key_id:
