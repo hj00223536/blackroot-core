@@ -415,3 +415,7 @@ leaving the block metadata unchanged; disconnect must reject the incomplete
 body and preserve the tip and UTXO set. This detects one coordinated storage
 corruption case, but does not replace header/Merkle verification or deterministic
 full UTXO replay.
+
+### External trust-policy pin distribution
+
+The requirements proposal in `docs/external-release-policy-pin-distribution-proposal.md` is not an implementation or approval. Before production trust activation, the project must select and independently review an external pin distribution and freshness mechanism, signer identity and quorum, separation of duties, rollback detection, key rotation/revocation, and recovery procedures. A local database or restored backup is not an authoritative external pin. This gate remains OPEN; no owner key, policy authority, or trust activation is approved.
