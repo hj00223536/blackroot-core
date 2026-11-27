@@ -282,29 +282,44 @@ class PeerManager:
                 else {}
             ),
         )
-        if self.application_queue_factory is not None:
-            queue = self.application_queue_factory(peer)
-            if not isinstance(queue, ReservedMessageQueue):
-                raise TypeError("application_queue_factory must return a ReservedMessageQueue")
-            if not queue.is_pristine or any(
-                existing is queue for existing in self._application_queues.values()
-            ):
-                raise ValueError("application_queue_factory must return a fresh unused queue")
-            self._application_queues[peer] = queue
+        try:
+            if self.application_queue_factory is not None:
+                queue = self.application_queue_factory(peer)
+                if not isinstance(queue, ReservedMessageQueue):
+                    raise TypeError("application_queue_factory must return a ReservedMessageQueue")
+                if not queue.is_pristine or any(
+                    existing is queue for existing in self._application_queues.values()
+                ):
+                    raise ValueError("application_queue_factory must return a fresh unused queue")
+                self._application_queues[peer] = queue
 
-            def enqueue_application_message(command: str, payload: bytes) -> None:
-                reservation = peer.take_receive_reservation()
-                try:
-                    queue.put_nowait(command, payload, reservation)
-                except BaseException:
-                    if not reservation.released:
-                        reservation.release()
-                    raise
+                def enqueue_application_message(command: str, payload: bytes) -> None:
+                    reservation = peer.take_receive_reservation()
+                    try:
+                        queue.put_nowait(command, payload, reservation)
+                    except BaseException:
+                        if not reservation.released:
+                            reservation.release()
+                        raise
 
-            peer.on_message = enqueue_application_message
-        elif self.on_peer_message_factory is not None:
-            peer.on_message = self.on_peer_message_factory(peer)
-        return peer
+                peer.on_message = enqueue_application_message
+            elif self.on_peer_message_factory is not None:
+                handler = self.on_peer_message_factory(peer)
+                if not callable(handler):
+                    raise TypeError("on_peer_message_factory must return a callable")
+                peer.on_message = handler
+            return peer
+        except BaseException:
+            queue = self._application_queues.pop(peer, None)
+            if queue is not None:
+                queue.close()
+            # Peer construction is synchronous, so close the socket immediately;
+            # the event loop will finish the transport close asynchronously.
+            try:
+                writer.close()
+            except Exception:
+                pass
+            raise
 
     def _track(self, peer: PeerConnection) -> PeerConnection:
         self._peers.add(peer)
