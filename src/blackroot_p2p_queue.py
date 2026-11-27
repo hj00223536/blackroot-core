@@ -58,7 +58,7 @@ class ReservedMessageQueue:
             maxsize=max_items
         )
         self._closed = False
-        self._consumer_active = False
+        self._consumer_task: asyncio.Task | None = None
 
     @property
     def qsize(self) -> int:
@@ -85,18 +85,21 @@ class ReservedMessageQueue:
 
     async def get(self) -> ReservedMessage | None:
         """Return the next owned message; None is the close sentinel."""
-        if self._consumer_active:
+        task = asyncio.current_task()
+        if task is None:
+            raise RuntimeError("message queue consumer must run in an asyncio task")
+        if self._consumer_task is None:
+            self._consumer_task = task
+        elif self._consumer_task is not task:
             raise RuntimeError("ReservedMessageQueue supports exactly one consumer")
-        self._consumer_active = True
-        try:
-            item = await self._queue.get()
-            if item is self._STOP:
-                self._queue.task_done()
-                return None
-            assert isinstance(item, ReservedMessage)
-            return item
-        finally:
-            self._consumer_active = False
+        if self._closed and self._queue.empty():
+            return None
+        item = await self._queue.get()
+        if item is self._STOP:
+            self._queue.task_done()
+            return None
+        assert isinstance(item, ReservedMessage)
+        return item
 
     def task_done(self) -> None:
         self._queue.task_done()
