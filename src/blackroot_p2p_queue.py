@@ -6,6 +6,7 @@ the embedding runtime owns and supervises its one consumer task.
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 from .blackroot_p2p_resources import ResourceReservation
@@ -97,15 +98,31 @@ class ReservedMessageQueue:
             raise RuntimeError("previous message must be acknowledged before the next get")
         if self._closed and self._queue.empty():
             return None
-        item = await self._queue.get()
+        try:
+            item = await self._queue.get()
+        except BaseException:
+            # Cancellation while waiting has not transferred a message.
+            if self._consumer_task is task and self._inflight is None:
+                self._consumer_task = None
+            raise
         if item is self._STOP:
             self._queue.task_done()
             return None
         assert isinstance(item, ReservedMessage)
-        if self._inflight is not None:
-            raise RuntimeError("previous message must be acknowledged before the next get")
         self._inflight = item
         return item
+
+    @asynccontextmanager
+    async def consume(self):
+        """Yield one message and acknowledge/release it even on cancellation."""
+        message = await self.get()
+        if message is None:
+            yield None
+            return
+        try:
+            yield message
+        finally:
+            self.task_done()
 
     def task_done(self) -> None:
         """Acknowledge the current message and release its reservation."""
