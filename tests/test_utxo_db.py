@@ -5,6 +5,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput
@@ -1376,6 +1377,39 @@ store.apply(tx)
             source.txid: (4, 1, source),
             spender.txid: (5, 1, spender),
         })
+
+
+    def test_disconnect_tip_rejects_invalid_active_transaction_order_without_mutation(self):
+        from src.blackroot_blocks import Block, COINBASE_INDEX
+        from src.blackroot_chain import BlockHeader
+        from src.blackroot_consensus import block_subsidy
+        from src.blackroot_transactions import merkle_root
+
+        coinbase = Transaction(
+            1,
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
+            (TxOutput(block_subsidy(0), b"disconnect-order-guard"),),
+        )
+        header = BlockHeader(
+            1, bytes(32), merkle_root((coinbase.txid,)),
+            1, 0x207fffff, 0,
+        )
+        block = Block(header, (coinbase,))
+        self.store.connect_block(block, 0)
+        before_tip = self.store.tip()
+        before_count = self.store.count()
+        before_output = self.store.get(OutPoint(coinbase.txid, 0))
+
+        with patch(
+            "src.blackroot_utxo_db._validate_active_transaction_order",
+            side_effect=RuntimeError("forward reference"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "invalid active transaction order"):
+                self.store.disconnect_tip(block.header.hash)
+
+        self.assertEqual(self.store.tip(), before_tip)
+        self.assertEqual(self.store.count(), before_count)
+        self.assertEqual(self.store.get(OutPoint(coinbase.txid, 0)), before_output)
 
 
     def test_disconnect_tip_rejects_missing_created_undo_without_mutation(self):
