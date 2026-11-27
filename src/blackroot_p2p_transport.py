@@ -287,7 +287,7 @@ class PeerConnection:
         if length > self.max_payload:
             raise PeerProtocolError("message payload exceeds configured limit")
         _validate_control_payload_length(header[4:16], length)
-        command = header[4:16].split(b"\\x00", 1)[0].decode("ascii")
+        command = header[4:16].split(b"\x00", 1)[0].decode("ascii")
         self._consume_inbound_budget(command, length)
 
         reservation = None
