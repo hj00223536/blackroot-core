@@ -615,3 +615,8 @@ Shutdown now waits for any listener bind already in progress to finish its clean
 ### Application worker task-creation failure — OPEN
 
 Worker admission now rolls back if task creation fails: the coroutine is closed and the peer's worker-start marker is removed, with a focused regression verifying no task/marker remains. This is local failure containment only. Global task limits, measured resource profiles, adversarial stress testing, and independent review remain open.
+
+
+### In-flight outbound dial shutdown — OPEN
+
+The manager now retains, cancels, and joins outbound dial tasks during shutdown, then waits for connect reservations to drain. A regression verifies cancellation of a deliberately blocked outbound dial and release of its admission reservation. This does not establish production outbound rate limits, global descriptor/task ceilings, stress evidence, or independent review.
