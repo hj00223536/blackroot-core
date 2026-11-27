@@ -58,6 +58,13 @@ class TestnetConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "does not match"):
             config(genesis_hash=bytes(32))
 
+    def test_pow_limit_must_be_a_positive_uint256(self):
+        for invalid in (True, 1 << 256, 0, -1):
+            with self.subTest(pow_limit=invalid), self.assertRaisesRegex(
+                ValueError, "positive uint256"
+            ):
+                config(pow_limit=invalid)
+
     def test_genesis_must_satisfy_configured_pow_limit(self):
         with self.assertRaisesRegex(ValueError, "proof-of-work limit"):
             config(pow_limit=1)
