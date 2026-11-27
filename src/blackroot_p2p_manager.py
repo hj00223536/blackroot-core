@@ -155,6 +155,7 @@ class PeerManager:
         self._tasks: set[asyncio.Task] = set()
         self._outbound_reservations = 0
         self._closing = False
+        self._close_complete = asyncio.Event()
         self._background_errors: deque[Exception] = deque(maxlen=100)
 
     @property
@@ -389,10 +390,18 @@ class PeerManager:
             self._outbound_reservations -= 1
 
     async def close(self) -> None:
-        """Stop accepting peers and close all managed sessions."""
+        """Stop accepting peers and await the single shared shutdown operation."""
         if self._closing:
+            await self._close_complete.wait()
             return
         self._closing = True
+        try:
+            await self._close_impl()
+        finally:
+            self._close_complete.set()
+
+    async def _close_impl(self) -> None:
+        """Perform manager shutdown once; callers synchronize through close()."""
         if self._server is not None:
             self._server.close()
             await self._server.wait_closed()
