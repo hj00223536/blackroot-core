@@ -607,6 +607,27 @@ class PeerManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(disconnected), 1)
         self.assertFalse(disconnected[0].connected)
 
+    async def test_concurrent_close_callers_wait_for_same_shutdown(self):
+        manager = PeerManager(magic=MAGIC, local_version=version())
+        close_started = asyncio.Event()
+        allow_close = asyncio.Event()
+
+        class SlowPeer:
+            async def close(self):
+                close_started.set()
+                await allow_close.wait()
+
+        manager._peers.add(SlowPeer())
+        first = asyncio.create_task(manager.close())
+        await asyncio.wait_for(close_started.wait(), timeout=1)
+        second = asyncio.create_task(manager.close())
+        await asyncio.sleep(0)
+        self.assertFalse(second.done())
+        allow_close.set()
+        await asyncio.wait_for(asyncio.gather(first, second), timeout=1)
+        self.assertTrue(manager._close_complete.is_set())
+        self.assertEqual(manager.peer_count, 0)
+
     async def test_close_stops_listener_and_removes_peers(self):
         await self.server_manager.start_server("127.0.0.1", 0)
         self.assertTrue(self.server_manager.listening)
