@@ -15,44 +15,13 @@ from cryptography.hazmat.primitives.asymmetric import ec, utils
 from .blackroot_transactions import OutPoint, Transaction, TxOutput
 from .blackroot_consensus import sha256d
 
-# secp256k1 domain parameters
-P = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFC2F
+# secp256k1 group order, used for strict low-S signature validation.
 N = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141
-G = (
-    0x79BE667EF9DCBBAC55A06295CE870B07029BFCDB2DCE28D959F2815B16F81798,
-    0x483ADA7726A3C4655DA4FBFC0E1108A8FD17B448A68554199C47D08FFB10D4B8,
-)
 SIGHASH_ALL = 1
 OP_DUP = 0x76
 OP_HASH160 = 0xA9
 OP_EQUALVERIFY = 0x88
 OP_CHECKSIG = 0xAC
-
-
-def _add(a, b):
-    if a is None:
-        return b
-    if b is None:
-        return a
-    if a[0] == b[0] and (a[1] + b[1]) % P == 0:
-        return None
-    if a == b:
-        slope = (3 * a[0] * a[0]) * pow(2 * a[1], P - 2, P) % P
-    else:
-        slope = (b[1] - a[1]) * pow((b[0] - a[0]) % P, P - 2, P) % P
-    x = (slope * slope - a[0] - b[0]) % P
-    return x, (slope * (a[0] - x) - a[1]) % P
-
-
-def _mul(k, point=G):
-    result = None
-    addend = point
-    while k:
-        if k & 1:
-            result = _add(result, addend)
-        addend = _add(addend, addend)
-        k >>= 1
-    return result
 
 
 def _hash160(data: bytes) -> bytes:
@@ -61,26 +30,6 @@ def _hash160(data: bytes) -> bytes:
         return hashlib.new("ripemd160", sha).digest()
     except ValueError as exc:
         raise RuntimeError("RIPEMD160 is unavailable in this runtime") from exc
-
-
-def _parse_pubkey(raw: bytes):
-    if len(raw) == 33 and raw[0] in (2, 3):
-        x = int.from_bytes(raw[1:], "big")
-        if x >= P:
-            return None
-        y2 = (pow(x, 3, P) + 7) % P
-        y = pow(y2, (P + 1) // 4, P)
-        if y * y % P != y2:
-            return None
-        if y & 1 != raw[0] & 1:
-            y = P - y
-        return x, y
-    if len(raw) == 65 and raw[0] == 4:
-        x, y = int.from_bytes(raw[1:33], "big"), int.from_bytes(raw[33:], "big")
-        if x >= P or y >= P or (y * y - x * x * x - 7) % P:
-            return None
-        return x, y
-    return None
 
 
 def _der_signature(raw: bytes):
