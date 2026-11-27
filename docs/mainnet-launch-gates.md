@@ -585,3 +585,10 @@ The per-peer queue factory now rejects shared, previously used, or closed queue 
 
 
 A cancellation-safety review found that a caller cancelling its own `PeerManager.close()` await could interrupt teardown while the manager's completion event was still signalled in `finally`. Shutdown now runs in one retained task awaited through `asyncio.shield()`; cancellation of an individual caller cannot cancel the shared teardown, and later callers await that same task. Tests cover cancellation of the first caller while a peer close is blocked. This improves lifecycle correctness but is not evidence of a production resource ceiling; the P2P gate remains OPEN.
+
+
+Peer setup now closes a newly accepted socket and removes/closes any partially
+registered application queue when per-peer callback or queue construction
+fails. Tests cover invalid handler-factory and queue-factory results. This
+reduces resource leakage on local setup errors but does not close the P2P
+admission/resource-policy gate or authorize public listener exposure.
