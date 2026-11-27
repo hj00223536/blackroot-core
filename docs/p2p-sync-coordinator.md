@@ -101,21 +101,24 @@ there are no outstanding assignments, the coordinator invokes
 
 The integration tests cover two-peer body distribution, completion-triggered
 reorganization, rejection of an unassigned source, and release on disconnect.
-This remains an opt-in orchestration component: header discovery, automatic
-peer lifecycle wiring, timeout/retry policy, peer scoring, and production
-consensus hardening remain outstanding.
+This remains an opt-in orchestration component: header discovery, peer scoring,
+and production consensus hardening remain outstanding. The integrated node
+runtime wires peer lifecycle handling and a supervised timeout-retry loop.
 
 
 ### Timeout and retry policy
 
-The reorganization downloader now records monotonic request timestamps.
-`expire_requests(timeout)` releases assignments that exceed the caller's
+The reorganization downloader records monotonic request timestamps.
+`expire_requests(timeout)` releases assignments that exceed the configured
 timeout, and `retry_expired_requests(peers, timeout)` reassigns those bodies
-to currently connected peers and sends fresh `getdata` messages. The caller
-must invoke this method from its own timer/event loop; this library component
-does not create background tasks. Disconnected-peer cleanup also clears the
-corresponding timestamps. Tests cover timeout validation and reassignment when
-the original source is no longer connected.
+to currently connected peers and sends fresh `getdata` messages. The
+`BlackrootNodeRuntime` provides a supervised periodic loop, and the local CLI
+starts it for the lifetime of the node. Library embedders must explicitly call
+`start_retry_loop()` or schedule `retry_expired()` themselves. Disconnect
+cleanup clears timestamps. When the selected best-work branch changes,
+`request_missing_bodies()` also cancels outstanding requests for hashes no
+longer needed by that branch, freeing global and per-peer request capacity.
+Tests cover timeout validation, reassignment, and stale-request cleanup.
 
 
 ### `notfound` and released-request reassignment
