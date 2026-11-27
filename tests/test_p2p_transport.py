@@ -578,6 +578,67 @@ class PeerConnectionTests(unittest.IsolatedAsyncioTestCase):
         await self.peer.handle_message("headers", b"payload")
         self.assertEqual(received, [("headers", b"payload")])
 
+    async def test_concurrent_close_callers_share_one_writer_teardown(self):
+        class SlowCloseWriter(FakeWriter):
+            def __init__(self):
+                super().__init__()
+                self.wait_started = asyncio.Event()
+                self.allow_wait = asyncio.Event()
+                self.wait_calls = 0
+
+            async def wait_closed(self):
+                self.wait_calls += 1
+                self.wait_started.set()
+                await self.allow_wait.wait()
+
+        writer = SlowCloseWriter()
+        peer = PeerConnection(
+            asyncio.StreamReader(), writer, magic=MAGIC, local_version=version(901)
+        )
+        first = asyncio.create_task(peer.close())
+        await asyncio.wait_for(writer.wait_started.wait(), timeout=1)
+        second = asyncio.create_task(peer.close())
+        await asyncio.sleep(0)
+        self.assertFalse(first.done())
+        self.assertFalse(second.done())
+        self.assertEqual(writer.wait_calls, 1)
+        writer.allow_wait.set()
+        await asyncio.wait_for(asyncio.gather(first, second), timeout=1)
+        self.assertEqual(writer.wait_calls, 1)
+        self.assertTrue(writer.closed)
+
+    async def test_cancelled_close_caller_does_not_cancel_writer_teardown(self):
+        class SlowCloseWriter(FakeWriter):
+            def __init__(self):
+                super().__init__()
+                self.wait_started = asyncio.Event()
+                self.allow_wait = asyncio.Event()
+                self.wait_calls = 0
+
+            async def wait_closed(self):
+                self.wait_calls += 1
+                self.wait_started.set()
+                await self.allow_wait.wait()
+
+        writer = SlowCloseWriter()
+        peer = PeerConnection(
+            asyncio.StreamReader(), writer, magic=MAGIC, local_version=version(902)
+        )
+        first = asyncio.create_task(peer.close())
+        await asyncio.wait_for(writer.wait_started.wait(), timeout=1)
+        first.cancel()
+        result = await asyncio.gather(first, return_exceptions=True)
+        self.assertIsInstance(result[0], asyncio.CancelledError)
+        self.assertFalse(peer._close_task.done())
+        second = asyncio.create_task(peer.close())
+        await asyncio.sleep(0)
+        self.assertFalse(second.done())
+        self.assertEqual(writer.wait_calls, 1)
+        writer.allow_wait.set()
+        await asyncio.wait_for(second, timeout=1)
+        self.assertTrue(peer._close_task.done())
+        self.assertEqual(writer.wait_calls, 1)
+
     async def test_close_is_idempotent(self):
         await self.peer.close()
         await self.peer.close()
