@@ -71,7 +71,7 @@ See [P2P resource-boundary audit](p2p-resource-boundary-audit.md). The current p
 - [ ] Add adversarial tests for same-Genesis/different-network configurations, altered protocol parameters, missing/corrupt identity metadata, rollback pins, interrupted initialization/migration, and no-mutation failure behavior.
 - [ ] Complete independent implementation and security review before closing this gate.
 
-See [persistent network identity binding design](persistent-network-identity-binding-design.md). It is a proposal only; it does not select Mainnet constants or authorize production use.
+See [persistent network identity binding design](persistent-network-identity-binding-design.md) and [persistent network identity source audit](persistent-network-identity-source-audit.md). The source audit confirms that current persistent metadata binds schema version, proof-of-work limit, and Genesis hash only; it does not bind network ID, P2P magic, or protocol version. It is a proposal only; it does not select Mainnet constants or authorize production use.
 
 ## Genesis issuance authorization gate
 
