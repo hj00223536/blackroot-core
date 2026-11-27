@@ -1649,5 +1649,32 @@ store.apply(tx)
         self.assertIsNotNone(self.store.get(output))
 
 
+    def test_verify_integrity_rejects_truncated_persisted_header(self):
+        from src.blackroot_blocks import Block, COINBASE_INDEX
+        from src.blackroot_chain import BlockHeader
+        from src.blackroot_consensus import block_subsidy
+        from src.blackroot_transactions import merkle_root
+
+        coinbase = Transaction(
+            1,
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
+            (TxOutput(block_subsidy(0), b"integrity-header-length-guard"),),
+        )
+        header = BlockHeader(
+            1, bytes(32), merkle_root((coinbase.txid,)),
+            1, 0x207fffff, 0,
+        )
+        self.store.connect_block(Block(header, (coinbase,)), 0)
+
+        with _managed_sqlite(self.db_path) as db:
+            db.execute(
+                "UPDATE blocks SET header=? WHERE height=0",
+                (header.serialize()[:-1],),
+            )
+
+        with self.assertRaisesRegex(RuntimeError, "header must be exactly 80 bytes"):
+            self.store.verify_integrity()
+
+
 if __name__ == "__main__":
     unittest.main()
