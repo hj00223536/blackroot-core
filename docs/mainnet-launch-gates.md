@@ -281,3 +281,15 @@ flag, and creation MTP. Each malformed field must cause the explicit integrity
 audit to fail closed. The test restores the row between cases. This checks
 persisted metadata shape and bounds; deterministic replay comparison against
 the active block history is still required before production use.
+
+
+The audit now also indexes active-chain transactions and checks every live
+UTXO whose transaction ID appears in that history against the original output
+value, locking script, output index, creation height, and coinbase position.
+Regression coverage mutates each of these fields and requires fail-closed
+behavior. Trusted bootstrap outputs are not represented by active block
+transactions and are deliberately excluded from this comparison. This is a
+source-output consistency check for extant rows, not a complete replay: it
+cannot prove that no unspent output is missing, that spent outputs are absent,
+or that all provenance and undo records are correct. Full deterministic replay
+from an authenticated genesis/bootstrap manifest remains a launch gate.
