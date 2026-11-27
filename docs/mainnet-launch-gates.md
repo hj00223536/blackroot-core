@@ -404,3 +404,14 @@ transaction. A regression verifies that a dependency-order rejection leaves
 the active tip and UTXO state unchanged. This is a storage-integrity safeguard;
 it does not validate block headers, proof of work, scripts, or the full
 consensus state, and it does not replace deterministic full UTXO replay.
+
+### Tip-disconnect persisted transaction-count guard
+
+The tip-disconnect preflight now compares the number of persisted ordered
+transaction bodies with the active block's recorded transaction count before
+examining undo records or mutating UTXOs. A regression removes a non-coinbase
+transaction row together with its matching created/spent undo entries while
+leaving the block metadata unchanged; disconnect must reject the incomplete
+body and preserve the tip and UTXO set. This detects one coordinated storage
+corruption case, but does not replace header/Merkle verification or deterministic
+full UTXO replay.
