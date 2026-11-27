@@ -83,6 +83,8 @@ async def run_node(config: TestnetConfig, data_dir: Path, bind_host: str, connec
             # clock derived from its peer-time policy.
             adjusted_time=adjusted_time,
         )
+        # Supervise timed-out fork-body requests for the full CLI node lifetime.
+        await runtime.start_retry_loop()
         host, port = await runtime.listen(bind_host, config.p2p_port)
         if connect_to is not None:
             remote_host, remote_port = connect_to
@@ -109,6 +111,7 @@ async def run_node(config: TestnetConfig, data_dir: Path, bind_host: str, connec
             "listen_host": host,
             "listen_port": port,
             "peer_count": runtime.peer_count,
+            "block_retry_loop": runtime.retry_loop_running,
             "data_dir": str(data_dir.resolve()),
             "warning": "local prototype; test coins have no value; not a public network",
         }, sort_keys=True), flush=True)
