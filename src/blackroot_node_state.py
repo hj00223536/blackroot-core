@@ -109,6 +109,14 @@ class PersistentNodeState:
     def coordinated(self) -> bool:
         return self._coordinator is not None
 
+    @property
+    def data_directory_locked(self) -> bool:
+        """Whether this state currently owns the exclusive data-directory lock."""
+        return (
+            self._data_directory_lock is not None
+            and self._data_directory_lock.is_held
+        )
+
     @classmethod
     def open_locked(
         cls,
