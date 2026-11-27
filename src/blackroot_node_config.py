@@ -18,6 +18,15 @@ from .blackroot_p2p_handshake import VersionMessage
 from .blackroot_p2p_manager import PeerManager
 
 
+def _reject_duplicate_json_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON object key: {key}")
+        result[key] = value
+    return result
+
+
 @dataclass(frozen=True)
 class TestnetConfig:
     """A fully explicit testnet identity and bounded local P2P configuration."""
@@ -69,7 +78,10 @@ class TestnetConfig:
     def from_json_file(cls, path: str | Path) -> "TestnetConfig":
         """Load a strict JSON config; unknown/missing fields fail closed."""
         try:
-            raw = json.loads(Path(path).read_text(encoding="utf-8"))
+            raw = json.loads(
+                Path(path).read_text(encoding="utf-8"),
+                object_pairs_hook=_reject_duplicate_json_keys,
+            )
         except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise ValueError(f"cannot read testnet config: {exc}") from exc
         if not isinstance(raw, dict):
