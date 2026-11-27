@@ -273,3 +273,11 @@ requires the integrity audit to fail closed. This is row-shape and metadata
 validation only; it does not prove that the complete live UTXO set equals an
 independent replay of every active block. Deterministic full UTXO replay and
 independent cross-implementation verification remain mandatory launch gates.
+
+
+A second persisted-UTXO integrity regression bypasses SQLite CHECK constraints
+and independently corrupts the stored output value, creation height, coinbase
+flag, and creation MTP. Each malformed field must cause the explicit integrity
+audit to fail closed. The test restores the row between cases. This checks
+persisted metadata shape and bounds; deterministic replay comparison against
+the active block history is still required before production use.
