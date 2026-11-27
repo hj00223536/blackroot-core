@@ -179,6 +179,36 @@ class PeerManagerConfigurationTests(unittest.TestCase):
         self.assertEqual(manager.peer_count, 0)
         self.assertEqual(manager._tasks, set())
 
+    def test_tracking_task_creation_failure_closes_and_removes_application_queue(self):
+        class Writer:
+            closed = False
+            def close(self):
+                self.closed = True
+
+        writer = Writer()
+        queue = ReservedMessageQueue(max_items=2)
+        manager = PeerManager(
+            magic=MAGIC,
+            local_version=version(),
+            receive_node_budget=ResourceBudget(max_items=4, max_bytes=4096, name="receive-node"),
+            receive_peer_budget_factory=lambda: ResourceBudget(
+                max_items=2, max_bytes=2048, name="receive-peer"
+            ),
+            application_queue_factory=lambda peer: queue,
+        )
+        peer = manager._new_peer(asyncio.StreamReader(), writer)
+        self.assertIn(peer, manager._application_queues)
+        with patch("src.blackroot_p2p_manager.asyncio.create_task",
+                   side_effect=RuntimeError("task creation failed")):
+            with self.assertRaisesRegex(RuntimeError, "task creation failed"):
+                manager._track(peer)
+        self.assertTrue(writer.closed)
+        self.assertTrue(queue.closed)
+        self.assertNotIn(peer, manager._application_queues)
+        self.assertNotIn(peer, manager.peers)
+        self.assertNotIn(peer, manager._application_workers_started)
+        self.assertEqual(manager._application_worker_tasks, {})
+
     def test_inbound_setup_failure_is_recorded_and_socket_closed(self):
         class Writer:
             closed = False
