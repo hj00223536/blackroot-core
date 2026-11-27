@@ -1352,5 +1352,31 @@ store.apply(tx)
         self.store.verify_integrity()
 
 
+    def test_integrity_dependency_audit_rejects_cross_block_forward_reference(self):
+        from src.blackroot_utxo_db import _validate_active_transaction_order
+
+        source = Transaction(
+            1, (TxInput(OutPoint(bytes.fromhex("71" * 32), 0)),),
+            (TxOutput(500, b"source"),),
+        )
+        spender = Transaction(
+            1, (TxInput(OutPoint(source.txid, 0)),),
+            (TxOutput(400, b"spender"),),
+        )
+
+        # The spending transaction is in an earlier block than its source.
+        with self.assertRaisesRegex(RuntimeError, "not earlier in chain order"):
+            _validate_active_transaction_order({
+                spender.txid: (4, 1, spender),
+                source.txid: (5, 1, source),
+            })
+
+        # The same dependency is valid when the source is in an earlier block.
+        _validate_active_transaction_order({
+            source.txid: (4, 1, source),
+            spender.txid: (5, 1, spender),
+        })
+
+
 if __name__ == "__main__":
     unittest.main()
