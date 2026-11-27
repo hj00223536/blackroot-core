@@ -766,6 +766,21 @@ class PersistentNodeStateTests(unittest.TestCase):
             )
         self.assertEqual(target.read_bytes(), b"must remain untouched")
 
+    def test_locked_lifecycle_rejects_symlinked_data_directory(self):
+        real_dir = self.root / "real-node"
+        real_dir.mkdir(mode=0o700)
+        alias = self.root / "node-alias"
+        try:
+            alias.symlink_to(real_dir, target_is_directory=True)
+        except (NotImplementedError, OSError) as exc:
+            self.skipTest(f"directory symbolic links are unsupported: {exc}")
+        with self.assertRaisesRegex(RuntimeError, "real directory"):
+            PersistentNodeState.open_locked(
+                alias, alias / "node.sqlite", POW_LIMIT, self.genesis_block.header,
+                adjusted_time_provider=lambda: 1_000_000,
+            )
+        self.assertEqual(list(real_dir.iterdir()), [])
+
     def test_locked_lifecycle_rejects_database_outside_locked_directory(self):
         data_dir = self.root / "locked-node"
         outside = self.root / "outside.sqlite"
