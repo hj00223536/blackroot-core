@@ -671,6 +671,41 @@ class PeerManagerTests(unittest.IsolatedAsyncioTestCase):
             [ValueError, RuntimeError, LookupError],
         )
 
+    async def test_peer_disconnect_cancels_blocked_worker_and_releases_reservation(self):
+        manager = PeerManager(magic=MAGIC, local_version=version())
+        budget = ResourceBudget(max_items=2, max_bytes=128, name="worker-disconnect")
+        reservation = reserve_resources(((budget, 1, 32),))
+        queue = ReservedMessageQueue(max_items=1)
+        disconnected = asyncio.Event()
+
+        class Peer:
+            async def run(self):
+                await disconnected.wait()
+            async def close(self):
+                return None
+
+        peer = Peer()
+        manager._peers.add(peer)
+        manager._application_queues[peer] = queue
+        entered = asyncio.Event()
+
+        async def blocked_handler(command, payload):
+            entered.set()
+            await asyncio.Event().wait()
+
+        worker = manager.start_application_worker(peer, blocked_handler)
+        queue.put_nowait("inv", b"payload", reservation)
+        await asyncio.wait_for(entered.wait(), timeout=1)
+        session = asyncio.create_task(manager._run_peer(peer))
+        await asyncio.sleep(0)
+        disconnected.set()
+        await asyncio.wait_for(session, timeout=1)
+        self.assertTrue(worker.cancelled())
+        self.assertTrue(reservation.released)
+        self.assertEqual((budget.items_in_use, budget.bytes_in_use), (0, 0))
+        self.assertTrue(queue.closed)
+        self.assertNotIn(peer, manager._application_workers_started)
+
     async def test_peer_disconnect_releases_worker_admission_state(self):
         manager = PeerManager(magic=MAGIC, local_version=version())
         class FailingPeer:
