@@ -99,6 +99,46 @@ class PeerManagerConfigurationTests(unittest.TestCase):
         self.assertIs(second._receive_resource_budgets[1], receive_node)
         self.assertIsNot(first._receive_resource_budgets[0], second._receive_resource_budgets[0])
 
+    def test_peer_message_factory_failure_closes_new_socket(self):
+        class Writer:
+            closed = False
+            def close(self):
+                self.closed = True
+
+        writer = Writer()
+        manager = PeerManager(
+            magic=MAGIC,
+            local_version=version(),
+            on_peer_message_factory=lambda peer: None,
+        )
+        with self.assertRaisesRegex(TypeError, "must return a callable"):
+            manager._new_peer(asyncio.StreamReader(), writer)
+        self.assertTrue(writer.closed)
+        self.assertEqual(manager.peer_count, 0)
+
+    def test_application_queue_factory_failure_closes_new_socket(self):
+        class Writer:
+            closed = False
+            def close(self):
+                self.closed = True
+
+        writer = Writer()
+        manager = PeerManager(
+            magic=MAGIC,
+            local_version=version(),
+            receive_node_budget=ResourceBudget(
+                max_items=4, max_bytes=4096, name="receive-node"
+            ),
+            receive_peer_budget_factory=lambda: ResourceBudget(
+                max_items=2, max_bytes=2048, name="receive-peer"
+            ),
+            application_queue_factory=lambda peer: None,
+        )
+        with self.assertRaisesRegex(TypeError, "must return a ReservedMessageQueue"):
+            manager._new_peer(asyncio.StreamReader(), writer)
+        self.assertTrue(writer.closed)
+        self.assertEqual(manager._application_queues, {})
+
     def test_application_queue_factory_must_return_fresh_queue_per_peer(self):
         shared_queue = ReservedMessageQueue(max_items=2)
         manager = PeerManager(
