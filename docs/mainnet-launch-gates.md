@@ -42,6 +42,11 @@ customer funds.
   integer boundary cases. The current 4,000,000-byte transaction parser limit
   and 10,000-byte script-vector limit are implementation bounds, not approved
   Mainnet protocol parameters; do not treat them as frozen consensus rules.
+- [ ] Add block-level Merkle mutation vectors, including the distinction
+  between odd-leaf duplication required by the tree algorithm and an explicit
+  repeated transaction hash in the supplied transaction list. Verify duplicate
+  txid rejection occurs before any persistent UTXO mutation, and verify that
+  alternate transaction lists cannot exploit an identical Merkle commitment.
 - [ ] Complete external security review, fuzzing, property tests, fault
   injection, and a public testnet period with documented incident handling.
 - [ ] Establish reproducible builds, signed releases, and a reviewed dependency lock that pins every direct and transitive package to exact versions with verified hashes; the broad development constraint in `pyproject.toml` is not a release lock.
