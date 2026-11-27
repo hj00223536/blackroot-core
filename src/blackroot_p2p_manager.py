@@ -246,43 +246,36 @@ class PeerManager:
         return replace(self.local_version, nonce=secrets.randbits(64))
 
     def _new_peer(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> PeerConnection:
-        send_budgets = None
-        if self.send_peer_budget_factory is not None:
-            peer_budget = self.send_peer_budget_factory()
-            if not isinstance(peer_budget, ResourceBudget) or peer_budget is self.send_node_budget:
-                raise TypeError("send peer budget factory must return a distinct ResourceBudget")
-            send_budgets = (peer_budget, self.send_node_budget)
-        receive_budgets = None
-        if self.receive_peer_budget_factory is not None:
-            peer_budget = self.receive_peer_budget_factory()
-            if not isinstance(peer_budget, ResourceBudget) or peer_budget is self.receive_node_budget:
-                raise TypeError("receive peer budget factory must return a distinct ResourceBudget")
-            receive_budgets = (peer_budget, self.receive_node_budget)
-        peer = PeerConnection(
-            reader,
-            writer,
-            magic=self.magic,
-            local_version=self._new_version(),
-            max_payload=self.max_payload,
-            handshake_timeout=self.handshake_timeout,
-            idle_timeout=self.idle_timeout,
-            min_protocol_version=self.min_protocol_version,
-            on_message=self.on_message,
-            control_messages_per_second=self.control_messages_per_second,
-            control_message_burst=self.control_message_burst,
-            data_messages_per_second=self.data_messages_per_second,
-            data_message_burst=self.data_message_burst,
-            data_bytes_per_second=self.data_bytes_per_second,
-            data_bytes_burst=self.data_bytes_burst,
-            send_resource_budgets=send_budgets,
-            receive_resource_budgets=receive_budgets,
-            **(
-                {"monotonic_clock": self.monotonic_clock}
-                if self.monotonic_clock is not None
-                else {}
-            ),
-        )
+        peer: PeerConnection | None = None
         try:
+            send_budgets = None
+            if self.send_peer_budget_factory is not None:
+                peer_budget = self.send_peer_budget_factory()
+                if not isinstance(peer_budget, ResourceBudget) or peer_budget is self.send_node_budget:
+                    raise TypeError("send peer budget factory must return a distinct ResourceBudget")
+                send_budgets = (peer_budget, self.send_node_budget)
+            receive_budgets = None
+            if self.receive_peer_budget_factory is not None:
+                peer_budget = self.receive_peer_budget_factory()
+                if not isinstance(peer_budget, ResourceBudget) or peer_budget is self.receive_node_budget:
+                    raise TypeError("receive peer budget factory must return a distinct ResourceBudget")
+                receive_budgets = (peer_budget, self.receive_node_budget)
+            peer = PeerConnection(
+                reader, writer, magic=self.magic, local_version=self._new_version(),
+                max_payload=self.max_payload, handshake_timeout=self.handshake_timeout,
+                idle_timeout=self.idle_timeout, min_protocol_version=self.min_protocol_version,
+                on_message=self.on_message,
+                control_messages_per_second=self.control_messages_per_second,
+                control_message_burst=self.control_message_burst,
+                data_messages_per_second=self.data_messages_per_second,
+                data_message_burst=self.data_message_burst,
+                data_bytes_per_second=self.data_bytes_per_second,
+                data_bytes_burst=self.data_bytes_burst,
+                send_resource_budgets=send_budgets,
+                receive_resource_budgets=receive_budgets,
+                **({"monotonic_clock": self.monotonic_clock}
+                   if self.monotonic_clock is not None else {}),
+            )
             if self.application_queue_factory is not None:
                 queue = self.application_queue_factory(peer)
                 if not isinstance(queue, ReservedMessageQueue):
@@ -310,11 +303,12 @@ class PeerManager:
                 peer.on_message = handler
             return peer
         except BaseException:
-            queue = self._application_queues.pop(peer, None)
-            if queue is not None:
-                queue.close()
-            # Peer construction is synchronous, so close the socket immediately;
-            # the event loop will finish the transport close asynchronously.
+            if peer is not None:
+                queue = self._application_queues.pop(peer, None)
+                if queue is not None:
+                    queue.close()
+            # Budget factories and PeerConnection construction are also part
+            # of setup: the caller retains socket ownership until success.
             try:
                 writer.close()
             except Exception:
@@ -385,7 +379,20 @@ class PeerManager:
         if self._closing or self._load() >= self.max_peers:
             writer.close()
             return
-        self._track(self._new_peer(reader, writer))
+        peer: PeerConnection | None = None
+        try:
+            peer = self._new_peer(reader, writer)
+            self._track(peer)
+        except Exception as exc:
+            self._background_errors.append(exc)
+            if peer is not None:
+                self._peers.discard(peer)
+            # Server callbacks are synchronous; record the bounded error and
+            # close the transport instead of leaking an unhandled callback error.
+            try:
+                writer.close()
+            except Exception:
+                pass
 
     async def connect(self, host: str, port: int) -> PeerConnection:
         """Open and manage one outbound session, subject to the peer cap."""
