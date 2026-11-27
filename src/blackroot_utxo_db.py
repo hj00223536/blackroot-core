@@ -456,10 +456,16 @@ class UTXOStore:
                         if previous in spent_history:
                             raise RuntimeError("active transaction history spends an output more than once")
                         source = active_transactions.get(previous.txid)
-                        if source is not None and source[0] < height:
-                            if previous.index >= len(source[2].outputs):
-                                raise RuntimeError("active transaction spends a nonexistent historical output")
-                            expected_spent.add(previous)
+                        if source is not None:
+                            source_height, source_position, source_tx = source
+                            if source_height > height or (
+                                source_height == height and source_position >= position
+                            ):
+                                raise RuntimeError("active block input references a transaction that is not earlier in chain order")
+                            if previous.index >= len(source_tx.outputs):
+                                raise RuntimeError("active block spends a nonexistent earlier output")
+                            if source_height < height:
+                                expected_spent.add(previous)
 
                 spent_rows = db.execute(
                     "SELECT txid, output_index, value, script_pubkey, created_height, "
