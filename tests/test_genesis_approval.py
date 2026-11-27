@@ -198,6 +198,21 @@ class GenesisApprovalTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, message):
                     self.verify(record)
 
+    def test_malformed_unused_trust_entries_fail_closed(self):
+        with self.assertRaisesRegex(ValueError, "identifier mismatch"):
+            verify_genesis_approval_record(
+                self.record,
+                expected_network_id=_NETWORK,
+                expected_manifest_digest=_DIGEST,
+                trusted_public_keys={
+                    **self.trust,
+                    hashlib.sha256(b"unrelated").hexdigest(): bytes(32),
+                },
+            )
+        with self.assertRaisesRegex(ValueError, "revoked key identifier"):
+            self.verify(revoked_key_ids=frozenset({"not-a-key-id"}))
+
+
     def test_unknown_or_revoked_key_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "trusted public-key"):
             verify_genesis_approval_record(
