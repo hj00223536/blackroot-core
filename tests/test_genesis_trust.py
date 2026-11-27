@@ -159,6 +159,10 @@ class TrustConfigurationTests(unittest.TestCase):
     def test_strict_json_parser(self):
         with self.assertRaisesRegex(ValueError, "duplicate"):
             parse_trust_configuration_json('{"config_version":1,"config_version":1}')
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            parse_trust_configuration_json(
+                '{"keys":[{"key_id":"aa","key_id":"bb"}]}'
+            )
         with self.assertRaisesRegex(ValueError, "floating-point"):
             parse_trust_configuration_json('{"config_version":1.0}')
         with self.assertRaisesRegex(ValueError, "root must be an object"):
