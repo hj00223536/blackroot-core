@@ -225,9 +225,8 @@ class PeerConnection:
             # Once handed to the stream transport, a cancelled/failed drain has
             # ambiguous delivery and retained-buffer ownership. Fail closed by
             # closing this peer before releasing the reservation.
-            if write_started and not self._closed:
-                self._closed = True
-                self.writer.close()
+            if write_started:
+                await self.close()
             raise
         finally:
             if reservation is not None:
@@ -348,10 +347,9 @@ class PeerConnection:
 
     async def close(self) -> None:
         """Close the stream and release its transport resources."""
-        if self._closed:
-            return
-        self._closed = True
-        self.writer.close()
+        if not self._closed:
+            self._closed = True
+            self.writer.close()
         wait_closed = getattr(self.writer, "wait_closed", None)
         if callable(wait_closed):
             try:
