@@ -317,7 +317,17 @@ class PeerManager:
 
     def _track(self, peer: PeerConnection) -> PeerConnection:
         self._peers.add(peer)
-        task = asyncio.create_task(self._run_peer(peer))
+        coroutine = self._run_peer(peer)
+        try:
+            task = asyncio.create_task(coroutine)
+        except BaseException:
+            coroutine.close()
+            self._peers.discard(peer)
+            try:
+                peer.writer.close()
+            except Exception:
+                pass
+            raise
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
         return peer
