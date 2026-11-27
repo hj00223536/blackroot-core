@@ -157,6 +157,9 @@ class PeerManager:
         self._application_workers_started: set[PeerConnection] = set()
         self._tasks: set[asyncio.Task] = set()
         self._outbound_reservations = 0
+        self._dial_tasks: set[asyncio.Task] = set()
+        self._outbound_connects_complete = asyncio.Event()
+        self._outbound_connects_complete.set()
         self._closing = False
         self._close_complete = asyncio.Event()
         self._close_task: asyncio.Task | None = None
@@ -443,16 +446,30 @@ class PeerManager:
         if self._load() >= self.max_peers:
             raise RuntimeError("maximum peer count reached")
         self._outbound_reservations += 1
+        self._outbound_connects_complete.clear()
+        dial_task: asyncio.Task | None = None
         try:
-            reader, writer = await asyncio.wait_for(
+            dial_coroutine = asyncio.wait_for(
                 asyncio.open_connection(host, port), timeout=self.connect_timeout
             )
+            try:
+                dial_task = asyncio.create_task(dial_coroutine)
+            except BaseException:
+                dial_coroutine.close()
+                raise
+            self._dial_tasks.add(dial_task)
+            try:
+                reader, writer = await dial_task
+            finally:
+                self._dial_tasks.discard(dial_task)
             if self._closing:
                 writer.close()
                 raise RuntimeError("peer manager closed during connect")
             return self._track(self._new_peer(reader, writer))
         finally:
             self._outbound_reservations -= 1
+            if self._outbound_reservations == 0:
+                self._outbound_connects_complete.set()
 
     async def close(self) -> None:
         """Await one shielded shutdown task shared by all close callers.
@@ -479,6 +496,13 @@ class PeerManager:
         # A bind already in progress must finish its own close path before
         # shutdown can report completion; start_server rejects late installs.
         await self._server_start_complete.wait()
+        # Cancel and join in-flight outbound dials before reporting shutdown.
+        dial_tasks = tuple(self._dial_tasks)
+        for task in dial_tasks:
+            task.cancel()
+        if dial_tasks:
+            await asyncio.gather(*dial_tasks, return_exceptions=True)
+        await self._outbound_connects_complete.wait()
         if self._server is not None:
             self._server.close()
             await self._server.wait_closed()
