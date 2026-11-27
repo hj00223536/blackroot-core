@@ -413,6 +413,12 @@ class UTXOStore:
                 from .blackroot_transactions import merkle_root
                 if merkle_root(tx.txid for tx in reconstructed.transactions) != reconstructed.header.merkle_root:
                     raise RuntimeError("persisted active block transactions do not match the header merkle root")
+                from .blackroot_blocks import is_coinbase
+                if (
+                    not is_coinbase(reconstructed.transactions[0])
+                    or any(is_coinbase(tx) for tx in reconstructed.transactions[1:])
+                ):
+                    raise RuntimeError("persisted active block coinbase position is invalid")
                 for expected_position, (position, txid, raw_transaction) in enumerate(tx_rows):
                     if position != expected_position:
                         raise RuntimeError("UTXO transaction positions are not contiguous")
