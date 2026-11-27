@@ -667,6 +667,8 @@ index, a persisted header byte, an unreferenced undo-spent record, and a
 known historical input's undo value, and assert that reorganization fails
 without changing the active tip, headers, or UTXO set.
 These are targeted database-integrity checks, not deterministic full UTXO
-replay or complete consensus validation. Bootstrap provenance, undo metadata
-provenance, crash recovery, adversarial testing, and independent review remain
-open.
+replay or complete consensus validation. The known-input undo regression
+checks value/source consistency, but persisted created_mtp is not yet
+independently recomputed from the historical header window; bootstrap
+provenance, complete undo metadata provenance, crash recovery, adversarial
+testing, and independent review remain open.
