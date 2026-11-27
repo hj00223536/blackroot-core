@@ -349,6 +349,54 @@ store.apply(tx)
         reopened.verify_integrity()
 
 
+    def test_accounting_apply_is_rejected_after_chain_activation_without_mutation(self):
+        from src.blackroot_blocks import Block, COINBASE_INDEX
+        from src.blackroot_chain import BlockHeader
+        from src.blackroot_consensus import block_subsidy
+        from src.blackroot_transactions import merkle_root
+
+        coinbase = Transaction(
+            1,
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
+            (TxOutput(block_subsidy(0), b"miner"),),
+        )
+        block = Block(
+            BlockHeader(
+                1, bytes(32), merkle_root((coinbase.txid,)),
+                1, 0x207fffff, 0,
+            ),
+            (coinbase,),
+        )
+        self.store.connect_block(block, 0)
+
+        tip_before = self.store.tip()
+        count_before = self.store.count()
+        funding_before = self.store.get(self.funding)
+        with _managed_sqlite(self.db_path) as db:
+            issuance_before = db.execute(
+                "SELECT value FROM metadata WHERE key='bootstrap_issued_sats'"
+            ).fetchone()[0]
+
+        attempted = Transaction(
+            1,
+            (TxInput(self.funding),),
+            (TxOutput(800, b"must-not-be-created"),),
+        )
+        with self.assertRaisesRegex(
+            RuntimeError, "accounting-only apply is disabled after chain activation"
+        ):
+            self.store.apply(attempted)
+
+        self.assertEqual(self.store.tip(), tip_before)
+        self.assertEqual(self.store.count(), count_before)
+        self.assertEqual(self.store.get(self.funding), funding_before)
+        self.assertIsNone(self.store.get(OutPoint(attempted.txid, 0)))
+        with _managed_sqlite(self.db_path) as db:
+            issuance_after = db.execute(
+                "SELECT value FROM metadata WHERE key='bootstrap_issued_sats'"
+            ).fetchone()[0]
+        self.assertEqual(issuance_after, issuance_before)
+
     def test_spending_bootstrap_output_does_not_rewrite_historical_issuance_on_reopen(self):
         tx = Transaction(
             1,
