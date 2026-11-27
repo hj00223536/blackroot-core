@@ -278,11 +278,16 @@ while True:
     try:
         state = PersistentNodeState.open_locked(root, root / "node.sqlite", limit, genesis_header, adjusted_time_provider=lambda: 1_000_000)
         break
+    except RuntimeError as exc:
+        if "another BLACKROOT node" not in str(exc) or time.monotonic() >= deadline:
+            raise
+        # The data-directory lock is exclusive. Retry until the crashed
+        # writer exits and the kernel releases its advisory lock.
+        time.sleep(0.05)
     except sqlite3.OperationalError as exc:
         if "locked" not in str(exc).lower() or time.monotonic() >= deadline:
             raise
-        # Opening performs a short schema/integrity transaction. Retry a
-        # transient lock until the crashed writer releases SQLite's lock.
+        # Also tolerate a transient SQLite startup lock after ownership passes.
         time.sleep(0.05)
 ready.write_text("connected after writer rollback")
 try:
