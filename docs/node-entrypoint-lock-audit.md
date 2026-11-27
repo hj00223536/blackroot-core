@@ -102,3 +102,17 @@ contract. They do not eliminate TOCTOU replacement, same-UID manipulation,
 privileged tampering, unsafe parent aliases, or hostile filesystem behavior.
 SQLite-created files are not yet opened through a verified descriptor-relative
 interface. This is not a complete filesystem security boundary.
+
+
+## Lock-file inode hardening
+
+The advisory lock opener now validates the opened lock descriptor itself: it
+must be a regular file owned by the current UID, have exactly one hard link,
+and exclude group/other permission bits. Regression tests cover a hard-linked
+lock file and an existing 0644 lock file. This validates the inode actually
+opened for flock, unlike a pathname-only check.
+
+The data-directory lock remains advisory and protects only cooperating
+processes. A process running as the same UID, root, or a process able to alter
+the directory can still interfere. Parent path aliases and filesystem-specific
+semantics remain part of the open production review.
