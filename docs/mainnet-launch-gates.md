@@ -491,8 +491,14 @@ The proposed end-to-end workflow is specified in `docs/production-backup-restore
 
 ### Persistent network-identity binding — OPEN
 
-A bounded source audit is recorded in
-`docs/persistent-network-identity-audit.md`. The persistent header store
+Bounded source audits are recorded in
+`docs/persistent-network-identity-audit.md` and
+`docs/persistent-network-identity-source-audit.md`. The latter also traces
+CLI startup and runtime wiring: the local peer manager uses configured P2P
+magic/version, but persistent state receives only the proof-of-work limit and
+Genesis header, while the runtime receives manager and protocol version as
+separate arguments. The startup `network_id` log is not a persisted identity
+binding. The persistent header store
 currently binds its metadata to schema version, proof-of-work limit, and the
 configured genesis hash, and active UTXO records are cross-checked against the
 replayed header DAG. However, the persisted identity does not include the
