@@ -673,6 +673,9 @@ after checking that each historical header's hash and parent commitment match
 the persisted active-chain index. Regression coverage corrupts a known input's
 creation MTP and separately tampers with a historical header while forging the
 matching undo value; both cases must fail without changing active state.
-This does not authenticate bootstrap outputs or prove complete UTXO replay;
-bootstrap provenance, full undo metadata provenance, crash recovery,
-adversarial testing, and independent review remain open.
+The same authenticated-header and creation-MTP checks now run in direct
+tip disconnection, not only in the reorganization path; a regression corrupts
+a known spent output's undo MTP and verifies that disconnect leaves active
+state unchanged. This does not authenticate bootstrap outputs or prove
+complete UTXO replay; bootstrap provenance, full undo metadata provenance,
+crash recovery, adversarial testing, and independent review remain open.
