@@ -316,8 +316,27 @@ class PeerConnectionTests(unittest.IsolatedAsyncioTestCase):
         expected_bytes = 24 + (3 * len(payload))
         self.assertEqual((peer_budget.items_in_use, peer_budget.bytes_in_use), (1, expected_bytes))
         self.assertEqual((node_budget.items_in_use, node_budget.bytes_in_use), (1, expected_bytes))
+        await peer.close()
+        self.assertEqual((peer_budget.items_in_use, peer_budget.bytes_in_use), (1, expected_bytes))
+        self.assertEqual((node_budget.items_in_use, node_budget.bytes_in_use), (1, expected_bytes))
         finish_handler.set()
         await task
+        self.assertEqual((peer_budget.items_in_use, peer_budget.bytes_in_use), (0, 0))
+        self.assertEqual((node_budget.items_in_use, node_budget.bytes_in_use), (0, 0))
+
+
+    async def test_close_releases_decoded_message_not_yet_dispatched(self):
+        reader = asyncio.StreamReader()
+        reader.feed_data(encode_message(MAGIC, "headers", b"payload"))
+        peer_budget = ResourceBudget(max_items=1, max_bytes=128, name="peer-recv")
+        node_budget = ResourceBudget(max_items=1, max_bytes=128, name="node-recv")
+        peer = PeerConnection(
+            reader, FakeWriter(), magic=MAGIC, local_version=version(404),
+            receive_resource_budgets=(peer_budget, node_budget),
+        )
+        await peer._read_message()
+        self.assertEqual(peer_budget.items_in_use, 1)
+        await peer.close()
         self.assertEqual((peer_budget.items_in_use, peer_budget.bytes_in_use), (0, 0))
         self.assertEqual((node_budget.items_in_use, node_budget.bytes_in_use), (0, 0))
 
