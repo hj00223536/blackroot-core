@@ -1219,5 +1219,46 @@ store.apply(tx)
         self.store.verify_integrity()
 
 
+    def test_reorganization_rejects_unrelated_spent_undo_record(self):
+        from src.blackroot_blocks import Block, COINBASE_INDEX
+        from src.blackroot_chain import BlockHeader
+        from src.blackroot_consensus import block_subsidy
+        from src.blackroot_transactions import merkle_root
+
+        def make_block(parent_hash, height, timestamp, nonce):
+            coinbase = Transaction(
+                1,
+                (TxInput(OutPoint(bytes(32), COINBASE_INDEX), bytes((nonce, 1))),),
+                (TxOutput(block_subsidy(height), b"spent-undo-guard"),),
+            )
+            header = BlockHeader(
+                1, parent_hash, merkle_root((coinbase.txid,)),
+                timestamp, 0x207fffff, nonce,
+            )
+            return Block(header, (coinbase,))
+
+        genesis = make_block(bytes(32), 0, 1, 1)
+        old_tip = make_block(genesis.header.hash, 1, 2, 2)
+        self.store.connect_block(genesis, 0)
+        self.store.connect_block(old_tip, 1)
+        replacement = make_block(genesis.header.hash, 1, 3, 3)
+        before_tip = self.store.tip()
+        before_count = self.store.count()
+
+        with _managed_sqlite(self.db_path) as db:
+            db.execute(
+                "INSERT INTO block_undo_spent(height, txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp) "
+                "VALUES(1, ?, 0, 1, ?, 0, 0, NULL)",
+                (bytes.fromhex("de" * 32), b"forged"),
+            )
+
+        with self.assertRaisesRegex(RuntimeError, "undo-spent records do not match"):
+            self.store.reorganize((old_tip.header.hash,), (replacement,))
+
+        self.assertEqual(self.store.tip(), before_tip)
+        self.assertEqual(self.store.count(), before_count)
+        self.store.verify_integrity()
+
+
 if __name__ == "__main__":
     unittest.main()
