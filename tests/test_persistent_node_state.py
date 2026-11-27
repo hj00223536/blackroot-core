@@ -694,5 +694,58 @@ class PersistentNodeStateTests(unittest.TestCase):
             self.state()
 
 
+    def test_locked_lifecycle_excludes_second_owner_and_releases_on_close(self):
+        data_dir = self.root / "locked-node"
+        database = data_dir / "node.sqlite"
+        state = PersistentNodeState.open_locked(
+            data_dir,
+            database,
+            POW_LIMIT,
+            self.genesis_block.header,
+            adjusted_time_provider=lambda: 1_000_000,
+        )
+        self.assertTrue(state.coordinated)
+        self.assertTrue(state._data_directory_lock.is_held)
+        with self.assertRaisesRegex(RuntimeError, "another BLACKROOT node"):
+            PersistentNodeState.open_locked(
+                data_dir,
+                database,
+                POW_LIMIT,
+                self.genesis_block.header,
+                adjusted_time_provider=lambda: 1_000_000,
+            )
+        state.close()
+        state.close()  # idempotent release
+        self.assertIsNone(state._data_directory_lock)
+
+        reopened = PersistentNodeState.open_locked(
+            data_dir,
+            database,
+            POW_LIMIT,
+            self.genesis_block.header,
+            adjusted_time_provider=lambda: 1_000_000,
+        )
+        try:
+            self.assertTrue(reopened._data_directory_lock.is_held)
+            self.assertIsNone(reopened.utxos.tip())
+        finally:
+            reopened.close()
+
+    def test_locked_lifecycle_rejects_database_outside_locked_directory(self):
+        data_dir = self.root / "locked-node"
+        outside = self.root / "outside.sqlite"
+        with self.assertRaisesRegex(ValueError, "directly inside the data directory"):
+            PersistentNodeState.open_locked(
+                data_dir,
+                outside,
+                POW_LIMIT,
+                self.genesis_block.header,
+                adjusted_time_provider=lambda: 1_000_000,
+            )
+        self.assertFalse(data_dir.exists())
+        self.assertFalse(outside.exists())
+
+
+
 if __name__ == "__main__":
     unittest.main()
