@@ -1168,5 +1168,56 @@ store.apply(tx)
         self.store.verify_integrity()
 
 
+    def test_reorganization_rejects_missing_created_undo_without_mutation(self):
+        from src.blackroot_blocks import Block, COINBASE_INDEX
+        from src.blackroot_chain import BlockHeader
+        from src.blackroot_consensus import block_subsidy
+        from src.blackroot_transactions import merkle_root
+
+        def make_block(parent_hash, height, timestamp, nonce):
+            coinbase = Transaction(
+                1,
+                (TxInput(OutPoint(bytes(32), COINBASE_INDEX), bytes((nonce, 1))),),
+                (TxOutput(block_subsidy(height), b"undo-guard-miner"),),
+            )
+            header = BlockHeader(
+                1, parent_hash, merkle_root((coinbase.txid,)),
+                timestamp, 0x207fffff, nonce,
+            )
+            return Block(header, (coinbase,))
+
+        genesis = make_block(bytes(32), 0, 1, 1)
+        old_tip = make_block(genesis.header.hash, 1, 2, 2)
+        self.store.connect_block(genesis, 0)
+        self.store.connect_block(old_tip, 1)
+        original_output = OutPoint(old_tip.transactions[0].txid, 0)
+        original_tip = self.store.tip()
+        original_count = self.store.count()
+
+        replacement = make_block(genesis.header.hash, 1, 3, 3)
+        with _managed_sqlite(self.db_path) as db:
+            db.execute(
+                "DELETE FROM block_undo_created WHERE height=1 AND txid=? AND output_index=0",
+                (old_tip.transactions[0].txid,),
+            )
+
+        with self.assertRaisesRegex(RuntimeError, "undo-created records do not match"):
+            self.store.reorganize((old_tip.header.hash,), (replacement,))
+
+        self.assertEqual(self.store.tip(), original_tip)
+        self.assertEqual(self.store.count(), original_count)
+        self.assertIsNotNone(self.store.get(original_output))
+        self.assertIsNone(
+            self.store.get(OutPoint(replacement.transactions[0].txid, 0))
+        )
+
+        with _managed_sqlite(self.db_path) as db:
+            db.execute(
+                "INSERT INTO block_undo_created(height, txid, output_index) VALUES(1, ?, 0)",
+                (old_tip.transactions[0].txid,),
+            )
+        self.store.verify_integrity()
+
+
 if __name__ == "__main__":
     unittest.main()
