@@ -185,13 +185,18 @@ class MultiPeerReorganizationSync:
         self, peers: Mapping[object, object], timeout: float, *, now: float | None = None
     ) -> dict[bytes, object]:
         """Reassign timed-out fork bodies to currently connected peers."""
-        expired = self.expire_requests(timeout, now=now)
+        current = time.monotonic() if now is None else now
+        expired = self.expire_requests(timeout, now=current)
         retried = {}
         for block_hash in expired:
-            available = [
-                peer_id for peer_id, peer in peers.items()
-                if getattr(peer, "connected", False)
-            ]
+            previous_peer = self.pool.assigned_peer(block_hash)
+            if previous_peer is not None:
+                self._tried_peers.setdefault(block_hash, set()).add(previous_peer)
+            available = self._available_peers(block_hash, peers)
+            if not available:
+                # Keep the timed-out request eligible for a later timer tick.
+                self._requested_at[block_hash] = current
+                continue
             peer_id = self.pool.assign(block_hash, available)
             try:
                 await peers[peer_id].send(
@@ -199,9 +204,11 @@ class MultiPeerReorganizationSync:
                     encode_inventory([InventoryVector(INV_TYPE_BLOCK, block_hash)]),
                 )
             except Exception:
+                self._tried_peers.setdefault(block_hash, set()).add(peer_id)
                 self.pool.cancel(block_hash)
+                self._requested_at[block_hash] = current
                 raise
-            self._requested_at[block_hash] = time.monotonic()
+            self._requested_at[block_hash] = current
             retried[block_hash] = peer_id
         return retried
 
@@ -214,6 +221,7 @@ class MultiPeerReorganizationSync:
             if self.pool.assigned_peer(item.item_hash) != peer_id:
                 continue
             if self.pool.cancel(item.item_hash):
+                self._tried_peers.setdefault(item.item_hash, set()).add(peer_id)
                 self._requested_at.pop(item.item_hash, None)
                 released.append(item.item_hash)
         return tuple(released)
@@ -228,10 +236,9 @@ class MultiPeerReorganizationSync:
                 continue
             if self.pool.assigned_peer(block_hash) is not None:
                 continue
-            available = [
-                peer_id for peer_id, peer in peers.items()
-                if getattr(peer, "connected", False)
-            ]
+            available = self._available_peers(block_hash, peers)
+            if not available:
+                continue
             peer_id = self.pool.assign(block_hash, available)
             try:
                 await peers[peer_id].send(
@@ -250,4 +257,9 @@ class MultiPeerReorganizationSync:
         released = self.pool.release_peer(peer_id)
         for block_hash in released:
             self._requested_at.pop(block_hash, None)
+            tried = self._tried_peers.get(block_hash)
+            if tried is not None:
+                tried.discard(peer_id)
+                if not tried:
+                    self._tried_peers.pop(block_hash, None)
         return released
