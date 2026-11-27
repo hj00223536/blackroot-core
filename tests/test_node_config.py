@@ -48,6 +48,12 @@ class TestnetConfigTests(unittest.TestCase):
         self.assertEqual(manager.local_version.protocol_version, 1)
         self.assertEqual(manager.max_peers, 4)
 
+    def test_protocol_version_and_payload_respect_p2p_bounds(self):
+        with self.assertRaisesRegex(ValueError, "positive int32"):
+            config(protocol_version=0x80000000)
+        with self.assertRaisesRegex(ValueError, "P2P implementation limit"):
+            config(max_payload=0xFFFFFFFF)
+
     def test_genesis_hash_must_match_header(self):
         with self.assertRaisesRegex(ValueError, "does not match"):
             config(genesis_hash=bytes(32))
