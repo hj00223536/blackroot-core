@@ -423,3 +423,7 @@ The requirements proposal in `docs/external-release-policy-pin-distribution-prop
 ### Trust-state lifecycle integration review
 
 `docs/trust-state-implementation-readiness-review.md` records a bounded source review. The existing POSIX data-directory lock is not mandatory in `PersistentNodeState`, and the SQLite transaction coordinator does not acquire it. Neither component supplies external pin authentication or snapshot rollback resistance. Mandatory lock ownership, external policy authentication/freshness, transactional acceptance, restore-old-backup rejection, and crash/fault tests remain OPEN. Do not treat the existing primitives as a completed trust-state implementation.
+
+### Mandatory node data-directory lock adoption
+
+An opt-in `PersistentNodeState.open_locked(...)` lifecycle entry point has been added to hold `DataDirectoryLock` for the coordinated node-state lifetime, with focused tests for exclusivity and release. This does not yet close the gate: legacy constructors and `open_coordinated()` remain callable without the lock. Audit and migrate every production CLI/service/startup path to the locked entry point, reject bypasses in production mode, and pass CI plus process-level fault tests before treating single-process data-directory ownership as enforced. POSIX advisory locking does not prevent privileged local modification or backup rollback.
