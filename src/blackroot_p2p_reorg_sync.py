@@ -85,7 +85,16 @@ class MultiPeerReorganizationSync:
     async def request_missing_bodies(self, peers: Mapping[object, object]) -> dict[bytes, object]:
         """Request all currently missing bodies; return hash-to-peer assignments."""
         requested = {}
-        for block_hash in self.missing_best_branch_bodies():
+        missing = self.missing_best_branch_bodies()
+        wanted = set(missing)
+        # Header selection can change while old fork requests are outstanding.
+        # Release work that no longer belongs to the selected best branch so
+        # obsolete downloads cannot consume the bounded global/per-peer budget.
+        for pending_hash in self.pool.pending_hashes:
+            if pending_hash not in wanted:
+                self.pool.cancel(pending_hash)
+                self._requested_at.pop(pending_hash, None)
+        for block_hash in missing:
             # Header announcements and inventory messages can both trigger
             # this method. Keep the shared pool idempotent instead of assigning
             # the same body twice.
