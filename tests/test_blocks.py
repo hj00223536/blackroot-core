@@ -268,6 +268,37 @@ class BlockValidationTests(unittest.TestCase):
 
         self.assertEqual(self.parent, original_parent)
 
+    def test_rejects_duplicate_transaction_id_before_state_changes(self):
+        spend = signed_spend(self.funding, self.previous_output)
+        coinbase = make_coinbase(1)
+        block = make_block([coinbase, spend, spend])
+        original_parent = dict(self.parent)
+
+        with self.assertRaisesRegex(ValueError, "duplicate transaction ids"):
+            validate_block_transactions(block, self.parent, 1)
+
+        self.assertEqual(self.parent, original_parent)
+
+    def test_rejects_merkle_mutation_from_explicit_duplicate_last_transaction(self):
+        spend_a = signed_spend(self.funding, self.previous_output)
+        spend_b = signed_spend(
+            self.funding, self.previous_output, private_key=2,
+            output_script=b"alternate",
+        )
+        coinbase = make_coinbase(1)
+        ordinary = make_block([coinbase, spend_a, spend_b])
+        mutated = make_block([coinbase, spend_a, spend_b, spend_b])
+
+        # Odd-leaf duplication makes these roots equal; the block-level
+        # duplicate-txid rule must reject the explicitly repeated transaction.
+        self.assertEqual(
+            ordinary.header.merkle_root, mutated.header.merkle_root
+        )
+        original_parent = dict(self.parent)
+        with self.assertRaisesRegex(ValueError, "duplicate transaction ids"):
+            validate_block_transactions(mutated, self.parent, 1)
+        self.assertEqual(self.parent, original_parent)
+
     def test_rejects_missing_coinbase_first(self):
         spend = Transaction(1, (TxInput(self.funding),), (TxOutput(9_000, b"pay"),))
         with self.assertRaisesRegex(ValueError, "first transaction"):
