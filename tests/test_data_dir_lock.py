@@ -35,6 +35,17 @@ class DataDirectoryLockTests(unittest.TestCase):
                 DataDirectoryLock(root).acquire()
             self.assertEqual(target.read_text(), "do not modify")
 
+    def test_new_data_directory_is_created_with_private_permissions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "nested" / "node-data"
+            lock = DataDirectoryLock(root).acquire()
+            try:
+                self.assertTrue(lock.is_held)
+                self.assertEqual(os.stat(root).st_mode & 0o777, 0o700)
+                self.assertTrue((root / ".blackroot-node.lock").is_file())
+            finally:
+                lock.release()
+
     def test_rejects_group_or_world_accessible_data_directory(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "node-data"
