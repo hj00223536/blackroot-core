@@ -1092,13 +1092,21 @@ store.apply(tx)
             db.execute(
                 "UPDATE block_transactions SET position=2 WHERE height=0 AND position=3"
             )
-            for position, tx in enumerate(reordered):
-                if position:
-                    db.execute(
-                        "UPDATE block_transactions SET txid=?, raw_transaction=? "
-                        "WHERE height=0 AND position=?",
-                        (tx.txid, tx.serialize(), position),
-                    )
+            db.execute(
+                "UPDATE block_transactions SET txid=?, raw_transaction=? "
+                "WHERE height=0 AND position=1",
+                (bytes.fromhex("ff" * 32), first.serialize()),
+            )
+            db.execute(
+                "UPDATE block_transactions SET txid=?, raw_transaction=? "
+                "WHERE height=0 AND position=2",
+                (first.txid, first.serialize()),
+            )
+            db.execute(
+                "UPDATE block_transactions SET txid=?, raw_transaction=? "
+                "WHERE height=0 AND position=1",
+                (second.txid, second.serialize()),
+            )
             db.execute(
                 "UPDATE blocks SET header=?, block_hash=? WHERE height=0",
                 (altered_header.serialize(), altered_header.hash),
