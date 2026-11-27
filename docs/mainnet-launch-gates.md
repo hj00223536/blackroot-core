@@ -599,3 +599,6 @@ admission/resource-policy gate or authorize public listener exposure.
 Per-peer send/receive budget factories and PeerConnection construction are now inside the same socket-ownership cleanup boundary as callback and queue setup. Any setup exception closes the accepted socket and removes/closes a partially registered application queue. The synchronous inbound accept callback records ordinary setup/registration exceptions in bounded manager error history and closes the socket rather than leaking an unhandled callback exception. Focused regressions cover raising/invalid budget factories and inbound setup failure.
 
 This is not a production P2P admission or resource ceiling. It does not bound kernel backlog, connection rate, aggregate descriptors, memory, tasks, or CPU, and does not authorize public listener exposure. CI must pass on the exact candidate commit; stress testing and independent review remain required.
+
+
+Peer tracking now rolls back the managed-peer entry and closes the socket if asyncio task creation fails after peer construction; the unsubmitted coroutine is explicitly closed. A focused regression verifies socket closure and empty peer/task registries. This is a local failure-containment safeguard only; node-wide task ceilings and P2P stress/security gates remain OPEN.
