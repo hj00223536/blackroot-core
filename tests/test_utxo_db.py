@@ -907,5 +907,95 @@ store.apply(tx)
         self.store.verify_integrity()
 
 
+    def test_verify_integrity_rejects_missing_and_corrupt_known_spent_undo(self):
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import ec, utils
+        from src.blackroot_blocks import Block, COINBASE_INDEX
+        from src.blackroot_chain import BlockHeader
+        from src.blackroot_consensus import block_subsidy
+        from src.blackroot_script import _hash160, _push, legacy_sighash_all, p2pkh_script, N
+        from src.blackroot_transactions import merkle_root
+
+        private_key = ec.derive_private_key(11, ec.SECP256K1())
+        pubkey = private_key.public_key().public_bytes(
+            serialization.Encoding.X962,
+            serialization.PublicFormat.CompressedPoint,
+        )
+        locking_script = p2pkh_script(_hash160(pubkey))
+        funding = OutPoint(bytes.fromhex("42" * 32), 0)
+        self.store.add_genesis_output(funding, TxOutput(900, locking_script))
+
+        def signed_spend(previous, amount):
+            unsigned = Transaction(1, (TxInput(previous),), (TxOutput(amount, locking_script),))
+            digest = legacy_sighash_all(unsigned, 0, locking_script)
+            der = private_key.sign(digest, ec.ECDSA(utils.Prehashed(hashes.SHA256())))
+            r_value, s_value = utils.decode_dss_signature(der)
+            if s_value > N // 2:
+                s_value = N - s_value
+            signature = utils.encode_dss_signature(r_value, s_value) + b"\\x01"
+            return Transaction(
+                1, (TxInput(previous, _push(signature) + _push(pubkey)),), unsigned.outputs
+            )
+
+        def make_block(previous_hash, height, transactions):
+            coinbase = Transaction(
+                1,
+                (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
+                (TxOutput(block_subsidy(height) + (100 if height == 1 else 10 if height == 2 else 0), b"miner"),),
+            )
+            all_transactions = (coinbase,) + tuple(transactions)
+            header = BlockHeader(
+                1, previous_hash, merkle_root(tx.txid for tx in all_transactions),
+                height + 1, 0x207fffff, 0,
+            )
+            return Block(header, all_transactions)
+
+        genesis = make_block(bytes(32), 0, ())
+        self.store.connect_block(genesis, 0)
+        first_spend = signed_spend(funding, 800)
+        block_one = make_block(genesis.header.hash, 1, (first_spend,))
+        self.store.connect_block(block_one, 1)
+
+        second_spend = signed_spend(OutPoint(first_spend.txid, 0), 790)
+        block_two = make_block(block_one.header.hash, 2, (second_spend,))
+        self.store.connect_block(block_two, 2)
+
+        with _managed_sqlite(self.db_path) as db:
+            original = db.execute(
+                "SELECT value, script_pubkey, created_height, is_coinbase, created_mtp "
+                "FROM block_undo_spent WHERE height=2 AND txid=? AND output_index=0",
+                (first_spend.txid,),
+            ).fetchone()
+        self.assertIsNotNone(original)
+
+        with _managed_sqlite(self.db_path) as db:
+            db.execute(
+                "DELETE FROM block_undo_spent WHERE height=2 AND txid=? AND output_index=0",
+                (first_spend.txid,),
+            )
+        with self.assertRaisesRegex(RuntimeError, "missing historical inputs"):
+            self.store.verify_integrity()
+
+        with _managed_sqlite(self.db_path) as db:
+            db.execute(
+                "INSERT INTO block_undo_spent(height, txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp) "
+                "VALUES(2, ?, 0, ?, ?, ?, ?, ?)",
+                (first_spend.txid, *original),
+            )
+            db.execute(
+                "UPDATE block_undo_spent SET value=value+1 WHERE height=2 AND txid=? AND output_index=0",
+                (first_spend.txid,),
+            )
+        with self.assertRaisesRegex(RuntimeError, "does not match its source output"):
+            self.store.verify_integrity()
+
+        with _managed_sqlite(self.db_path) as db:
+            db.execute(
+                "UPDATE block_undo_spent SET value=? WHERE height=2 AND txid=? AND output_index=0",
+                (original[0], first_spend.txid),
+            )
+        self.store.verify_integrity()
+
+
 if __name__ == "__main__":
     unittest.main()
