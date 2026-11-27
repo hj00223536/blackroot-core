@@ -308,7 +308,7 @@ class PeerConnectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((command, received), ("headers", payload))
         task = asyncio.create_task(peer.handle_message(command, received))
         await handler_started.wait()
-        expected_bytes = 24 + len(payload)
+        expected_bytes = 24 + (3 * len(payload))
         self.assertEqual((peer_budget.items_in_use, peer_budget.bytes_in_use), (1, expected_bytes))
         self.assertEqual((node_budget.items_in_use, node_budget.bytes_in_use), (1, expected_bytes))
         finish_handler.set()
