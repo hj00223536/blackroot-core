@@ -307,12 +307,13 @@ This detects SQLite structural problems and invalid persisted header records. It
 ### Retry source rotation and offline recovery
 
 Fork-body requests remember peers that timed out, returned `notfound`, or
-supplied an invalid body. A retry prefers a different connected peer; after
-every currently connected peer has been tried, the source set is reset for a
-new attempt cycle so a temporarily small peer set cannot permanently stall
-synchronization. If no peer is connected when a request expires, its retry
-deadline is retained and the runtime's supervised timer can retry after a
-connection returns. Failed sends and rejected bodies also retain a retry
+supplied an invalid body. A retry prefers a different connected peer and does not repeatedly select a
+peer already known to have timed out, returned `notfound`, or supplied an
+invalid body. If no untried peer is currently connected, the request remains
+queued until a new eligible peer becomes available. Disconnect cleanup removes
+the disconnected session from the per-request exclusion set. If no peer is
+connected when a request expires, its retry deadline is retained and the
+runtime's supervised timer can retry after a connection returns. Failed sends and rejected bodies also retain a retry
 deadline rather than silently dropping the block request. This is bounded by
 the request pool's pending-request limit; it is not a permanent peer ban,
 reputation score, exponential backoff, or Sybil defense.
