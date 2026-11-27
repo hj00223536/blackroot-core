@@ -177,6 +177,69 @@ class PeerManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.server_manager.listening)
         self.assertEqual(self.server_manager.peer_count, 0)
 
+    async def test_unexpected_peer_failure_is_recorded_and_peer_is_removed(self):
+        class FailingPeer:
+            closed = False
+
+            async def run(self):
+                raise RuntimeError("unexpected handler failure")
+
+            async def close(self):
+                self.closed = True
+
+        reported = []
+
+        def on_error(error):
+            reported.append(error)
+
+        self.server_manager.on_peer_error = on_error
+        peer = FailingPeer()
+        task = self.server_manager._track(peer)
+        task_ref = next(iter(self.server_manager._tasks))
+        await asyncio.wait_for(asyncio.gather(task_ref), timeout=1)
+
+        self.assertTrue(peer.closed)
+        self.assertEqual(self.server_manager.peer_count, 0)
+        self.assertEqual(len(reported), 1)
+        self.assertIsInstance(reported[0], RuntimeError)
+        self.assertEqual(len(self.server_manager.background_errors), 1)
+
+    async def test_callback_failures_do_not_skip_peer_cleanup(self):
+        class FailingPeer:
+            closed = False
+
+            async def run(self):
+                raise ValueError("peer run failed")
+
+            async def close(self):
+                self.closed = True
+
+        def broken_error_callback(error):
+            raise RuntimeError("error callback failed")
+
+        def broken_disconnect_callback(peer):
+            raise LookupError("disconnect callback failed")
+
+        self.server_manager.on_peer_error = broken_error_callback
+        self.server_manager.on_peer_disconnected = broken_disconnect_callback
+        peer = FailingPeer()
+        self.server_manager._track(peer)
+        task = next(iter(self.server_manager._tasks))
+        await asyncio.wait_for(asyncio.gather(task), timeout=1)
+
+        self.assertTrue(peer.closed)
+        self.assertEqual(self.server_manager.peer_count, 0)
+        self.assertEqual(
+            [type(error) for error in self.server_manager.background_errors],
+            [ValueError, RuntimeError, LookupError],
+        )
+
+    async def test_background_error_history_is_bounded(self):
+        for index in range(105):
+            self.server_manager._background_errors.append(RuntimeError(str(index)))
+        self.assertEqual(len(self.server_manager.background_errors), 100)
+        self.assertEqual(str(self.server_manager.background_errors[0]), "5")
+
 
 if __name__ == "__main__":
     unittest.main()
