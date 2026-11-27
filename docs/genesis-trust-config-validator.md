@@ -42,6 +42,8 @@ The test public key is RFC 8032 published test material only. It is not an owner
 
 ## Required next gates
 
+0. Implement and independently review the rollback-resistant persistence design in `docs/genesis-trust-state-persistence-design.md`; do not treat local storage as an external trust anchor.
+
 1. Independently review the schema, canonicalization, domain separation, and rollback semantics.
 2. Define and secure the external release-policy pin distribution and update procedure.
 3. Define quorum/separation-of-duties, key activation and revocation effective times, and recovery independent of a potentially compromised key.
