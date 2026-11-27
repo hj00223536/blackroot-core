@@ -4,7 +4,7 @@ import unittest
 
 from src.blackroot_p2p import encode_message
 from src.blackroot_p2p_handshake import VersionMessage, encode_version
-from src.blackroot_p2p_resources import ResourceBudget
+from src.blackroot_p2p_resources import ResourceBudget, reserve_resources
 from src.blackroot_p2p_transport import (
     PeerConnection,
     PeerProtocolError,
@@ -263,6 +263,75 @@ class PeerConnectionTests(unittest.IsolatedAsyncioTestCase):
         )
         with self.assertRaises(ValueError):
             await peer.send("INVALID COMMAND", b"x")
+        self.assertEqual((peer_budget.items_in_use, peer_budget.bytes_in_use), (0, 0))
+        self.assertEqual((node_budget.items_in_use, node_budget.bytes_in_use), (0, 0))
+
+
+    async def test_receive_budget_rejects_before_payload_body_read(self):
+        reader = asyncio.StreamReader()
+        frame = encode_message(MAGIC, "headers", b"abc")
+        reader.feed_data(frame[:24] + frame[24:])
+        peer_budget = ResourceBudget(max_items=1, max_bytes=64, name="peer-recv")
+        node_budget = ResourceBudget(max_items=1, max_bytes=64, name="node-recv")
+        blocker = reserve_resources(((node_budget, 1, 64),))
+        peer = PeerConnection(
+            reader, FakeWriter(), magic=MAGIC, local_version=version(401),
+            receive_resource_budgets=(peer_budget, node_budget),
+        )
+        with self.assertRaisesRegex(PeerProtocolError, "inbound resource budget exhausted"):
+            await peer._read_message()
+        self.assertEqual(len(reader._buffer), 3)
+        self.assertEqual((peer_budget.items_in_use, peer_budget.bytes_in_use), (0, 0))
+        blocker.release()
+
+    async def test_receive_reservation_is_held_until_async_handler_finishes(self):
+        reader = asyncio.StreamReader()
+        payload = b"payload"
+        frame = encode_message(MAGIC, "headers", payload)
+        reader.feed_data(frame)
+        peer_budget = ResourceBudget(max_items=1, max_bytes=64, name="peer-recv")
+        node_budget = ResourceBudget(max_items=1, max_bytes=64, name="node-recv")
+        handler_started = asyncio.Event()
+        finish_handler = asyncio.Event()
+
+        async def handler(command, received):
+            self.assertEqual((command, received), ("headers", payload))
+            handler_started.set()
+            await finish_handler.wait()
+
+        peer = PeerConnection(
+            reader, FakeWriter(), magic=MAGIC, local_version=version(402),
+            on_message=handler,
+            receive_resource_budgets=(peer_budget, node_budget),
+        )
+        command, received = await peer._read_message()
+        self.assertEqual((command, received), ("headers", payload))
+        task = asyncio.create_task(peer.handle_message(command, received))
+        await handler_started.wait()
+        expected_bytes = 24 + len(payload)
+        self.assertEqual((peer_budget.items_in_use, peer_budget.bytes_in_use), (1, expected_bytes))
+        self.assertEqual((node_budget.items_in_use, node_budget.bytes_in_use), (1, expected_bytes))
+        finish_handler.set()
+        await task
+        self.assertEqual((peer_budget.items_in_use, peer_budget.bytes_in_use), (0, 0))
+        self.assertEqual((node_budget.items_in_use, node_budget.bytes_in_use), (0, 0))
+
+    async def test_receive_cancellation_during_payload_read_releases_reservation(self):
+        reader = asyncio.StreamReader()
+        frame = encode_message(MAGIC, "headers", b"payload")
+        reader.feed_data(frame[:24])
+        peer_budget = ResourceBudget(max_items=1, max_bytes=64, name="peer-recv")
+        node_budget = ResourceBudget(max_items=1, max_bytes=64, name="node-recv")
+        peer = PeerConnection(
+            reader, FakeWriter(), magic=MAGIC, local_version=version(403),
+            receive_resource_budgets=(peer_budget, node_budget),
+        )
+        task = asyncio.create_task(peer._read_message())
+        await asyncio.sleep(0)
+        self.assertEqual(peer_budget.items_in_use, 1)
+        task.cancel()
+        with self.assertRaises(asyncio.CancelledError):
+            await task
         self.assertEqual((peer_budget.items_in_use, peer_budget.bytes_in_use), (0, 0))
         self.assertEqual((node_budget.items_in_use, node_budget.bytes_in_use), (0, 0))
 
