@@ -408,6 +408,23 @@ class UTXOStore:
                     if tx.txid in active_transactions:
                         raise RuntimeError("duplicate transaction ID in active transaction history")
                     active_transactions[tx.txid] = (height, position, tx)
+                expected_created = {
+                    (tx.txid, output_index)
+                    for _position, (_height, _tx_position, tx) in (
+                        (position, active_transactions[bytes(txid)])
+                        for position, txid, _raw in tx_rows
+                    )
+                    for output_index, _output in enumerate(tx.outputs)
+                }
+                recorded_created = {
+                    (bytes(txid), output_index)
+                    for txid, output_index in db.execute(
+                        "SELECT txid, output_index FROM block_undo_created WHERE height=?",
+                        (height,),
+                    ).fetchall()
+                }
+                if recorded_created != expected_created:
+                    raise RuntimeError("persisted block undo-created records do not match active transaction outputs")
                 expected_parent = block_hash
 
             archived_bodies = db.execute(
