@@ -645,3 +645,7 @@ independent security review. The P2P resource gate remains OPEN.
 ### Shared peer transport teardown — OPEN
 
 PeerConnection.close() now creates one retained teardown task shared by concurrent callers and awaited through asyncio.shield(). The writer close and wait_closed() path therefore has one owner; cancellation of one caller does not cancel transport teardown. Focused regressions cover concurrent callers and cancellation followed by a later waiter. Task-creation failure closes the unsubmitted coroutine and performs synchronous writer/reservation cleanup. This is lifecycle hardening only. It does not close the P2P resource-policy gate, provide a measured production profile, or replace independent review.
+
+### Transport teardown task-creation failure retry guard — OPEN
+
+A failure-injection regression now checks that failure to create the retained teardown task does not cause a later close caller to invoke writer.close() again. The first caller records the startup failure, closes the unsubmitted coroutine, attempts synchronous socket closure once, and releases any receive reservation still owned locally. Later callers fail explicitly. This remains narrow lifecycle hardening; P2P resource limits, adversarial stress testing, production deployment policy, and independent review remain OPEN.
