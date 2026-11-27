@@ -997,5 +997,40 @@ store.apply(tx)
         self.store.verify_integrity()
 
 
+    def test_verify_integrity_rejects_active_transaction_merkle_mismatch(self):
+        from src.blackroot_blocks import Block, COINBASE_INDEX
+        from src.blackroot_chain import BlockHeader
+        from src.blackroot_consensus import block_subsidy
+        from src.blackroot_transactions import compact_size, merkle_root
+
+        coinbase = Transaction(
+            1,
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
+            (TxOutput(block_subsidy(0), b"miner"),),
+        )
+        header = BlockHeader(
+            1, bytes(32), merkle_root((coinbase.txid,)),
+            1, 0x207fffff, 0,
+        )
+        block = Block(header, (coinbase,))
+        self.store.connect_block(block, 0)
+
+        with _managed_sqlite(self.db_path) as db:
+            stored_header = bytearray(db.execute(
+                "SELECT header FROM blocks WHERE height=0"
+            ).fetchone()[0])
+            stored_header[36] ^= 1
+            reconstructed = Block.deserialize(
+                bytes(stored_header) + compact_size(1) + coinbase.serialize()
+            )
+            db.execute(
+                "UPDATE blocks SET header=?, block_hash=? WHERE height=0",
+                (bytes(stored_header), reconstructed.header.hash),
+            )
+
+        with self.assertRaisesRegex(RuntimeError, "merkle root"):
+            self.store.verify_integrity()
+
+
 if __name__ == "__main__":
     unittest.main()
