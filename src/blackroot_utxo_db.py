@@ -933,6 +933,54 @@ class UTXOStore:
                 if block_hash != expected_hash:
                     raise ValueError("disconnect hashes must match active tips in tip-first order")
 
+                # Validate the persisted body and positional index before
+                # trusting undo records during a reorganization disconnect.
+                block_record = db.execute(
+                    "SELECT tx_count, prev_hash, header FROM blocks WHERE height=?",
+                    (height,),
+                ).fetchone()
+                if block_record is None:
+                    raise RuntimeError("reorganization active block metadata is missing")
+                expected_tx_count, stored_prev_hash, stored_header = (
+                    block_record[0], bytes(block_record[1]), bytes(block_record[2])
+                )
+                positioned_rows = db.execute(
+                    "SELECT position, txid, raw_transaction FROM block_transactions "
+                    "WHERE height=? ORDER BY position",
+                    (height,),
+                ).fetchall()
+                if len(positioned_rows) != expected_tx_count or not positioned_rows:
+                    raise RuntimeError(
+                        "reorganization transaction count does not match active block metadata"
+                    )
+                if any(row[0] != position for position, row in enumerate(positioned_rows)):
+                    raise RuntimeError("reorganization transaction positions are not contiguous")
+                if len(stored_header) != 80:
+                    raise RuntimeError("reorganization stored block header must be exactly 80 bytes")
+                from .blackroot_transactions import compact_size, merkle_root
+                try:
+                    reconstructed = Block.deserialize(
+                        stored_header + compact_size(len(positioned_rows))
+                        + b"".join(bytes(row[2]) for row in positioned_rows)
+                    )
+                except (TypeError, ValueError) as exc:
+                    raise RuntimeError(
+                        "reorganization active block reconstruction failed"
+                    ) from exc
+                if (
+                    reconstructed.header.hash != block_hash
+                    or reconstructed.header.prev_hash != stored_prev_hash
+                    or merkle_root(tx.txid for tx in reconstructed.transactions)
+                    != reconstructed.header.merkle_root
+                    or any(
+                        tx.txid != bytes(row[1])
+                        for tx, row in zip(reconstructed.transactions, positioned_rows)
+                    )
+                ):
+                    raise RuntimeError(
+                        "reorganization active block header/body commitment is inconsistent"
+                    )
+
                 transaction_rows = db.execute(
                     "SELECT txid, raw_transaction FROM block_transactions "
                     "WHERE height=? ORDER BY position",
