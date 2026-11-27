@@ -533,3 +533,20 @@ parameter set, define trust-anchor/pin distribution and anti-rollback, persist
 the accepted binding without silently rewriting existing databases, and add
 mismatch, downgrade, corruption, and interrupted-migration tests. This is a
 source audit and design requirement, not an implementation or launch approval.
+
+### P2P outbound queue and aggregate payload accounting update
+
+The source audit now records a concrete outbound resource boundary: peer
+frames are encoded before acquiring the per-peer send lock, and the lock does
+not cap concurrent waiting send tasks or retained frame bytes. The receive
+path likewise has per-peer frame/rate limits but no shared node-wide payload
+reservation across peers and callbacks. See
+`docs/p2p-resource-boundary-audit.md`, “Outbound send-queue and pre-lock
+allocation finding”.
+
+This is an audit finding only. No numeric queue, waiter, memory, or drain-time
+limits have been approved; no bounded queue or node-wide reservation has been
+implemented; and no public listener is authorized. Keep the P2P resource gate
+open pending an approved measured profile, implementation, cancellation and
+shutdown accounting tests, adversarial aggregate-load tests, and independent
+security review.
