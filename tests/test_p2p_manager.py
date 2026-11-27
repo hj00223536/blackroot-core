@@ -237,6 +237,75 @@ class PeerManagerConfigurationTests(unittest.TestCase):
 
 
 class PeerManagerTests(unittest.IsolatedAsyncioTestCase):
+    async def test_listener_startup_finishing_after_close_is_closed(self):
+        manager = PeerManager(magic=MAGIC, local_version=version())
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        class FakeServer:
+            sockets = [type("Socket", (), {"getsockname": lambda self: ("127.0.0.1", 12345)})()]
+            closed = False
+            def close(self):
+                self.closed = True
+            async def wait_closed(self):
+                return None
+
+        server = FakeServer()
+
+        async def delayed_start(*args, **kwargs):
+            started.set()
+            await release.wait()
+            return server
+
+        with patch("src.blackroot_p2p_manager.asyncio.start_server", side_effect=delayed_start):
+            starting = asyncio.create_task(manager.start_server())
+            await asyncio.wait_for(started.wait(), timeout=1)
+            await manager.close()
+            release.set()
+            with self.assertRaisesRegex(RuntimeError, "closed during listener startup"):
+                await asyncio.wait_for(starting, timeout=1)
+
+        self.assertTrue(server.closed)
+        self.assertFalse(manager.listening)
+        self.assertIsNone(manager._server)
+
+    async def test_concurrent_listener_startup_is_rejected_without_second_bind(self):
+        manager = PeerManager(magic=MAGIC, local_version=version())
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        class FakeServer:
+            sockets = [type("Socket", (), {"getsockname": lambda self: ("127.0.0.1", 12346)})()]
+            closed = False
+            def close(self):
+                self.closed = True
+            async def wait_closed(self):
+                return None
+
+        server = FakeServer()
+        calls = 0
+
+        async def delayed_start(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            started.set()
+            await release.wait()
+            return server
+
+        with patch("src.blackroot_p2p_manager.asyncio.start_server", side_effect=delayed_start):
+            first = asyncio.create_task(manager.start_server())
+            await asyncio.wait_for(started.wait(), timeout=1)
+            with self.assertRaisesRegex(RuntimeError, "already started or starting"):
+                await manager.start_server()
+            self.assertEqual(calls, 1)
+            release.set()
+            address = await asyncio.wait_for(first, timeout=1)
+
+        self.assertEqual(address, ("127.0.0.1", 12346))
+        self.assertTrue(manager.listening)
+        await manager.close()
+        self.assertTrue(server.closed)
+
     async def asyncSetUp(self):
         self.server_manager = PeerManager(
             magic=MAGIC, local_version=version(), max_peers=2,
