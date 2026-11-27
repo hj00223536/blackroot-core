@@ -72,3 +72,71 @@ but the unbounded configurable peer count and absence of node-wide resource
 budgets leave the P2P resource policy incomplete. Keep this gate open. Do not
 enable public binding or describe the prototype as DoS-resistant until the
 policy, tests, and independent review are complete.
+
+## Additional transport and admission source review
+
+The following details were checked directly in `src/blackroot_p2p_manager.py`
+and `src/blackroot_p2p_transport.py`:
+
+- `PeerManager._load()` counts managed peers plus outbound reservations. Outbound
+  connect reserves a slot before awaiting the socket open; inbound accept checks
+  the same count and immediately closes a connection when the configured cap
+  has been reached. This prevents ordinary concurrent outbound calls from
+  oversubscribing the configured count, but it does not define separate
+  inbound/outbound quotas or a hard implementation ceiling.
+- The listener uses `asyncio.start_server` without an explicit deployment
+  backlog, connection-rate policy, or per-source admission policy. Rejected
+  inbound sockets have already reached the accept callback; this is not a
+  pre-accept resource shield.
+- Each admitted peer gets its own `PeerConnection`, receive task, send lock,
+  and three independent token buckets (control-message count, data-message
+  count, and data bytes). There is no shared manager-level bucket or global
+  work counter. Thus a peer population can multiply the aggregate configured
+  per-peer allowance.
+- The receive loop reads the fixed 24-byte frame header, checks the configured
+  and command-specific payload lengths, charges the peer's rate bucket, and
+  then uses `readexactly(length)`. The full read is wrapped in the handshake
+  or idle timeout. This bounds an individual declared frame and its wait time,
+  but the timeout is not a global concurrency or memory budget.
+- The default frame ceiling is 2,000,000 bytes, and the transport also applies
+  command-specific ceilings for block, headers, inventory, and control frames.
+  These are useful per-frame protections; they do not cap the sum of payloads
+  concurrently resident across peers or messages queued by application tasks.
+- `PeerConnection.send()` serializes writes with an `asyncio.Lock`, writes a
+  complete encoded frame, and awaits `writer.drain()`. The lock serializes
+  actual writer access, but there is no explicit maximum number/bytes of
+  callers waiting to send or a manager-wide pending-write budget.
+- `PeerManager._track()` creates one task per peer and retains it in a set.
+  Peer count indirectly bounds these tasks only by the configurable cap; with
+  no hard cap, task and associated object counts are not bounded by a fixed
+  implementation limit.
+- The current local CLI validates loopback bind hosts before calling the
+  runtime, but `BlackrootNodeRuntime.listen()` and `PeerManager.start_server()`
+  can be called directly with arbitrary host arguments. The loopback rule is
+  therefore a composition-level local-prototype safeguard, not an intrinsic
+  listener security boundary.
+
+These findings are source-level observations, not measurements of peak memory,
+file descriptors, kernel accept queues, or throughput under load. Those require
+instrumented stress and fault tests on the supported deployment platforms.
+
+## Focused test gaps identified
+
+Existing tests cover peer handshakes, configured peer-count admission, rate
+bucket propagation, and bounded background-error history. They do not yet
+prove hard global limits because no node-wide limits exist. Before changing
+code, add tests alongside an approved resource policy for:
+
+1. simultaneous inbound and outbound connection races at each hard quota;
+2. bounded pending handshakes and connection churn, including slow/incomplete
+   headers and version handshakes;
+3. aggregate bytes/messages/work across many individually compliant peers;
+4. bounded pending send calls/bytes with slow readers and blocked drains;
+5. total memory, task, socket, and file-descriptor ceilings under adversarial
+   load, including clean shutdown after overload;
+6. fairness and backpressure so one peer cannot monopolize global capacity.
+
+No numeric policy is selected by this audit. Values must follow documented
+hardware profiles, measured workloads, operator requirements, and independent
+security review; do not infer production-safe defaults from the local testnet
+configuration.
