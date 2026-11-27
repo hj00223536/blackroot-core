@@ -55,6 +55,22 @@ class ReservedMessageQueueTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(MessageQueueClosed):
             queue.put_nowait("inv", b"late", reservation)
 
+    async def test_acknowledgement_releases_reservation_and_gates_next_get(self):
+        budget, reservation = self.make_reservation()
+        queue = ReservedMessageQueue(max_items=2)
+        queue.put_nowait("inv", b"payload", reservation)
+        message = await queue.get()
+        with self.assertRaisesRegex(RuntimeError, "acknowledged"):
+            await queue.get()
+        self.assertFalse(reservation.released)
+        queue.task_done()
+        self.assertTrue(reservation.released)
+        self.assertEqual((budget.items_in_use, budget.bytes_in_use), (0, 0))
+        await queue.join()
+        queue.close()
+        self.assertIsNone(await queue.get())
+        self.assertIsNone(await queue.get())
+
     async def test_close_does_not_release_message_already_owned_by_consumer(self):
         budget, reservation = self.make_reservation()
         queue = ReservedMessageQueue(max_items=1)
