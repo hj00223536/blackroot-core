@@ -75,6 +75,8 @@ See [persistent network identity binding design](persistent-network-identity-bin
 
 ## Bootstrap provenance and deterministic UTXO replay
 
+See [deterministic UTXO replay verification design](deterministic-utxo-replay-design.md) for a proposed read-only reconstruction and comparison workflow. It is design-only: authenticated network identity, approved Genesis inputs, frozen complete consensus rules, implementation, independent client reproduction, and adversarial tests are still absent. The current unauthenticated bootstrap path is explicitly ineligible for deterministic replay.
+
 The source-level findings and required closure work are recorded in [UTXO bootstrap provenance audit](utxo-bootstrap-provenance-audit.md). The current `bootstrap_issued_sats` value is accounting metadata only; it is not a Genesis initialization marker or authenticated issuance evidence. Bootstrap outputs remain outside the active transaction-history index, and the pre-activation `apply()` path does not retain replayable transaction provenance. A successful database integrity check therefore does not prove bootstrap origin or deterministic full UTXO replay. This gate remains OPEN; do not use these paths to initialize a public network or create a founder balance.
 
 ## Genesis issuance authorization gate
