@@ -39,3 +39,7 @@ Before closing this gate:
 ## Follow-up enforcement change
 
 `PersistentNodeState.data_directory_locked` now reports whether its owned lock is currently held. `BlackrootNodeRuntime(..., require_locked_state=True)` rejects an unlocked state before constructing the P2P sync service. The loopback CLI opts into this enforcement mode. Runtime unit tests were added for both rejection of unlocked state and acceptance/release of a properly locked state. This narrows accidental bypass at the CLI/runtime boundary but does not force every external embedding caller to enable the option; the global production composition-root gate remains open.
+
+## Lock-file path hardening follow-up
+
+The lock acquisition now requests `O_NOFOLLOW` where the platform exposes it, converts symlink-loop rejection into a fail-closed error, rejects directory paths, and verifies the opened lock descriptor is a regular file before attempting `flock`. Regression tests cover a symlink to an unrelated file and a directory at the lock-file path. This reduces lock-path redirection and invalid-file risks; it does not replace restrictive data-directory permissions, protection against privileged local tampering, or filesystem-specific review. CI is pending.
