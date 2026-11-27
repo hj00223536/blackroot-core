@@ -243,3 +243,12 @@ header DAG, selected tip, cumulative chainwork, and newly inserted nodes all
 return to their exact pre-batch state. This verifies in-memory rollback for the
 callback failure path only; durable cross-store atomicity remains governed by
 the coordinated storage and recovery requirements above.
+
+### Persistent header admission clock-failure regression
+
+A persistent-store regression now forces the configured adjusted-time provider
+to fail before a candidate header is admitted. It verifies that the live DAG,
+selected tip, cumulative work, and replayed durable header set remain unchanged.
+This covers provider failure before persistence begins; clock synchronization,
+peer-time sampling quality, and production adjusted-time policy remain unresolved
+launch requirements.
