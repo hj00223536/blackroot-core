@@ -334,6 +334,7 @@ class PeerManager:
                 queue = self._application_queues.pop(peer, None)
                 if queue is not None:
                     queue.close()
+                self._application_workers_started.discard(peer)
                 self._peers.discard(peer)
                 if self.on_peer_disconnected is not None:
                     try:
