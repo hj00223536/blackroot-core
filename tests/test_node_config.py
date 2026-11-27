@@ -126,11 +126,18 @@ class TestnetConfigTests(unittest.TestCase):
             '"network_id": "shadow-network", "network_id":',
             1,
         )
+        nested_encoded = json.dumps(raw)
+        nested_encoded = nested_encoded.replace(
+            '"version":',
+            '"version": 99, "version":',
+            1,
+        )
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "testnet.json"
-            path.write_text(encoded, encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "duplicate JSON object key"):
-                TestnetConfig.from_json_file(path)
+            for malformed in (encoded, nested_encoded):
+                path.write_text(malformed, encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "duplicate JSON object key"):
+                    TestnetConfig.from_json_file(path)
 
     def test_json_config_rejects_unknown_and_missing_fields(self):
         settings = config()
