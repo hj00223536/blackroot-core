@@ -224,7 +224,34 @@ class PeerConnectionTests(unittest.IsolatedAsyncioTestCase):
         task.cancel()
         with self.assertRaises(asyncio.CancelledError):
             await task
+        self.assertTrue(writer.closed)
         self.assertEqual((peer_budget.items_in_use, peer_budget.bytes_in_use), (0, 0))
+        self.assertEqual((node_budget.items_in_use, node_budget.bytes_in_use), (0, 0))
+
+
+    async def test_shared_node_budget_bounds_sends_across_peers(self):
+        writer = BlockingWriter()
+        node_budget = ResourceBudget(max_items=1, max_bytes=64, name="shared-node-send")
+        first_peer = PeerConnection(
+            asyncio.StreamReader(), writer, magic=MAGIC, local_version=version(306),
+            send_resource_budgets=(
+                ResourceBudget(max_items=1, max_bytes=64, name="first-peer-send"),
+                node_budget,
+            ),
+        )
+        second_peer = PeerConnection(
+            asyncio.StreamReader(), FakeWriter(), magic=MAGIC, local_version=version(307),
+            send_resource_budgets=(
+                ResourceBudget(max_items=1, max_bytes=64, name="second-peer-send"),
+                node_budget,
+            ),
+        )
+        task = asyncio.create_task(first_peer.send("ping", b"12345678"))
+        await writer.drain_started.wait()
+        with self.assertRaisesRegex(PeerProtocolError, "resource budget exhausted"):
+            await second_peer.send("ping", b"abcdefgh")
+        writer.release_drain.set()
+        await task
         self.assertEqual((node_budget.items_in_use, node_budget.bytes_in_use), (0, 0))
 
     async def test_send_encoding_failure_releases_reserved_capacity(self):
