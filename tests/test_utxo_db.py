@@ -1608,7 +1608,7 @@ store.apply(tx)
 
         replacement = make_block(block_one.header.hash, 2, (), 4)
         with self.assertRaisesRegex(
-            RuntimeError, "does not match prior transaction output"
+            RuntimeError, "prior block header hash or parent commitment is inconsistent"
         ):
             self.store.reorganize((block_two.header.hash,), (replacement,))
 
