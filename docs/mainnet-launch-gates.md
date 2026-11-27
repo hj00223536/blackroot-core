@@ -350,3 +350,11 @@ an earlier transaction position, and the referenced output index must exist.
 Inputs may not resolve to a transaction later in the active chain. This is a
 persistence-consistency check, not a substitute for full script, maturity,
 sequence-lock, or consensus validation during block connection.
+
+
+The active-block persistence audit additionally enforces the structural
+coinbase rule: the first transaction must be the sole coinbase transaction,
+and no later transaction may have the null-prevout coinbase form. This check
+protects the stored transaction ordering audit; it does not independently
+revalidate subsidy limits, coinbase maturity, or the complete block consensus
+rules.
