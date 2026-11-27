@@ -15,6 +15,7 @@ from typing import Callable
 from .blackroot_p2p import DEFAULT_MAX_PAYLOAD
 from .blackroot_p2p_handshake import VersionMessage
 from .blackroot_p2p_transport import MessageHandler, PeerConnection
+from .blackroot_p2p_resources import ResourceBudget
 
 
 class PeerManager:
@@ -42,6 +43,10 @@ class PeerManager:
         data_bytes_per_second: float = 2 * 1024 * 1024,
         data_bytes_burst: float = 4 * 1024 * 1024,
         monotonic_clock: Callable[[], float] | None = None,
+        send_node_budget: ResourceBudget | None = None,
+        send_peer_budget_factory: Callable[[], ResourceBudget] | None = None,
+        receive_node_budget: ResourceBudget | None = None,
+        receive_peer_budget_factory: Callable[[], ResourceBudget] | None = None,
     ) -> None:
         if not isinstance(magic, bytes) or len(magic) != 4:
             raise ValueError("network magic must be exactly four bytes")
@@ -88,6 +93,18 @@ class PeerManager:
                 raise ValueError(f"{name} must be a finite positive number")
         if monotonic_clock is not None and not callable(monotonic_clock):
             raise ValueError("monotonic_clock must be callable")
+        for direction, node_budget, peer_factory in (
+            ("send", send_node_budget, send_peer_budget_factory),
+            ("receive", receive_node_budget, receive_peer_budget_factory),
+        ):
+            if node_budget is not None and not isinstance(node_budget, ResourceBudget):
+                raise TypeError(f"{direction}_node_budget must be a ResourceBudget")
+            if peer_factory is not None and not callable(peer_factory):
+                raise TypeError(f"{direction}_peer_budget_factory must be callable")
+            if (node_budget is None) != (peer_factory is None):
+                raise ValueError(
+                    f"{direction} node budget and peer budget factory must be configured together"
+                )
         if on_message is not None and not callable(on_message):
             raise TypeError("on_message must be callable")
         if on_peer_error is not None and not callable(on_peer_error):
@@ -107,6 +124,10 @@ class PeerManager:
         self.data_bytes_per_second = data_bytes_per_second
         self.data_bytes_burst = data_bytes_burst
         self.monotonic_clock = monotonic_clock
+        self.send_node_budget = send_node_budget
+        self.send_peer_budget_factory = send_peer_budget_factory
+        self.receive_node_budget = receive_node_budget
+        self.receive_peer_budget_factory = receive_peer_budget_factory
         if on_peer_message_factory is not None and not callable(on_peer_message_factory):
             raise TypeError("on_peer_message_factory must be callable")
         self.on_message = on_message
@@ -153,6 +174,18 @@ class PeerManager:
         return replace(self.local_version, nonce=secrets.randbits(64))
 
     def _new_peer(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> PeerConnection:
+        send_budgets = None
+        if self.send_peer_budget_factory is not None:
+            peer_budget = self.send_peer_budget_factory()
+            if not isinstance(peer_budget, ResourceBudget) or peer_budget is self.send_node_budget:
+                raise TypeError("send peer budget factory must return a distinct ResourceBudget")
+            send_budgets = (peer_budget, self.send_node_budget)
+        receive_budgets = None
+        if self.receive_peer_budget_factory is not None:
+            peer_budget = self.receive_peer_budget_factory()
+            if not isinstance(peer_budget, ResourceBudget) or peer_budget is self.receive_node_budget:
+                raise TypeError("receive peer budget factory must return a distinct ResourceBudget")
+            receive_budgets = (peer_budget, self.receive_node_budget)
         peer = PeerConnection(
             reader,
             writer,
@@ -169,6 +202,8 @@ class PeerManager:
             data_message_burst=self.data_message_burst,
             data_bytes_per_second=self.data_bytes_per_second,
             data_bytes_burst=self.data_bytes_burst,
+            send_resource_budgets=send_budgets,
+            receive_resource_budgets=receive_budgets,
             **(
                 {"monotonic_clock": self.monotonic_clock}
                 if self.monotonic_clock is not None
