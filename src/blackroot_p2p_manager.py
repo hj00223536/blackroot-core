@@ -335,6 +335,11 @@ class PeerManager:
         except BaseException:
             coroutine.close()
             self._peers.discard(peer)
+            queue = self._application_queues.pop(peer, None)
+            if queue is not None:
+                queue.close()
+            self._application_worker_tasks.pop(peer, None)
+            self._application_workers_started.discard(peer)
             try:
                 peer.writer.close()
             except Exception:
