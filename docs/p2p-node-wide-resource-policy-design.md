@@ -358,3 +358,10 @@ This remains lifecycle hardening, not a node-wide resource policy. It does not s
 
 
 Peer task registration is now failure-atomic as well: if asyncio task creation fails after a peer is constructed, the manager closes the coroutine object, removes the peer from its managed set, and closes the peer's socket before propagating the exception. A regression injects task-creation failure and checks that no managed peer/task remains and the socket is closed. This guards a local scheduler/setup failure; it does not establish process-wide task limits or production admission policy.
+
+
+## 26. Listener startup versus shutdown
+
+Listener startup is now single-flight within the event loop: a second concurrent start request is rejected while the first bind is pending. If manager shutdown begins while `asyncio.start_server` is awaiting, the eventual listener is closed and awaited rather than being installed after shutdown has already completed. This prevents a late-started inbound listener from surviving a completed manager close. Regression tests exercise both close-during-startup and concurrent-start attempts using a controlled delayed server factory.
+
+This does not set a production bind address, backlog, connection-rate limit, or public exposure policy. Public listening remains disabled pending a reviewed deployment profile and measured node-wide resource policy.
