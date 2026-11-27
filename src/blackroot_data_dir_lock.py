@@ -64,9 +64,19 @@ class DataDirectoryLock:
                 if exc.errno == errno.EISDIR:
                     raise RuntimeError("data-directory lock path must be a regular file") from exc
                 raise
-            if not stat.S_ISREG(os.fstat(fd).st_mode):
+            lock_stat = os.fstat(fd)
+            if not stat.S_ISREG(lock_stat.st_mode):
                 os.close(fd)
                 raise RuntimeError("data-directory lock path must be a regular file")
+            if hasattr(os, "getuid") and lock_stat.st_uid != os.getuid():
+                os.close(fd)
+                raise RuntimeError("data-directory lock file must be owned by the current user")
+            if lock_stat.st_nlink != 1:
+                os.close(fd)
+                raise RuntimeError("data-directory lock file must not have hard-link aliases")
+            if stat.S_IMODE(lock_stat.st_mode) & 0o077:
+                os.close(fd)
+                raise RuntimeError("data-directory lock file permissions must exclude group and other access")
             try:
                 try:
                     fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
