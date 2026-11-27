@@ -54,6 +54,53 @@ class SQLiteBackupRecoveryTests(unittest.TestCase):
             self.assertEqual(restored_body.serialize(), genesis.serialize())
             restored.verify_integrity()
 
+    def test_online_backup_captures_committed_wal_state_while_source_remains_open(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source_path = Path(directory) / "wal-source.sqlite"
+            backup_path = Path(directory) / "wal-backup.sqlite"
+            source = sqlite3.connect(source_path)
+            try:
+                mode = source.execute("PRAGMA journal_mode=WAL").fetchone()[0]
+                self.assertEqual(mode.lower(), "wal")
+                source.execute(
+                    "CREATE TABLE ledger (id INTEGER PRIMARY KEY, amount INTEGER NOT NULL CHECK(amount >= 0))"
+                )
+                source.commit()
+                source.execute("INSERT INTO ledger(id, amount) VALUES(1, 40000000)")
+                source.commit()
+
+                # The source connection remains open and in WAL mode during
+                # backup. The SQLite backup API must include committed frames.
+                self.assertEqual(
+                    source.execute("SELECT amount FROM ledger WHERE id=1").fetchone(),
+                    (40_000_000,),
+                )
+                backup = sqlite3.connect(backup_path)
+                try:
+                    source.backup(backup)
+                    self.assertEqual(
+                        backup.execute("PRAGMA integrity_check").fetchone(),
+                        ("ok",),
+                    )
+                    self.assertEqual(
+                        backup.execute("PRAGMA foreign_key_check").fetchall(),
+                        [],
+                    )
+                    self.assertEqual(
+                        backup.execute("SELECT amount FROM ledger WHERE id=1").fetchone(),
+                        (40_000_000,),
+                    )
+                finally:
+                    backup.close()
+
+                # Backup verification is read-only with respect to the source.
+                self.assertEqual(
+                    source.execute("SELECT amount FROM ledger WHERE id=1").fetchone(),
+                    (40_000_000,),
+                )
+            finally:
+                source.close()
+
     def test_corrupt_backup_is_rejected_without_mutating_source_database(self):
         with tempfile.TemporaryDirectory() as directory:
             source_path = Path(directory) / 'source.sqlite'
