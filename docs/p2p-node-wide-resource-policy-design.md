@@ -202,3 +202,42 @@ configured bound, a slow peer can cause unbounded task/memory growth, a budget
 failure can mutate chain state, or the measured deployment envelope is not
 reproducible. A passing unit suite is not a substitute for adversarial load
 testing or independent review.
+
+## 11. Concrete send/receive reservation contract
+
+This section narrows the implementation contract for the send-queue finding recorded in the source audit. It remains a proposal; it introduces no numeric limits and does not authorize production networking.
+
+### Send path
+
+The implementation must not encode a full frame and then wait on an unaccounted lock. The intended sequence is:
+
+1. Validate command and payload type/length without making a retained frame copy.
+2. Obtain a bounded send-waiter reservation and reserve the exact encoded frame byte count (header plus payload) against both peer and node-wide pending-send budgets. Reject immediately if either reservation fails.
+3. Only after successful reservation, construct or enqueue the frame. The reservation owns the frame until the writer has completed or the operation has failed.
+4. A single writer task per peer drains a bounded queue. Producers do not each wait directly on the stream writer lock. Queue admission and byte reservation must be one cancellation-safe operation with no await between the final capacity check and ownership transfer.
+5. On successful drain, write failure, cancellation before queue ownership, cancellation after queue ownership, peer close, and manager shutdown, release the waiter and byte reservations exactly once. If a producer is cancelled after the writer owns the frame, cancellation must not cause the producer and writer both to release the same reservation.
+6. Define whether cancellation after queue admission cancels the queued frame or merely stops waiting for its result. The choice must preserve protocol ordering and must not silently discard messages whose delivery is required for session correctness.
+
+The queue needs explicit per-peer item and byte limits plus node-wide byte and waiter limits. A count-only queue is insufficient because frame sizes vary. The policy must also define a bounded drain deadline and shutdown deadline; a timeout closes the peer and releases all queue ownership deterministically. Do not rely on asyncio.Lock waiter behavior as a resource bound.
+
+### Receive path and ownership transfer
+
+For inbound data, reserve node-wide and peer receive capacity after validating the fixed header and before reading the declared payload. The reservation must cover the payload while it is read, decoded, and held by the application handler. If decoding or dispatch creates additional retained copies, either avoid those copies or account for them explicitly. Transfer reservation ownership to the handler/queue when dispatch is asynchronous; release only when the last accounted owner finishes, rejects, or is cancelled.
+
+A peer disconnect must not release capacity still owned by a handler task. Conversely, a handler failure must not strand capacity. The node-wide budget must remain effective when many peers each stay below their local allowance.
+
+### Required observable invariants
+
+Tests must prove, not merely inspect counters, that:
+
+- peer and node-wide pending send bytes never exceed configured budgets;
+- peer and node-wide send waiter counts never exceed configured budgets;
+- peer and node-wide receive reservations never exceed configured budgets;
+- failed reservations occur before frame allocation or payload-body reads;
+- all reservation paths release exactly once under cancellation at each await boundary, drain timeout, handler failure, disconnect, and shutdown;
+- queue ordering is preserved for admitted messages;
+- a slow reader cannot cause unbounded retained frames or waiting tasks;
+- a slow handler cannot cause unbounded retained inbound payloads;
+- concurrent peers cannot multiply local allowances beyond global caps.
+
+Use test doubles that deliberately block write drain and handler completion, then release, cancel, or fail them in controlled order. Add property-based state-machine tests for reservation ownership transitions. Follow with instrumented adversarial load tests that record actual retained bytes, tasks, and file descriptors. Unit tests and fake counters alone do not establish a production memory ceiling.
