@@ -914,16 +914,6 @@ class UTXOStore:
                         "DELETE FROM utxos WHERE txid=? AND output_index=?",
                         (txid, index),
                     )
-                current_inputs = set()
-                for position, (_stored_txid, raw_transaction) in enumerate(transaction_rows):
-                    transaction = Transaction.deserialize(bytes(raw_transaction))
-                    if position == 0:
-                        continue
-                    for txin in transaction.inputs:
-                        current_inputs.add(
-                            (txin.previous_output.txid, txin.previous_output.index)
-                        )
-
                 prior_outputs = {}
                 prior_spent = set()
                 prior_rows = db.execute(
