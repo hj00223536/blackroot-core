@@ -308,5 +308,40 @@ class PersistentHeaderStoreTests(unittest.TestCase):
         self.assertIsNone(reopened.chain.node(rejected.hash))
 
 
+    def test_replay_fails_closed_when_persisted_header_bytes_do_not_match_hash(self):
+        store = self.open_store()
+        child = mine(self.genesis.hash, 2)
+        store.add_to_branch(child)
+        with managed_sqlite(sqlite3.connect(self.path)) as db:
+            db.execute(
+                "UPDATE headers SET merkle_root=? WHERE block_hash=?",
+                (bytes([0xA5]) * 32, child.hash),
+            )
+
+        with self.assertRaisesRegex(RuntimeError, "header hash mismatch"):
+            self.open_store()
+
+    def test_reload_corruption_does_not_replace_live_chain(self):
+        store = self.open_store()
+        child = mine(self.genesis.hash, 2)
+        store.add_to_branch(child)
+        before_chain = store.chain
+        before_nodes = tuple(before_chain.nodes)
+        before_tip = before_chain.best_hash
+
+        with managed_sqlite(sqlite3.connect(self.path)) as db:
+            db.execute(
+                "UPDATE headers SET nonce=nonce+1 WHERE block_hash=?",
+                (child.hash,),
+            )
+
+        with self.assertRaisesRegex(RuntimeError, "header hash mismatch"):
+            store.reload()
+
+        self.assertIs(store.chain, before_chain)
+        self.assertEqual(tuple(store.chain.nodes), before_nodes)
+        self.assertEqual(store.chain.best_hash, before_tip)
+
+
 if __name__ == "__main__":
     unittest.main()
