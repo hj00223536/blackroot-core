@@ -6,7 +6,9 @@ while another process may have it open can create split-lock races.
 """
 from __future__ import annotations
 
+import errno
 import os
+import stat
 from pathlib import Path
 
 
@@ -32,7 +34,22 @@ class DataDirectoryLock:
         flags = os.O_CREAT | os.O_RDWR
         if hasattr(os, "O_CLOEXEC"):
             flags |= os.O_CLOEXEC
-        fd = os.open(self.path, flags, 0o600)
+        # Never follow a pre-created symlink at the lock path: otherwise an
+        # attacker with write access to the directory could redirect locking
+        # to an unrelated inode and defeat per-directory ownership.
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        try:
+            fd = os.open(self.path, flags, 0o600)
+        except OSError as exc:
+            if exc.errno == errno.ELOOP:
+                raise RuntimeError(
+                    "data-directory lock path must not be a symbolic link"
+                ) from exc
+            raise
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            os.close(fd)
+            raise RuntimeError("data-directory lock path must be a regular file")
         try:
             try:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
