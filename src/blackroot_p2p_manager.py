@@ -326,14 +326,19 @@ class PeerManager:
             except Exception as callback_error:
                 self._background_errors.append(callback_error)
         finally:
+            queue = self._application_queues.pop(peer, None)
+            if queue is not None:
+                queue.close()
+            worker = self._application_worker_tasks.get(peer)
+            current = asyncio.current_task()
+            if worker is not None and worker is not current:
+                worker.cancel()
+                await asyncio.gather(worker, return_exceptions=True)
             try:
                 await peer.close()
             except Exception as close_error:
                 self._background_errors.append(close_error)
             finally:
-                queue = self._application_queues.pop(peer, None)
-                if queue is not None:
-                    queue.close()
                 self._application_workers_started.discard(peer)
                 self._peers.discard(peer)
                 if self.on_peer_disconnected is not None:
