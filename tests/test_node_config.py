@@ -139,6 +139,16 @@ class TestnetConfigTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "duplicate JSON object key"):
                     TestnetConfig.from_json_file(path)
 
+    def test_json_config_rejects_nonstandard_json_constants(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "testnet.json"
+            path.write_text(
+                '{"network_id":"local","genesis_header":{"version":NaN}}',
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "invalid JSON constant"):
+                TestnetConfig.from_json_file(path)
+
     def test_json_config_rejects_unknown_and_missing_fields(self):
         settings = config()
         header = settings.genesis_header
