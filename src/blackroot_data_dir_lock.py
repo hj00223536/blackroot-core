@@ -19,6 +19,7 @@ class DataDirectoryLock:
         self.data_dir = Path(data_dir).expanduser().resolve()
         self.path = self.data_dir / ".blackroot-node.lock"
         self._fd: int | None = None
+        self._dir_fd: int | None = None
 
     def acquire(self) -> "DataDirectoryLock":
         if self._fd is not None:
@@ -31,42 +32,49 @@ class DataDirectoryLock:
             ) from exc
 
         self.data_dir.mkdir(parents=True, exist_ok=True)
-        flags = os.O_CREAT | os.O_RDWR
+        directory_flags = os.O_RDONLY
+        if hasattr(os, "O_DIRECTORY"):
+            directory_flags |= os.O_DIRECTORY
         if hasattr(os, "O_CLOEXEC"):
-            flags |= os.O_CLOEXEC
-        # Never follow a pre-created symlink at the lock path: otherwise an
-        # attacker with write access to the directory could redirect locking
-        # to an unrelated inode and defeat per-directory ownership.
+            directory_flags |= os.O_CLOEXEC
         if hasattr(os, "O_NOFOLLOW"):
-            flags |= os.O_NOFOLLOW
+            directory_flags |= os.O_NOFOLLOW
+        # Pin the directory inode, then open the lock relative to that descriptor.
+        dir_fd = os.open(self.data_dir, directory_flags)
         try:
-            fd = os.open(self.path, flags, 0o600)
-        except OSError as exc:
-            if exc.errno == errno.ELOOP:
-                raise RuntimeError(
-                    "data-directory lock path must not be a symbolic link"
-                ) from exc
-            if exc.errno == errno.EISDIR:
-                raise RuntimeError(
-                    "data-directory lock path must be a regular file"
-                ) from exc
-            raise
-        if not stat.S_ISREG(os.fstat(fd).st_mode):
-            os.close(fd)
-            raise RuntimeError("data-directory lock path must be a regular file")
-        try:
+            if not stat.S_ISDIR(os.fstat(dir_fd).st_mode):
+                raise RuntimeError("data directory must be a directory")
+            flags = os.O_CREAT | os.O_RDWR
+            if hasattr(os, "O_CLOEXEC"):
+                flags |= os.O_CLOEXEC
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
             try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError as exc:
-                raise RuntimeError(
-                    f"another BLACKROOT node already holds data directory: {self.data_dir}"
-                ) from exc
-            os.ftruncate(fd, 0)
-            os.write(fd, f"pid={os.getpid()}\n".encode("ascii"))
-            os.fsync(fd)
+                fd = os.open(".blackroot-node.lock", flags, 0o600, dir_fd=dir_fd)
+            except OSError as exc:
+                if exc.errno == errno.ELOOP:
+                    raise RuntimeError("data-directory lock path must not be a symbolic link") from exc
+                if exc.errno == errno.EISDIR:
+                    raise RuntimeError("data-directory lock path must be a regular file") from exc
+                raise
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                os.close(fd)
+                raise RuntimeError("data-directory lock path must be a regular file")
+            try:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError as exc:
+                    raise RuntimeError(f"another BLACKROOT node already holds data directory: {self.data_dir}") from exc
+                os.ftruncate(fd, 0)
+                os.write(fd, f"pid={os.getpid()}\\n".encode("ascii"))
+                os.fsync(fd)
+            except BaseException:
+                os.close(fd)
+                raise
         except BaseException:
-            os.close(fd)
+            os.close(dir_fd)
             raise
+        self._dir_fd = dir_fd
         self._fd = fd
         return self
 
@@ -79,6 +87,9 @@ class DataDirectoryLock:
             fcntl.flock(fd, fcntl.LOCK_UN)
         finally:
             os.close(fd)
+            dir_fd, self._dir_fd = self._dir_fd, None
+            if dir_fd is not None:
+                os.close(dir_fd)
 
     def __enter__(self) -> "DataDirectoryLock":
         return self.acquire()
