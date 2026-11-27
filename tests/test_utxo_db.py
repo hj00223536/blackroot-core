@@ -1385,7 +1385,7 @@ store.apply(tx)
             r_value, s_value = utils.decode_dss_signature(der)
             if s_value > N // 2:
                 s_value = N - s_value
-            signature = utils.encode_dss_signature(r_value, s_value) + b"\\x01"
+            signature = utils.encode_dss_signature(r_value, s_value) + b"\x01"
             return Transaction(
                 1, (TxInput(previous, _push(signature) + _push(pubkey)),),
                 unsigned.outputs,
