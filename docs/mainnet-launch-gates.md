@@ -433,3 +433,7 @@ The loopback-only local testnet CLI now uses `PersistentNodeState.open_locked(..
 ### Node entry-point lock audit — gate remains open
 
 A bounded audit is recorded in `docs/node-entrypoint-lock-audit.md`. The local CLI is migrated to `PersistentNodeState.open_locked()`, and the package declares no console-script entry point. However, `PersistentNodeState.__init__()` and `open_coordinated()` remain unlocked compatibility APIs, while `BlackrootNodeRuntime` accepts caller-provided state without requiring lock ownership. Therefore the mandatory process-ownership gate is still OPEN until a supported production composition root rejects unlocked state and is covered by integration tests. This audit does not establish Mainnet readiness.
+
+### Runtime lock enforcement follow-up
+
+`PersistentNodeState.data_directory_locked` exposes current lock ownership. The local CLI opts into `BlackrootNodeRuntime(require_locked_state=True)`; tests cover rejection of unlocked state and acceptance/release of locked state. This narrows accidental bypass at the CLI/runtime boundary, but the enforcement flag remains opt-in for compatibility callers and legacy constructors remain unlocked. The global mandatory process-ownership gate remains OPEN. CI verification is pending.
