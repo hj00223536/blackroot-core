@@ -46,7 +46,6 @@ async def wait_for_peer_handshake(peer, *, timeout: float = 10.0) -> None:
 
 async def run_node(config: TestnetConfig, data_dir: Path, bind_host: str, connect_to: tuple[str, int] | None = None) -> None:
     bind_host = config.validate_bind_host(bind_host)
-    data_dir.mkdir(parents=True, exist_ok=True)
     # The locked lifecycle acquires the process lock before opening SQLite
     # and retains it until PersistentNodeState.close().
     state = None
