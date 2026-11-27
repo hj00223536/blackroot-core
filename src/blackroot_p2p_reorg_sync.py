@@ -87,11 +87,7 @@ class MultiPeerReorganizationSync:
         connected = [peer_id for peer_id, peer in peers.items()
                      if getattr(peer, "connected", False)]
         tried = self._tried_peers.get(block_hash, set())
-        available = [peer_id for peer_id in connected if peer_id not in tried]
-        if not available and connected:
-            self._tried_peers.pop(block_hash, None)
-            available = connected
-        return available
+        return [peer_id for peer_id in connected if peer_id not in tried]
 
     async def request_missing_bodies(self, peers: Mapping[object, object]) -> dict[bytes, object]:
         """Request all currently missing bodies; return hash-to-peer assignments."""
