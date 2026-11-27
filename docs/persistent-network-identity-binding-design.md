@@ -74,6 +74,13 @@ Every rejection test must assert that no database rows, metadata, active tip, UT
 
 This binding does not replace full deterministic UTXO replay, authenticated bootstrap provenance, complete consensus validation, safe backup/restore, race-free descriptor-relative SQLite opening, external security review, legal review, or operational readiness. It does not make the current local testnet CLI a production node.
 
+
+## Compatibility issue found in current prototypes
+
+The current local `TestnetConfig.network_id` accepts an arbitrary non-empty string (the checked-in local example uses a descriptive string such as `blackroot-local-testnet-candidate`). In contrast, the Genesis manifest and trust-configuration validators require `network_id` to be exactly 32 bytes represented as 64 lowercase hexadecimal characters. These are not currently one interoperable network-identity type.
+
+Before any identity-binding implementation, specify one canonical network-ID representation and a versioned migration/compatibility rule. Decide whether human-readable names are separate display labels or part of a structured identity document. Do not silently hash arbitrary strings, truncate values, normalize case, or reinterpret existing identifiers: each such choice changes identity semantics and requires independent vectors and approval. Add tests proving that local config, manifest, trust config, external policy pin, and persistent database all refer to the exact same canonical identity.
+
 ## Approval required before implementation
 
 The owner and independent reviewers must approve the normative identity schema, canonicalization vectors, trust/pin authority and recovery model, migration behavior, and exact implementation scope. No production identity values or keys are supplied by this proposal.
