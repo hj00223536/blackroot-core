@@ -373,3 +373,10 @@ Shutdown now also waits for the in-flight listener-start completion event. This 
 ## 27. Application worker task-creation rollback
 
 `start_application_worker` now treats task creation as part of worker admission. If `asyncio.create_task` fails, it explicitly closes the unsubmitted coroutine and removes the peer's worker-start marker before propagating the error. A regression injects task-creation failure and verifies the marker and worker-task registry remain empty. This prevents a peer from being permanently marked as having a worker when no worker exists. It does not add a global worker/task ceiling or change the opt-in queue policy.
+
+
+## 28. Outbound dial shutdown ownership
+
+PeerManager now retains each in-flight outbound connection-attempt task. Shutdown cancels and joins those dial tasks, then waits for the connect-attempt reservation counter to return to zero before completing teardown. Each connect path removes its retained dial task and releases its admission reservation in `finally`, including cancellation and connection errors. This prevents a manager from reporting shutdown complete while an outbound dial remains pending. A controlled regression blocks `asyncio.open_connection`, starts shutdown, and verifies the dial is cancelled, joined, and its reservation is released.
+
+This is lifecycle cancellation, not an outbound connection-rate policy or a measured descriptor/task ceiling. Connect timeouts and peer-count admission remain implementation behavior, not a reviewed public deployment profile.
