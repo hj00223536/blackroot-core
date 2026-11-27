@@ -1045,6 +1045,38 @@ class UTXOStore:
                             raise RuntimeError("reorganization block history contains a duplicate or prior spend")
                         block_inputs.add(outpoint)
 
+                # Recompute creation MTP for outputs whose source transaction is
+                # present in the persisted active-chain history. MTP belongs to
+                # the source block's parent, not the block that later spends it.
+                prior_header_rows = db.execute(
+                    "SELECT height, header FROM blocks WHERE height<? ORDER BY height",
+                    (height,),
+                ).fetchall()
+                prior_timestamps = {}
+                for prior_header_height, prior_header in prior_header_rows:
+                    prior_header = bytes(prior_header)
+                    if len(prior_header) != 80:
+                        raise RuntimeError("reorganization prior block header must be exactly 80 bytes")
+                    prior_timestamps[prior_header_height] = int.from_bytes(
+                        prior_header[68:72], "little"
+                    )
+                if prior_header_rows and (
+                    len(prior_header_rows) != prior_header_rows[-1][0] + 1
+                    or any(row[0] != index for index, row in enumerate(prior_header_rows))
+                ):
+                    raise RuntimeError("reorganization prior block header history is not contiguous")
+
+                def expected_creation_mtp(source_height):
+                    if source_height == 0:
+                        return None
+                    parent_height = source_height - 1
+                    first_height = max(0, parent_height - 10)
+                    required_heights = range(first_height, parent_height + 1)
+                    if any(item not in prior_timestamps for item in required_heights):
+                        raise RuntimeError("reorganization cannot reconstruct historical creation MTP")
+                    timestamps = sorted(prior_timestamps[item] for item in required_heights)
+                    return timestamps[len(timestamps) // 2]
+
                 spent = db.execute(
                     "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
                     "FROM block_undo_spent WHERE height=?",
