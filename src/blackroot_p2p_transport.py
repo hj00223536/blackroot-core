@@ -330,6 +330,13 @@ async def connect_peer(
     idle_timeout: float = 120.0,
     min_protocol_version: int = 1,
     on_message: MessageHandler | None = None,
+    control_messages_per_second: float = 20.0,
+    control_message_burst: float = 40.0,
+    data_messages_per_second: float = 20.0,
+    data_message_burst: float = 40.0,
+    data_bytes_per_second: float = 2 * 1024 * 1024,
+    data_bytes_burst: float = 4 * 1024 * 1024,
+    monotonic_clock: Callable[[], float] = time.monotonic,
 ) -> PeerConnection:
     """Open one outbound TCP connection and return its configured peer session.
 
@@ -362,4 +369,11 @@ async def connect_peer(
         idle_timeout=idle_timeout,
         min_protocol_version=min_protocol_version,
         on_message=on_message,
+        control_messages_per_second=control_messages_per_second,
+        control_message_burst=control_message_burst,
+        data_messages_per_second=data_messages_per_second,
+        data_message_burst=data_message_burst,
+        data_bytes_per_second=data_bytes_per_second,
+        data_bytes_burst=data_bytes_burst,
+        monotonic_clock=monotonic_clock,
     )
