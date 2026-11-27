@@ -36,7 +36,7 @@ customer funds.
 - [ ] Add independent implementations or cross-client consensus test vectors.
 - [ ] Complete external security review, fuzzing, property tests, fault
   injection, and a public testnet period with documented incident handling.
-- [ ] Establish reproducible builds, signed releases, dependency pinning,
+- [ ] Establish reproducible builds, signed releases, and a reviewed dependency lock that pins every direct and transitive package to exact versions with verified hashes; the broad development constraint in `pyproject.toml` is not a release lock.
   vulnerability response, monitoring, backups, and operational runbooks.
 
 ## Genesis issuance authorization gate
