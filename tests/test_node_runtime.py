@@ -59,6 +59,54 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         await self.runtime.close()
 
+    async def test_runtime_can_require_exclusive_data_directory_lock(self):
+        self.assertFalse(self.state.data_directory_locked)
+        with self.assertRaisesRegex(RuntimeError, "requires persistent state holding the data-directory lock"):
+            BlackrootNodeRuntime(
+                self.state,
+                self.runtime.manager,
+                protocol_version=1,
+                adjusted_time=self.state.headers.adjusted_time_provider,
+                require_locked_state=True,
+            )
+
+    async def test_runtime_accepts_locked_state_when_lock_is_required(self):
+        root = Path(self.temp.name) / "locked-runtime"
+        root.mkdir()
+        locked_state = PersistentNodeState.open_locked(
+            root,
+            root / "node.sqlite",
+            POW_LIMIT,
+            self.state.headers.chain.get(0),
+            adjusted_time_provider=lambda: 1_800_000_100,
+        )
+        manager = PeerManager(
+            magic=MAGIC,
+            local_version=VersionMessage(
+                1, 0, 1_800_000_000, 202, 0, "/blackroot:locked-runtime-test/"
+            ),
+            max_peers=2,
+            handshake_timeout=1,
+            idle_timeout=2,
+        )
+        runtime = None
+        try:
+            runtime = BlackrootNodeRuntime(
+                locked_state,
+                manager,
+                protocol_version=1,
+                adjusted_time=locked_state.headers.adjusted_time_provider,
+                require_locked_state=True,
+            )
+            self.assertTrue(locked_state.data_directory_locked)
+        finally:
+            if runtime is not None:
+                await runtime.close()
+            else:
+                await manager.close()
+            locked_state.close()
+        self.assertFalse(locked_state.data_directory_locked)
+
     async def test_runtime_rejects_clock_provider_different_from_persistent_state(self):
         with self.assertRaisesRegex(ValueError, "must match the persistent node state's provider"):
             BlackrootNodeRuntime(
