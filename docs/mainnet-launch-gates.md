@@ -370,3 +370,14 @@ partially connected replacement output must not remain, and the integrity
 audit must still pass. This test is added but must pass in CI before its result
 can be treated as verified; it does not replace crash/fault injection against
 process termination or storage-device failures.
+
+### Reorganization created-output undo preflight
+
+Before disconnecting an active block, the reorganization path now reconstructs
+the expected created-outpoint set from the ordered persisted transaction bodies
+and compares it with that block's block_undo_created records. A mismatch
+aborts the reorganization inside the same database write transaction. A
+regression removes one required undo-created row and verifies that the active
+tip and UTXO set remain unchanged. This guards one class of persisted undo
+corruption; it is not a substitute for deterministic full UTXO replay or
+fault-injection at every database write boundary.
