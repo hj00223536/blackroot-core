@@ -113,7 +113,9 @@ class MultiPeerReorganizationSyncTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(assignments, {})
         self.assertEqual(self.store.tip(), (3, branch_three.header.hash))
-        self.assertEqual(set(self.sync.pool.pending_hashes), stale_hashes)
+        self.assertEqual(self.sync.pool.pending_hashes, ())
+        self.assertEqual(self.sync._requested_at, {})
+        self.assertTrue(stale_hashes)
         self.store.verify_integrity()
 
     def test_strict_lifecycle_mode_rejects_unmarked_store(self):
