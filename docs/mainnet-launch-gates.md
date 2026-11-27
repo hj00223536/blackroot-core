@@ -320,3 +320,12 @@ its stored value. Bootstrap outputs are not represented by active transaction
 history, so their original values and scripts still require an authenticated
 bootstrap manifest to validate undo data completely. This remains a partial
 integrity audit, not deterministic full UTXO replay.
+
+
+The active-history spent-input audit also tracks every outpoint spent in prior
+blocks, including bootstrap outpoints whose source transaction is not present
+in active block history. A repeated spend is rejected even when the source
+cannot yet be independently resolved. This detects duplicate bootstrap spends
+in the stored history, but does not authenticate the bootstrap output's
+original value, script, or provenance; that still depends on the pending
+authenticated bootstrap manifest and full replay gate.
