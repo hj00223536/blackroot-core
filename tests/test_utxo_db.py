@@ -1412,6 +1412,68 @@ store.apply(tx)
         self.assertEqual(self.store.get(OutPoint(coinbase.txid, 0)), before_output)
 
 
+    def test_disconnect_tip_rejects_missing_transaction_and_matching_undo_without_mutation(self):
+        from src.blackroot_blocks import Block, COINBASE_INDEX
+        from src.blackroot_chain import BlockHeader
+        from src.blackroot_consensus import block_subsidy
+        from src.blackroot_transactions import merkle_root
+
+        genesis_coinbase = Transaction(
+            1,
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
+            (TxOutput(block_subsidy(0), b"disconnect-count-genesis"),),
+        )
+        genesis_header = BlockHeader(
+            1, bytes(32), merkle_root((genesis_coinbase.txid,)),
+            1, 0x207fffff, 0,
+        )
+        genesis = Block(genesis_header, (genesis_coinbase,))
+        self.store.connect_block(genesis, 0)
+
+        spend = Transaction(
+            1, (TxInput(self.funding),), (TxOutput(800, b"disconnect-count-recipient"),)
+        )
+        next_coinbase = Transaction(
+            1,
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x02"),),
+            (TxOutput(block_subsidy(1) + 100, b"disconnect-count-miner"),),
+        )
+        next_header = BlockHeader(
+            1, genesis.header.hash, merkle_root((next_coinbase.txid, spend.txid)),
+            2, 0x207fffff, 0,
+        )
+        next_block = Block(next_header, (next_coinbase, spend))
+        self.store.connect_block(next_block, 1)
+
+        before_tip = self.store.tip()
+        before_count = self.store.count()
+        spend_output = OutPoint(spend.txid, 0)
+        before_spend_output = self.store.get(spend_output)
+        self.assertIsNotNone(before_spend_output)
+
+        # Simulate coordinated corruption: remove the body row and all inverse
+        # records associated with that transaction, leaving block.tx_count intact.
+        with _managed_sqlite(self.db_path) as db:
+            db.execute(
+                "DELETE FROM block_transactions WHERE height=1 AND position=1"
+            )
+            db.execute(
+                "DELETE FROM block_undo_created WHERE height=1 AND txid=?",
+                (spend.txid,),
+            )
+            db.execute(
+                "DELETE FROM block_undo_spent WHERE height=1 AND txid=? AND output_index=?",
+                (self.funding.txid, self.funding.index),
+            )
+
+        with self.assertRaisesRegex(RuntimeError, "transaction count does not match"):
+            self.store.disconnect_tip(next_block.header.hash)
+
+        self.assertEqual(self.store.tip(), before_tip)
+        self.assertEqual(self.store.count(), before_count)
+        self.assertEqual(self.store.get(spend_output), before_spend_output)
+
+
     def test_disconnect_tip_rejects_missing_created_undo_without_mutation(self):
         from src.blackroot_blocks import Block, COINBASE_INDEX
         from src.blackroot_chain import BlockHeader
