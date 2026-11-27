@@ -329,3 +329,16 @@ cannot yet be independently resolved. This detects duplicate bootstrap spends
 in the stored history, but does not authenticate the bootstrap output's
 original value, script, or provenance; that still depends on the pending
 authenticated bootstrap manifest and full replay gate.
+
+
+### Active block header/body commitment audit
+
+The persisted-chain integrity audit now reconstructs each active block from its
+stored 80-byte header and ordered raw transaction records. It checks the
+reconstructed header hash and parent link against the block index and verifies
+that the ordered transaction IDs reproduce the header's Merkle root. A
+regression test mutates the stored Merkle commitment and updates the indexed
+block hash to match the altered header; the audit must still reject the record
+because the transaction body no longer commits to that root. This validates
+internal persistence consistency only: it does not replace independent header
+consensus validation, full UTXO replay, or external implementation review.
