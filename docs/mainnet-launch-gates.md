@@ -466,3 +466,5 @@ into a fresh isolated directory, full chain/UTXO/trust-state validation,
 external anti-rollback freshness checks, atomic activation, and fault tests
 covering interruption at each step. Do not overwrite the live data directory
 during restore. CI must pass on the exact test commit; this gate remains OPEN.
+
+The proposed end-to-end workflow is specified in `docs/production-backup-restore-design.md`. It remains a design proposal only: no production backup command, authenticated manifest, anti-rollback authority, or restore activation mechanism has been implemented or approved.
