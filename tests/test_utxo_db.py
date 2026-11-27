@@ -811,5 +811,52 @@ store.apply(tx)
                     )
 
 
+    def test_verify_integrity_rejects_live_utxo_output_and_provenance_tampering(self):
+        from src.blackroot_blocks import Block, COINBASE_INDEX
+        from src.blackroot_chain import BlockHeader
+        from src.blackroot_consensus import block_subsidy
+        from src.blackroot_transactions import merkle_root
+
+        coinbase = Transaction(
+            1,
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
+            (TxOutput(block_subsidy(0), b"active-miner-script"),),
+        )
+        header = BlockHeader(
+            1, bytes(32), merkle_root((coinbase.txid,)),
+            1, 0x207fffff, 0,
+        )
+        self.store.connect_block(Block(header, (coinbase,)), 0)
+        outpoint = OutPoint(coinbase.txid, 0)
+
+        corruptions = (
+            ("value", 1, "persisted UTXO output does not match its active transaction"),
+            ("script_pubkey", b"tampered-script", "persisted UTXO output does not match its active transaction"),
+            ("is_coinbase", 0, "persisted UTXO provenance does not match its active transaction"),
+            ("output_index", 1, "persisted UTXO output index is absent from its active transaction"),
+        )
+        original = {
+            "value": block_subsidy(0),
+            "script_pubkey": b"active-miner-script",
+            "is_coinbase": 1,
+            "output_index": 0,
+        }
+        for column, value, expected_error in corruptions:
+            with self.subTest(column=column):
+                with _managed_sqlite(self.db_path) as db:
+                    db.execute(
+                        f"UPDATE utxos SET {column}=? WHERE txid=? AND output_index=0",
+                        (value, outpoint.txid),
+                    )
+                with self.assertRaisesRegex(RuntimeError, expected_error):
+                    self.store.verify_integrity()
+                with _managed_sqlite(self.db_path) as db:
+                    db.execute(
+                        f"UPDATE utxos SET {column}=? WHERE txid=? AND output_index=?",
+                        (original[column], outpoint.txid, value if column == "output_index" else 0),
+                    )
+        self.store.verify_integrity()
+
+
 if __name__ == "__main__":
     unittest.main()
