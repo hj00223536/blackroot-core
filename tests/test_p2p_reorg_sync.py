@@ -279,13 +279,14 @@ class MultiPeerReorganizationSyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(self.sync.pool.assigned_peer(block_hash))
         self.assertEqual(self.sync._requested_at[block_hash], first_now)
 
-        self.peers["p1"].connected = True
+        other_peer = "p2" if original_peer == "p1" else "p1"
+        self.peers[other_peer].connected = True
         retried = await self.sync.retry_expired_requests(
             self.peers, timeout=5, now=first_now + 10
         )
         self.assertEqual(set(retried), {block_hash})
-        self.assertEqual(retried[block_hash], "p1")
-        self.assertEqual(self.sync.pool.assigned_peer(block_hash), "p1")
+        self.assertEqual(retried[block_hash], other_peer)
+        self.assertEqual(self.sync.pool.assigned_peer(block_hash), other_peer)
 
     async def test_expire_requests_rejects_nonpositive_timeout(self):
         with self.assertRaisesRegex(ValueError, "positive"):
