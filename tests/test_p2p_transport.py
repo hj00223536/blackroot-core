@@ -304,6 +304,11 @@ class PeerConnectionTests(unittest.IsolatedAsyncioTestCase):
             on_message=handler,
             receive_resource_budgets=(peer_budget, node_budget),
         )
+        peer.handshake.local_version_sent = True
+        peer.handshake.remote_version = version(999)
+        peer.handshake.local_verack_sent = True
+        peer.handshake.remote_verack_received = True
+        peer.handshake._refresh_complete()
         command, received = await peer._read_message()
         self.assertEqual((command, received), ("headers", payload))
         task = asyncio.create_task(peer.handle_message(command, received))
