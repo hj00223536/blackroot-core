@@ -628,3 +628,15 @@ A failure-injection regression now covers failure to create the retained dial ta
 
 
 Outbound dial lifecycle coverage was extended with a caller-cancellation regression: cancelling a task awaiting `connect()` cancels its retained socket dial and releases the outbound reservation. Together with shutdown cancellation and task-creation failure tests, these are focused lifecycle checks only. OS-level socket exhaustion, connection churn, global task/descriptor ceilings, measured hardware profiles, and independent review remain OPEN.
+
+
+### Peer tracking rollback and application-queue ownership — OPEN
+
+A failure-injection regression now covers failure to create the retained peer
+session task after peer construction. The rollback removes the peer from the
+manager, closes its socket, closes and unregisters its per-peer application
+queue, and clears any worker-admission bookkeeping. This prevents an orphaned
+queue from retaining queued receive reservations after task creation fails.
+It is a local lifecycle invariant only; it does not establish a node-wide task
+ceiling, a production resource profile, adversarial stress evidence, or
+independent security review. The P2P resource gate remains OPEN.
