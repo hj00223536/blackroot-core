@@ -46,6 +46,10 @@ class DataDirectoryLock:
                 raise RuntimeError(
                     "data-directory lock path must not be a symbolic link"
                 ) from exc
+            if exc.errno == errno.EISDIR:
+                raise RuntimeError(
+                    "data-directory lock path must be a regular file"
+                ) from exc
             raise
         if not stat.S_ISREG(os.fstat(fd).st_mode):
             os.close(fd)
