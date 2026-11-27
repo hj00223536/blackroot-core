@@ -59,6 +59,7 @@ customer funds.
 
 - [ ] Freeze and independently review a canonical, versioned network-identity specification covering network ID/role, Genesis commitments, all consensus parameters, serialization/script/address identifiers, P2P magic/protocol compatibility, and storage compatibility.
 - [ ] Define canonical digest vectors and authenticate the expected identity through an independently governed external pin with freshness, anti-rollback, rotation, revocation, and recovery rules.
+- [ ] Resolve the existing identifier-format mismatch: local `TestnetConfig.network_id` is free-form text, while Genesis manifest/trust validators require 32-byte lowercase hex. Freeze one canonical representation and cross-component vectors; do not silently hash or normalize identifiers.
 - [ ] Bind the authenticated identity atomically to persistent node state; reject missing or mismatched identity before state mutation or networking; define explicit backup-first migration for legacy databases.
 - [ ] Add adversarial tests for same-Genesis/different-network configurations, altered protocol parameters, missing/corrupt identity metadata, rollback pins, interrupted initialization/migration, and no-mutation failure behavior.
 - [ ] Complete independent implementation and security review before closing this gate.
