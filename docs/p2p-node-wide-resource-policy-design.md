@@ -241,3 +241,20 @@ Tests must prove, not merely inspect counters, that:
 - concurrent peers cannot multiply local allowances beyond global caps.
 
 Use test doubles that deliberately block write drain and handler completion, then release, cancel, or fail them in controlled order. Add property-based state-machine tests for reservation ownership transitions. Follow with instrumented adversarial load tests that record actual retained bytes, tasks, and file descriptors. Unit tests and fake counters alone do not establish a production memory ceiling.
+
+## 12. Reservation primitive implementation status
+
+A small synchronous reservation primitive now exists in
+`src/blackroot_p2p_resources.py`, with focused tests in
+`tests/test_p2p_resources.py`. It atomically charges count and byte capacity
+across a set of budgets on one event loop, rejects without partial charges,
+and detects double release. Its limits are explicit constructor inputs; it
+selects no defaults.
+
+This is only a reusable accounting primitive. It is not yet wired into
+`PeerConnection`, `PeerManager`, socket reads, outbound writes, application
+handler ownership, or shutdown. It is not thread-safe, cross-process, or a
+production resource policy. The tests cover basic atomic reservation and
+release behavior, not async cancellation at transport await boundaries or
+measured memory ceilings. Do not treat this increment as closing any P2P or
+Mainnet launch gate.
