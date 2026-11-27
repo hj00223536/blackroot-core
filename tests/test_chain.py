@@ -481,5 +481,48 @@ class HeaderChainTests(unittest.TestCase):
         )
 
 
+    def test_rejects_retarget_bits_borrowed_from_competing_branch_without_mutation(self):
+        from src.blackroot_consensus import DIFFICULTY_INTERVAL
+
+        genesis = mine_header(ZERO_HASH, 1)
+        chain = HeaderChain(
+            POW_LIMIT, genesis, allow_unchecked_time_for_tests=True
+        )
+        main_parent = genesis
+        side_parent = genesis
+
+        for height in range(1, DIFFICULTY_INTERVAL):
+            main_parent = mine_header(
+                main_parent.hash, 1 + height * 600, BITS
+            )
+            chain.add_to_branch(main_parent)
+            side_parent = mine_header(
+                side_parent.hash, 1 + height * 300, BITS
+            )
+            chain.add_to_branch(side_parent)
+
+        main_bits = chain.expected_bits(
+            main_parent.hash, DIFFICULTY_INTERVAL
+        )
+        side_bits = chain.expected_bits(
+            side_parent.hash, DIFFICULTY_INTERVAL
+        )
+        self.assertNotEqual(main_bits, side_bits)
+
+        before_nodes = chain.nodes
+        before_tip = chain.best_hash
+        before_work = chain.chainwork
+        wrong_side_header = mine_header(
+            side_parent.hash, side_parent.timestamp + 600, main_bits
+        )
+        with self.assertRaisesRegex(ValueError, "difficulty bits"):
+            chain.add_to_branch(wrong_side_header)
+
+        self.assertEqual(chain.nodes, before_nodes)
+        self.assertEqual(chain.best_hash, before_tip)
+        self.assertEqual(chain.chainwork, before_work)
+        self.assertIsNone(chain.node(wrong_side_header.hash))
+
+
 if __name__ == "__main__":
     unittest.main()
