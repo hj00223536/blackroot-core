@@ -74,3 +74,16 @@ hostile filesystems/mounts, or privileged tampering. A production-grade
 descriptor-relative database-opening design and SQLite WAL compatibility
 review remain required before this storage gate can close. No physical
 power-loss or device-failure guarantee is inferred from process-crash tests.
+
+
+## Crash-test lifecycle alignment
+
+The coordinated process-crash suite now opens, reopens, and contends through
+PersistentNodeState.open_locked() rather than the unlocked compatibility
+opener. This means the process-exit and reorganization-recovery scenarios also
+exercise kernel advisory-lock release and reacquisition, including a second
+process retrying while the crashed writer still owns the data-directory lock.
+The suite remains a process-termination test: it does not simulate sudden
+power loss, torn sectors, controller-cache loss, filesystem corruption, or
+restore from backup. CI must pass on the exact commit before this evidence is
+accepted.
