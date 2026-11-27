@@ -417,9 +417,11 @@ class PeerConnection:
         """Await one cancellation-shielded stream teardown shared by callers."""
         if self._close_task is None:
             self._closed = True
+            close_coroutine = self._close_impl()
             try:
-                self._close_task = asyncio.create_task(self._close_impl())
+                self._close_task = asyncio.create_task(close_coroutine)
             except BaseException:
+                close_coroutine.close()
                 # Preserve synchronous ownership cleanup if task creation fails.
                 self.writer.close()
                 if not self._receive_dispatch_active:
