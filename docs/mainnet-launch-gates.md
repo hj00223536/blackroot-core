@@ -228,3 +228,9 @@ known header DAG, selected tip, or chainwork-bearing node set. These tests cover
 state atomicity for these two rejection paths only. They do not replace
 independent proof-of-work/compact-target vectors, adversarial retarget boundary
 testing, adjusted-clock policy review, or full external header-consensus review.
+
+A further branch-local retarget regression rejects a candidate that borrows
+the required difficulty bits calculated for a competing branch. The test checks
+that rejection leaves the complete header DAG, selected tip, and cumulative
+chainwork unchanged. It remains a local regression, not an independent
+cross-client consensus vector.
