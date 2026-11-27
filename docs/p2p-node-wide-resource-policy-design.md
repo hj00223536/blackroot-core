@@ -365,3 +365,6 @@ Peer task registration is now failure-atomic as well: if asyncio task creation f
 Listener startup is now single-flight within the event loop: a second concurrent start request is rejected while the first bind is pending. If manager shutdown begins while `asyncio.start_server` is awaiting, the eventual listener is closed and awaited rather than being installed after shutdown has already completed. This prevents a late-started inbound listener from surviving a completed manager close. Regression tests exercise both close-during-startup and concurrent-start attempts using a controlled delayed server factory.
 
 This does not set a production bind address, backlog, connection-rate limit, or public exposure policy. Public listening remains disabled pending a reviewed deployment profile and measured node-wide resource policy.
+
+
+Shutdown now also waits for the in-flight listener-start completion event. This matters because merely closing a listener that was already installed is insufficient: an `asyncio.start_server` call can still be pending when close begins. The close operation therefore does not report completion until the pending bind has either failed or returned a server that the startup path closes after observing the manager's closing state. The regression asserts close remains pending until that bind is released and its late server is closed.
