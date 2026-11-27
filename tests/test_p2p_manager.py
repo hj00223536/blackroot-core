@@ -201,6 +201,48 @@ class PeerManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.client_manager._outbound_reservations, 0)
         self.assertEqual(self.client_manager.peer_count, 0)
 
+    async def test_concurrent_outbound_dials_cannot_oversubscribe_peer_cap(self):
+        host, port, *_ = await self.server_manager.start_server("127.0.0.1", 0)
+        results = await asyncio.gather(
+            *(self.client_manager.connect(host, port) for _ in range(8)),
+            return_exceptions=True,
+        )
+
+        successful = [item for item in results if not isinstance(item, BaseException)]
+        rejected = [item for item in results if isinstance(item, RuntimeError)]
+        self.assertEqual(len(successful), self.client_manager.max_peers)
+        self.assertEqual(len(rejected), 8 - self.client_manager.max_peers)
+        self.assertEqual(self.client_manager.peer_count, self.client_manager.max_peers)
+        self.assertEqual(self.client_manager._outbound_reservations, 0)
+
+    async def test_inbound_accept_burst_cannot_oversubscribe_peer_cap(self):
+        host, port, *_ = await self.server_manager.start_server("127.0.0.1", 0)
+        clients = await asyncio.gather(
+            *(asyncio.open_connection(host, port) for _ in range(8))
+        )
+        try:
+            await asyncio.sleep(0.05)
+            self.assertLessEqual(
+                self.server_manager.peer_count,
+                self.server_manager.max_peers,
+            )
+            self.assertEqual(self.server_manager.peer_count, self.server_manager.max_peers)
+            self.assertEqual(self.server_manager._load(), self.server_manager.max_peers)
+        finally:
+            for _, writer in clients:
+                writer.close()
+            await asyncio.gather(
+                *(writer.wait_closed() for _, writer in clients),
+                return_exceptions=True,
+            )
+
+        async def wait_for_cleanup():
+            while self.server_manager.peer_count:
+                await asyncio.sleep(0.01)
+
+        await asyncio.wait_for(wait_for_cleanup(), timeout=2)
+        self.assertEqual(self.server_manager.peer_count, 0)
+
     async def test_enforces_outbound_peer_limit(self):
         host, port, *_ = await self.server_manager.start_server("127.0.0.1", 0)
         await self.client_manager.connect(host, port)
