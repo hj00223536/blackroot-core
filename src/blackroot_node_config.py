@@ -27,6 +27,10 @@ def _reject_duplicate_json_keys(pairs):
     return result
 
 
+def _reject_json_float(value: str):
+    raise ValueError(f"floating-point JSON value is forbidden: {value}")
+
+
 @dataclass(frozen=True)
 class TestnetConfig:
     """A fully explicit testnet identity and bounded local P2P configuration."""
@@ -81,6 +85,7 @@ class TestnetConfig:
             raw = json.loads(
                 Path(path).read_text(encoding="utf-8"),
                 object_pairs_hook=_reject_duplicate_json_keys,
+                parse_float=_reject_json_float,
                 parse_constant=lambda value: (_ for _ in ()).throw(
                     ValueError(f"invalid JSON constant: {value}")
                 ),
@@ -107,6 +112,12 @@ class TestnetConfig:
         }:
             raise ValueError("genesis_header must contain exactly version, prev_hash, merkle_root, timestamp, bits, nonce")
         try:
+            for field in ("version", "timestamp", "bits", "nonce"):
+                value = header[field]
+                if type(value) is not int or not 0 <= value <= 0xFFFFFFFF:
+                    raise ValueError(
+                        f"genesis_header.{field} must be a uint32 integer"
+                    )
             genesis_header = BlockHeader(
                 version=header["version"],
                 prev_hash=bytes.fromhex(header["prev_hash"]),
