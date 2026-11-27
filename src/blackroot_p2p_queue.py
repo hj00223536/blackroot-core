@@ -70,6 +70,16 @@ class ReservedMessageQueue:
     def closed(self) -> bool:
         return self._closed
 
+    @property
+    def is_pristine(self) -> bool:
+        """Whether this queue has never been used and can be assigned to a peer."""
+        return (
+            not self._closed
+            and self._queue.empty()
+            and self._consumer_task is None
+            and self._inflight is None
+        )
+
     def put_nowait(
         self, command: str, payload: bytes, reservation: ResourceReservation
     ) -> None:
