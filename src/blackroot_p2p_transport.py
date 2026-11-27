@@ -22,7 +22,7 @@ from .blackroot_blocks import MAX_BLOCK_SIZE
 from .blackroot_p2p_headers import MAX_HEADERS_PER_MESSAGE
 from .blackroot_p2p_inventory import MAX_INVENTORY_ITEMS
 from .blackroot_p2p_getheaders import MAX_BLOCK_LOCATOR_HASHES
-from .blackroot_p2p_resources import ResourceBudget, reserve_resources
+from .blackroot_p2p_resources import ResourceBudget, ResourceReservation, reserve_resources
 
 MessageHandler = Callable[[str, bytes], object | Awaitable[object]]
 
@@ -318,6 +318,20 @@ class PeerConnection:
             if reservation is not None:
                 reservation.release()
             raise
+
+    def take_receive_reservation(self) -> ResourceReservation | None:
+        """Transfer the current inbound reservation to an application-owned consumer.
+
+        Call only from the active message handler, before retaining payload data
+        or scheduling downstream work. The recipient becomes responsible for
+        releasing the returned reservation exactly once, preferably in a
+        try/finally block. A None result means receive accounting is not enabled.
+        """
+        if not self._receive_dispatch_active:
+            raise PeerProtocolError("receive reservation can only be transferred during dispatch")
+        reservation = self._pending_receive_reservation
+        self._pending_receive_reservation = None
+        return reservation
 
     def _release_pending_receive_reservation(self) -> None:
         reservation = self._pending_receive_reservation
