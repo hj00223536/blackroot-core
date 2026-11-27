@@ -927,9 +927,14 @@ class UTXOStore:
                         raise RuntimeError("stored prior transaction ID does not match reorganization history")
                     if prior_position > 0:
                         for txin in prior_tx.inputs:
-                            prior_spent.add(
-                                (txin.previous_output.txid, txin.previous_output.index)
+                            prior_outpoint = (
+                                txin.previous_output.txid, txin.previous_output.index
                             )
+                            if prior_outpoint in prior_spent:
+                                raise RuntimeError(
+                                    "stored prior transaction history contains a duplicate spend"
+                                )
+                            prior_spent.add(prior_outpoint)
                     for output_index, output in enumerate(prior_tx.outputs):
                         prior_outputs[(prior_tx.txid, output_index)] = (
                             output.value, output.script_pubkey, prior_height,
