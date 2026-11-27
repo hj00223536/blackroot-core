@@ -1105,11 +1105,11 @@ class UTXOStore:
 
         with self._write_scope() as db:
             tip = db.execute(
-                "SELECT height, block_hash FROM blocks ORDER BY height DESC LIMIT 1"
+                "SELECT height, block_hash, tx_count FROM blocks ORDER BY height DESC LIMIT 1"
             ).fetchone()
             if tip is None:
                 raise ValueError("cannot disconnect an empty chain")
-            height, block_hash = tip[0], bytes(tip[1])
+            height, block_hash, expected_tx_count = tip[0], bytes(tip[1]), tip[2]
             if block_hash != expected_tip_hash:
                 raise ValueError("expected tip hash does not match stored tip")
 
@@ -1121,6 +1121,8 @@ class UTXOStore:
                 "WHERE height=? ORDER BY position",
                 (height,),
             ).fetchall()
+            if len(transaction_rows) != expected_tx_count:
+                raise RuntimeError("disconnect undo preflight transaction count does not match active block metadata")
             if not transaction_rows:
                 raise RuntimeError("disconnect undo preflight cannot find active block transactions")
             expected_created = set()
