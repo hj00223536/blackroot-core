@@ -786,5 +786,30 @@ store.apply(tx)
             self.store.verify_integrity()
 
 
+    def test_verify_integrity_rejects_out_of_range_persisted_utxo_fields(self):
+        cases = (
+            ("value", str(TOTAL_SUPPLY_CAP + 1), "persisted UTXO value is malformed"),
+            ("created_height", "-1", "persisted UTXO creation height is malformed"),
+            ("is_coinbase", "2", "persisted UTXO coinbase flag is malformed"),
+            ("created_mtp", "-1", "persisted UTXO creation median-time-past is malformed"),
+        )
+        for column, value, message in cases:
+            with self.subTest(column=column):
+                with _managed_sqlite(self.db_path) as db:
+                    db.execute("PRAGMA ignore_check_constraints = ON")
+                    db.execute(
+                        f"UPDATE utxos SET {column}=? WHERE txid=? AND output_index=?",
+                        (value, self.funding.txid, self.funding.index),
+                    )
+                with self.assertRaisesRegex(RuntimeError, message):
+                    self.store.verify_integrity()
+                with _managed_sqlite(self.db_path) as db:
+                    db.execute(
+                        f"UPDATE utxos SET {column}=? WHERE txid=? AND output_index=?",
+                        ({"value": "900", "created_height": "0", "is_coinbase": "0", "created_mtp": None}[column],
+                         self.funding.txid, self.funding.index),
+                    )
+
+
 if __name__ == "__main__":
     unittest.main()
