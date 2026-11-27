@@ -376,6 +376,11 @@ class UTXOStore:
             blocks = db.execute(
                 "SELECT height, block_hash, prev_hash, tx_count FROM blocks ORDER BY height"
             ).fetchall()
+            # Index every active-chain transaction so live outputs can be
+            # checked against their canonical serialized source. Bootstrap
+            # outputs are intentionally absent from this index: they predate
+            # block history and require a separate authenticated manifest.
+            active_transactions: dict[bytes, tuple[int, int, Transaction]] = {}
             expected_parent = bytes(32)
             for expected_height, (height, block_hash, prev_hash, tx_count) in enumerate(blocks):
                 block_hash = bytes(block_hash)
@@ -400,6 +405,9 @@ class UTXOStore:
                         raise RuntimeError("stored active transaction is malformed") from exc
                     if tx.txid != bytes(txid):
                         raise RuntimeError("stored active transaction ID does not match its bytes")
+                    if tx.txid in active_transactions:
+                        raise RuntimeError("duplicate transaction ID in active transaction history")
+                    active_transactions[tx.txid] = (height, position, tx)
                 expected_parent = block_hash
 
             archived_bodies = db.execute(
@@ -448,6 +456,17 @@ class UTXOStore:
                     raise RuntimeError("persisted UTXO coinbase flag is malformed")
                 if created_mtp is not None and (not isinstance(created_mtp, int) or created_mtp < 0):
                     raise RuntimeError("persisted UTXO creation median-time-past is malformed")
+
+                source = active_transactions.get(bytes(txid))
+                if source is not None:
+                    source_height, source_position, source_tx = source
+                    if output_index >= len(source_tx.outputs):
+                        raise RuntimeError("persisted UTXO output index is absent from its active transaction")
+                    source_output = source_tx.outputs[output_index]
+                    if value != source_output.value or bytes(script_pubkey) != source_output.script_pubkey:
+                        raise RuntimeError("persisted UTXO output does not match its active transaction")
+                    if created_height != source_height or is_coinbase != int(source_position == 0):
+                        raise RuntimeError("persisted UTXO provenance does not match its active transaction")
 
             foreign_key_errors = db.execute("PRAGMA foreign_key_check").fetchall()
             if foreign_key_errors:
