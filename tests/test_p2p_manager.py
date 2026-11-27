@@ -141,6 +141,66 @@ class PeerManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(inbound._data_byte_bucket.rate, 7)
         self.assertIs(inbound._monotonic_clock, clock)
 
+    async def test_outbound_reservation_is_released_when_dial_fails(self):
+        from unittest.mock import patch
+
+        async def fail_dial(*args, **kwargs):
+            raise OSError("dial failed")
+
+        with patch("src.blackroot_p2p_manager.asyncio.open_connection", side_effect=fail_dial):
+            with self.assertRaisesRegex(OSError, "dial failed"):
+                await self.client_manager.connect("127.0.0.1", 1)
+
+        self.assertEqual(self.client_manager._outbound_reservations, 0)
+        self.assertEqual(self.client_manager.peer_count, 0)
+
+    async def test_outbound_reservation_is_released_when_dial_is_cancelled(self):
+        from unittest.mock import patch
+
+        dial_started = asyncio.Event()
+        never_complete = asyncio.Event()
+
+        async def blocked_dial(*args, **kwargs):
+            dial_started.set()
+            await never_complete.wait()
+
+        with patch("src.blackroot_p2p_manager.asyncio.open_connection", side_effect=blocked_dial):
+            task = asyncio.create_task(self.client_manager.connect("127.0.0.1", 1))
+            await asyncio.wait_for(dial_started.wait(), timeout=1)
+            self.assertEqual(self.client_manager._outbound_reservations, 1)
+            task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await task
+
+        self.assertEqual(self.client_manager._outbound_reservations, 0)
+        self.assertEqual(self.client_manager.peer_count, 0)
+
+    async def test_close_during_pending_dial_prevents_peer_registration(self):
+        from unittest.mock import patch
+        from unittest.mock import MagicMock
+
+        dial_started = asyncio.Event()
+        finish_dial = asyncio.Event()
+        writer = MagicMock()
+
+        async def blocked_dial(*args, **kwargs):
+            dial_started.set()
+            await finish_dial.wait()
+            return asyncio.StreamReader(), writer
+
+        with patch("src.blackroot_p2p_manager.asyncio.open_connection", side_effect=blocked_dial):
+            task = asyncio.create_task(self.client_manager.connect("127.0.0.1", 1))
+            await asyncio.wait_for(dial_started.wait(), timeout=1)
+            self.assertEqual(self.client_manager._outbound_reservations, 1)
+            await self.client_manager.close()
+            finish_dial.set()
+            with self.assertRaisesRegex(RuntimeError, "closed during connect"):
+                await task
+
+        writer.close.assert_called_once_with()
+        self.assertEqual(self.client_manager._outbound_reservations, 0)
+        self.assertEqual(self.client_manager.peer_count, 0)
+
     async def test_enforces_outbound_peer_limit(self):
         host, port, *_ = await self.server_manager.start_server("127.0.0.1", 0)
         await self.client_manager.connect(host, port)
