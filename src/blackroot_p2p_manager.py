@@ -285,6 +285,10 @@ class PeerManager:
             queue = self.application_queue_factory(peer)
             if not isinstance(queue, ReservedMessageQueue):
                 raise TypeError("application_queue_factory must return a ReservedMessageQueue")
+            if not queue.is_pristine or any(
+                existing is queue for existing in self._application_queues.values()
+            ):
+                raise ValueError("application_queue_factory must return a fresh unused queue")
             self._application_queues[peer] = queue
 
             def enqueue_application_message(command: str, payload: bytes) -> None:
