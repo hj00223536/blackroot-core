@@ -118,3 +118,7 @@ Until external pinning, durable state semantics, recovery governance, adversaria
 - do not create or activate a founder allocation;
 - do not initialize production issuance;
 - do not announce public testnet or mainnet readiness.
+
+## Repository integration review
+
+A bounded source review of the current lock, SQLite coordinator, and node-state lifecycle is recorded in `docs/trust-state-implementation-readiness-review.md`. It identifies that the data-directory lock is not currently mandatory in `PersistentNodeState`, the SQLite coordinator does not acquire that lock, and neither primitive authenticates external pins or prevents full database snapshot rollback. This review is not an implementation or independent audit. Resolve its lock-ownership and external-policy gates before adding trust-state persistence code.
