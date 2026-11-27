@@ -649,3 +649,8 @@ PeerConnection.close() now creates one retained teardown task shared by concurre
 ### Transport teardown task-creation failure retry guard — OPEN
 
 A failure-injection regression now checks that failure to create the retained teardown task does not cause a later close caller to invoke writer.close() again. The first caller records the startup failure, closes the unsubmitted coroutine, attempts synchronous socket closure once, and releases any receive reservation still owned locally. Later callers fail explicitly. This remains narrow lifecycle hardening; P2P resource limits, adversarial stress testing, production deployment policy, and independent review remain OPEN.
+
+
+### Header batch commit callback mutation guard — OPEN
+
+`HeaderChain.add_batch()` now prevents its `on_commit` callback from invoking public single-header or nested-batch mutation APIs while the callback is running. This prevents the callback from silently extending the in-memory DAG beyond the validated batch and its returned accepted-header list. Focused regressions cover both mutation paths. This remains an in-memory header prototype: callback side effects outside the DAG cannot be rolled back, and persistent branch state, block-body validation, UTXO replay, and independent consensus review remain launch gates.
