@@ -750,6 +750,9 @@ store.apply(tx)
     def test_verify_integrity_rejects_corrupted_bootstrap_issuance_metadata(self):
         cases = (
             ("not-an-integer", "persisted bootstrap issuance metadata is malformed"),
+            ("+900", "persisted bootstrap issuance metadata is malformed"),
+            ("0900", "persisted bootstrap issuance metadata is malformed"),
+            (" 900", "persisted bootstrap issuance metadata is malformed"),
             ("-1", "persisted cumulative issuance exceeds total supply cap"),
             (str(TOTAL_SUPPLY_CAP + 1), "persisted cumulative issuance exceeds total supply cap"),
         )
