@@ -1150,6 +1150,11 @@ class UTXOStore:
                             raise RuntimeError("disconnect undo preflight found duplicate block inputs")
                         block_inputs.add(outpoint)
 
+            # A serialized block header is exactly 80 bytes. Reject malformed
+            # persisted data explicitly before Block.deserialize can unpack it.
+            if len(stored_header) != 80:
+                raise RuntimeError("disconnect undo preflight stored block header must be exactly 80 bytes")
+
             # Reconstruct the complete persisted block before touching live UTXOs.
             # This binds the stored header/hash/parent to the ordered transaction
             # records and verifies the header's Merkle commitment.
