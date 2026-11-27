@@ -393,7 +393,7 @@ class UTXOStore:
                 ).fetchone()[0]
                 if live_bootstrap_value < 0 or live_bootstrap_value > bootstrap_issued:
                     raise RuntimeError(
-                        "persisted pre-activation UTXO value exceeds authenticated issuance accounting"
+                        "persisted pre-activation UTXO value exceeds recorded issuance accounting"
                     )
             issuance_rows = db.execute(
                 "SELECT height, subsidy_issued FROM blocks ORDER BY height"
