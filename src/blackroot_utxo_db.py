@@ -972,24 +972,6 @@ class UTXOStore:
                     raise RuntimeError("reorganization undo-spent records are missing known historical inputs")
 
                 for txid, index, value, script, created_height, is_coinbase_flag, created_mtp in spent:
-                    outpoint = (bytes(txid), index)
-                    if outpoint in recorded_spent or outpoint not in current_inputs:
-                        raise RuntimeError("reorganization undo-spent records do not match block inputs")
-                    recorded_spent.add(outpoint)
-                    known_output = prior_outputs.get(outpoint)
-                    if known_output is not None:
-                        expected_value, expected_script, expected_height, expected_coinbase = known_output
-                        if (
-                            value != expected_value or bytes(script) != expected_script
-                            or created_height != expected_height
-                            or is_coinbase_flag != expected_coinbase
-                        ):
-                            raise RuntimeError("reorganization undo-spent data does not match prior transaction output")
-                expected_known_spent = set(prior_outputs).intersection(current_inputs)
-                if not expected_known_spent.issubset(recorded_spent):
-                    raise RuntimeError("reorganization undo-spent records are missing known historical inputs")
-
-                for txid, index, value, script, created_height, is_coinbase_flag, created_mtp in spent:
                     db.execute(
                         "INSERT INTO utxos(txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp) "
                         "VALUES(?, ?, ?, ?, ?, ?, ?)",
