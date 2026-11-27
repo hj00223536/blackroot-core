@@ -223,7 +223,13 @@ class PeerManager:
                 queue.close()
                 await peer.close()
 
-        task = asyncio.create_task(consume_messages())
+        coroutine = consume_messages()
+        try:
+            task = asyncio.create_task(coroutine)
+        except BaseException:
+            coroutine.close()
+            self._application_workers_started.discard(peer)
+            raise
         self._application_worker_tasks[peer] = task
 
         def worker_finished(done: asyncio.Task) -> None:
