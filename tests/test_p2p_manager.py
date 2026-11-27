@@ -293,6 +293,38 @@ class PeerManagerTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.wait_for(wait_for_cleanup(), timeout=2)
         self.assertEqual(self.server_manager.peer_count, 0)
 
+    async def test_slow_inbound_handshake_is_timed_out_and_releases_peer_slot(self):
+        manager = PeerManager(
+            magic=MAGIC,
+            local_version=version(),
+            max_peers=1,
+            handshake_timeout=0.03,
+            idle_timeout=1,
+        )
+        host, port, *_ = await manager.start_server("127.0.0.1", 0)
+        reader, writer = await asyncio.open_connection(host, port)
+        try:
+            async def wait_admitted():
+                while manager.peer_count != 1:
+                    await asyncio.sleep(0.001)
+
+            await asyncio.wait_for(wait_admitted(), timeout=1)
+            self.assertEqual(manager.peer_count, 1)
+
+            async def wait_released():
+                while manager.peer_count:
+                    await asyncio.sleep(0.005)
+
+            await asyncio.wait_for(wait_released(), timeout=1)
+            self.assertEqual(manager.peer_count, 0)
+            self.assertTrue(
+                any("handshake timeout" in str(error) for error in manager.background_errors)
+            )
+        finally:
+            writer.close()
+            await asyncio.gather(writer.wait_closed(), return_exceptions=True)
+            await manager.close()
+
     async def test_enforces_outbound_peer_limit(self):
         host, port, *_ = await self.server_manager.start_server("127.0.0.1", 0)
         await self.client_manager.connect(host, port)
