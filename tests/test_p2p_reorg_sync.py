@@ -319,6 +319,18 @@ class MultiPeerReorganizationSyncTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(retried, {block_hash: other_peer})
         self.assertEqual(self.sync.pool.assigned_peer(block_hash), other_peer)
 
+    async def test_disconnect_clears_peer_from_timed_out_request_exclusions(self):
+        assignments = await self.sync.request_missing_bodies(self.peers)
+        block_hash = self.fork_one.header.hash
+        peer_id = assignments[block_hash]
+        payload = encode_inventory([InventoryVector(2, block_hash)])
+
+        self.sync.peer_notfound(peer_id, payload)
+        self.assertIn(peer_id, self.sync._tried_peers[block_hash])
+
+        self.assertEqual(self.sync.peer_disconnected(peer_id), ())
+        self.assertNotIn(block_hash, self.sync._tried_peers)
+
     async def test_disconnect_releases_fork_requests(self):
         assignments = await self.sync.request_missing_bodies(self.peers)
         peer_id = next(iter(assignments.values()))
