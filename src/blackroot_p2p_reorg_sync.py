@@ -186,10 +186,15 @@ class MultiPeerReorganizationSync:
     ) -> dict[bytes, object]:
         """Reassign timed-out fork bodies to currently connected peers."""
         current = time.monotonic() if now is None else now
+        expiring_peers = {
+            block_hash: self.pool.assigned_peer(block_hash)
+            for block_hash, requested_at in self._requested_at.items()
+            if current - requested_at >= timeout
+        }
         expired = self.expire_requests(timeout, now=current)
         retried = {}
         for block_hash in expired:
-            previous_peer = self.pool.assigned_peer(block_hash)
+            previous_peer = expiring_peers.get(block_hash)
             if previous_peer is not None:
                 self._tried_peers.setdefault(block_hash, set()).add(previous_peer)
             available = self._available_peers(block_hash, peers)
