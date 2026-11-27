@@ -364,6 +364,27 @@ class PeerConnectionTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaisesRegex(PeerProtocolError, "during dispatch"):
             peer.take_receive_reservation()
 
+    async def test_transfer_fails_closed_without_receive_accounting(self):
+        reader = asyncio.StreamReader()
+        reader.feed_data(encode_message(MAGIC, "headers", b"payload"))
+        peer = None
+
+        async def handler(command, payload):
+            peer.take_receive_reservation()
+
+        peer = PeerConnection(
+            reader, FakeWriter(), magic=MAGIC, local_version=version(406),
+            on_message=handler,
+        )
+        peer.handshake.local_version_sent = True
+        peer.handshake.remote_version = version(1001)
+        peer.handshake.local_verack_sent = True
+        peer.handshake.remote_verack_received = True
+        peer.handshake._refresh_complete()
+        command, payload = await peer._read_message()
+        with self.assertRaisesRegex(PeerProtocolError, "no receive reservation"):
+            await peer.handle_message(command, payload)
+
     async def test_close_releases_decoded_message_not_yet_dispatched(self):
         reader = asyncio.StreamReader()
         reader.feed_data(encode_message(MAGIC, "headers", b"payload"))
