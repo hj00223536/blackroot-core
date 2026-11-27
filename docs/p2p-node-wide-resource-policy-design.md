@@ -296,3 +296,11 @@ Focused tests cover capacity rejection without stealing ownership, queued/in-fli
 ## 18. Queue consumer cancellation handling
 
 The bounded queue now provides `async with queue.consume() as message:`. Its context manager acknowledges the in-flight message in `finally`, releasing the reservation even if the worker is cancelled or raises while processing. A task cancelled while blocked waiting for the next message releases the single-consumer slot so a replacement worker can be started. The consumer remains single-task/single-inflight; the runtime must supervise worker replacement and must not spawn unbounded replacements. Tests cover cancellation during message processing and while waiting.
+
+## 19. Optional PeerManager queue integration
+
+`PeerManager` now accepts an explicit `application_queue_factory(peer)` when receive peer/node budgets are also configured. It creates one `ReservedMessageQueue` per managed peer and installs a dispatch callback that transfers the current `PeerConnection` receive reservation into that queue. The queue can be retrieved with `application_queue_for(peer)`. Existing message callbacks and this queue mode are mutually exclusive to avoid ambiguous ownership.
+
+If queue admission fails (including a full or closed queue), the callback releases the just-transferred reservation and propagates the failure; the peer session then follows the manager's normal failure/close path. On peer teardown the manager closes that peer's queue, releasing messages still queued. A message already handed to the application consumer remains the consumer's responsibility and is released by `async with queue.consume()` or explicit acknowledgement.
+
+The manager does not start application workers. The embedding runtime must start and supervise one bounded worker per queue (or a separately reviewed bounded worker pool), retain task handles, stop workers on shutdown, and avoid unbounded task creation. Queue item caps and receive byte budgets are explicit caller inputs; there is still no measured production resource profile.
