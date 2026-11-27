@@ -374,7 +374,7 @@ class UTXOStore:
                 if expected_issuance != recorded_issuance:
                     raise RuntimeError("stored per-block subsidy budget does not match consensus schedule")
             blocks = db.execute(
-                "SELECT height, block_hash, prev_hash, tx_count FROM blocks ORDER BY height"
+                "SELECT height, block_hash, prev_hash, header, tx_count FROM blocks ORDER BY height"
             ).fetchall()
             # Index every active-chain transaction so live outputs can be
             # checked against their canonical serialized source. Bootstrap
@@ -383,7 +383,7 @@ class UTXOStore:
             active_transactions: dict[bytes, tuple[int, int, Transaction]] = {}
             spent_history: set[OutPoint] = set()
             expected_parent = bytes(32)
-            for expected_height, (height, block_hash, prev_hash, tx_count) in enumerate(blocks):
+            for expected_height, (height, block_hash, prev_hash, stored_header, tx_count) in enumerate(blocks):
                 block_hash = bytes(block_hash)
                 prev_hash = bytes(prev_hash)
                 if height != expected_height:
@@ -397,6 +397,19 @@ class UTXOStore:
                 ).fetchall()
                 if len(tx_rows) != tx_count:
                     raise RuntimeError("UTXO active block transaction count is inconsistent")
+                from .blackroot_transactions import compact_size
+                try:
+                    reconstructed = Block.deserialize(
+                        bytes(stored_header) + compact_size(len(tx_rows))
+                        + b"".join(bytes(row[2]) for row in tx_rows)
+                    )
+                except (TypeError, ValueError) as exc:
+                    raise RuntimeError("persisted active block header/body reconstruction failed") from exc
+                if (
+                    reconstructed.header.hash != block_hash
+                    or reconstructed.header.prev_hash != prev_hash
+                ):
+                    raise RuntimeError("persisted active block header does not match its chain record")
                 for expected_position, (position, txid, raw_transaction) in enumerate(tx_rows):
                     if position != expected_position:
                         raise RuntimeError("UTXO transaction positions are not contiguous")
