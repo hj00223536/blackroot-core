@@ -99,6 +99,21 @@ class PeerManagerConfigurationTests(unittest.TestCase):
         self.assertIs(second._receive_resource_budgets[1], receive_node)
         self.assertIsNot(first._receive_resource_budgets[0], second._receive_resource_budgets[0])
 
+    def test_application_queue_factory_must_return_fresh_queue_per_peer(self):
+        shared_queue = ReservedMessageQueue(max_items=2)
+        manager = PeerManager(
+            magic=MAGIC,
+            local_version=version(),
+            receive_node_budget=ResourceBudget(max_items=8, max_bytes=8192, name="node"),
+            receive_peer_budget_factory=lambda: ResourceBudget(
+                max_items=4, max_bytes=4096, name="peer"
+            ),
+            application_queue_factory=lambda peer: shared_queue,
+        )
+        manager._new_peer(asyncio.StreamReader(), object())
+        with self.assertRaisesRegex(ValueError, "fresh unused queue"):
+            manager._new_peer(asyncio.StreamReader(), object())
+
     def test_application_queue_requires_receive_budgets_and_exclusive_handler(self):
         with self.assertRaisesRegex(ValueError, "requires receive resource budgets"):
             PeerManager(
