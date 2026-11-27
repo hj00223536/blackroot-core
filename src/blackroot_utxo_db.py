@@ -408,14 +408,13 @@ class UTXOStore:
                     if tx.txid in active_transactions:
                         raise RuntimeError("duplicate transaction ID in active transaction history")
                     active_transactions[tx.txid] = (height, position, tx)
-                expected_created = {
-                    (tx.txid, output_index)
-                    for _position, (_height, _tx_position, tx) in (
-                        (position, active_transactions[bytes(txid)])
-                        for position, txid, _raw in tx_rows
+                expected_created: set[tuple[bytes, int]] = set()
+                for _position, txid, _raw in tx_rows:
+                    tx = active_transactions[bytes(txid)][2]
+                    expected_created.update(
+                        (tx.txid, output_index)
+                        for output_index, _output in enumerate(tx.outputs)
                     )
-                    for output_index, _output in enumerate(tx.outputs)
-                }
                 recorded_created = {
                     (bytes(txid), output_index)
                     for txid, output_index in db.execute(
