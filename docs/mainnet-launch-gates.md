@@ -620,3 +620,8 @@ Worker admission now rolls back if task creation fails: the coroutine is closed 
 ### In-flight outbound dial shutdown — OPEN
 
 The manager now retains, cancels, and joins outbound dial tasks during shutdown, then waits for connect reservations to drain. A regression verifies cancellation of a deliberately blocked outbound dial and release of its admission reservation. This does not establish production outbound rate limits, global descriptor/task ceilings, stress evidence, or independent review.
+
+
+### Outbound dial task-creation rollback — OPEN
+
+A failure-injection regression now covers failure to create the retained dial task. The unsubmitted coroutine is closed, the outbound reservation is released, and the shutdown-drain event returns to the set state. This is a local bookkeeping invariant only; global task/descriptor ceilings, measured load testing, production outbound policies, and independent review remain open.
