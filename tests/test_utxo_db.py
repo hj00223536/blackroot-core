@@ -1378,5 +1378,75 @@ store.apply(tx)
         })
 
 
+    def test_disconnect_tip_rejects_missing_created_undo_without_mutation(self):
+        from src.blackroot_blocks import Block, COINBASE_INDEX
+        from src.blackroot_chain import BlockHeader
+        from src.blackroot_consensus import block_subsidy
+        from src.blackroot_transactions import merkle_root
+
+        coinbase = Transaction(
+            1,
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
+            (TxOutput(block_subsidy(0), b"disconnect-guard"),),
+        )
+        header = BlockHeader(
+            1, bytes(32), merkle_root((coinbase.txid,)),
+            1, 0x207fffff, 0,
+        )
+        block = Block(header, (coinbase,))
+        self.store.connect_block(block, 0)
+        before_tip = self.store.tip()
+        before_count = self.store.count()
+        coinbase_output = OutPoint(coinbase.txid, 0)
+        self.assertIsNotNone(self.store.get(coinbase_output))
+
+        with _managed_sqlite(self.db_path) as db:
+            db.execute(
+                "DELETE FROM block_undo_created WHERE height=0 AND txid=? AND output_index=0",
+                (coinbase.txid,),
+            )
+
+        with self.assertRaisesRegex(RuntimeError, "undo-created records do not match"):
+            self.store.disconnect_tip(block.header.hash)
+
+        self.assertEqual(self.store.tip(), before_tip)
+        self.assertEqual(self.store.count(), before_count)
+        self.assertIsNotNone(self.store.get(coinbase_output))
+
+
+    def test_disconnect_tip_rejects_unrelated_spent_undo_without_mutation(self):
+        from src.blackroot_blocks import Block, COINBASE_INDEX
+        from src.blackroot_chain import BlockHeader
+        from src.blackroot_consensus import block_subsidy
+        from src.blackroot_transactions import merkle_root
+
+        coinbase = Transaction(
+            1,
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
+            (TxOutput(block_subsidy(0), b"disconnect-spent-guard"),),
+        )
+        header = BlockHeader(
+            1, bytes(32), merkle_root((coinbase.txid,)),
+            1, 0x207fffff, 0,
+        )
+        block = Block(header, (coinbase,))
+        self.store.connect_block(block, 0)
+        before_tip = self.store.tip()
+        before_count = self.store.count()
+        with _managed_sqlite(self.db_path) as db:
+            db.execute(
+                "INSERT INTO block_undo_spent(height, txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp) "
+                "VALUES(0, ?, 0, 1, ?, 0, 0, NULL)",
+                (bytes.fromhex("dc" * 32), b"forged-disconnect"),
+            )
+
+        with self.assertRaisesRegex(RuntimeError, "undo-spent records do not match"):
+            self.store.disconnect_tip(block.header.hash)
+
+        self.assertEqual(self.store.tip(), before_tip)
+        self.assertEqual(self.store.count(), before_count)
+        self.assertIsNotNone(self.store.get(OutPoint(coinbase.txid, 0)))
+
+
 if __name__ == "__main__":
     unittest.main()
