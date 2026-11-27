@@ -5,40 +5,32 @@ from src.blackroot_blocks import (
 )
 from src.blackroot_chain import BlockHeader
 from src.blackroot_consensus import block_subsidy
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec, utils
 from src.blackroot_script import (
-    N, _mul, _hash160, _push, legacy_sighash_all, p2pkh_script,
+    N, _hash160, _push, legacy_sighash_all, p2pkh_script,
 )
 from src.blackroot_transactions import OutPoint, Transaction, TxInput, TxOutput, merkle_root
 from src.blackroot_maturity import UTXOProvenance
 
 
-def der_integer(value):
-    raw = value.to_bytes((value.bit_length() + 7) // 8, "big") or b"\x00"
-    if raw[0] & 0x80:
-        raw = b"\x00" + raw
-    return b"\x02" + bytes([len(raw)]) + raw
-
-
-def der_signature(r, s):
-    body = der_integer(r) + der_integer(s)
-    return b"\x30" + bytes([len(body)]) + body
-
-
 def signed_spend(previous, previous_output, private_key=1, output_script=b'pay', lock_time=0, sequence=0xFFFFFFFE, version=1):
-    point = _mul(private_key)
-    pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
+    signing_key = ec.derive_private_key(private_key, ec.SECP256K1())
+    pubkey = signing_key.public_key().public_bytes(
+        serialization.Encoding.X962,
+        serialization.PublicFormat.CompressedPoint,
+    )
     unsigned = Transaction(
         version, (TxInput(previous, sequence=sequence),), (TxOutput(9_000, output_script),), lock_time
     )
     digest = legacy_sighash_all(unsigned, 0, previous_output.script_pubkey)
-    nonce = 2
-    nonce_point = _mul(nonce)
-    r = nonce_point[0] % N
-    s = (pow(nonce, N - 2, N) *
-         (int.from_bytes(digest, "big") + r * private_key)) % N
-    if s > N // 2:
-        s = N - s
-    signature = der_signature(r, s) + b"\x01"
+    der = signing_key.sign(
+        digest, ec.ECDSA(utils.Prehashed(hashes.SHA256()))
+    )
+    r_value, s_value = utils.decode_dss_signature(der)
+    if s_value > N // 2:
+        s_value = N - s_value
+    signature = utils.encode_dss_signature(r_value, s_value) + b"\x01"
     script_sig = _push(signature) + _push(pubkey)
     return Transaction(version, (TxInput(previous, script_sig, sequence),), unsigned.outputs, lock_time)
 
@@ -61,8 +53,11 @@ def make_block(txs):
 class BlockValidationTests(unittest.TestCase):
     def setUp(self):
         self.funding = OutPoint(bytes.fromhex("11" * 32), 0)
-        point = _mul(1)
-        pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
+        signing_key = ec.derive_private_key(1, ec.SECP256K1())
+        pubkey = signing_key.public_key().public_bytes(
+            serialization.Encoding.X962,
+            serialization.PublicFormat.CompressedPoint,
+        )
         self.previous_output = TxOutput(10_000, p2pkh_script(_hash160(pubkey)))
         self.parent = {self.funding: self.previous_output}
 
