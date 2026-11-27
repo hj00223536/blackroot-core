@@ -325,6 +325,45 @@ class PeerConnectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((node_budget.items_in_use, node_budget.bytes_in_use), (0, 0))
 
 
+    async def test_handler_can_transfer_receive_reservation_to_consumer(self):
+        reader = asyncio.StreamReader()
+        payload = b"queued-payload"
+        reader.feed_data(encode_message(MAGIC, "headers", payload))
+        peer_budget = ResourceBudget(max_items=2, max_bytes=256, name="peer-recv")
+        node_budget = ResourceBudget(max_items=2, max_bytes=256, name="node-recv")
+        transferred = []
+
+        async def handler(command, received):
+            self.assertEqual((command, received), ("headers", payload))
+            transferred.append(peer.take_receive_reservation())
+
+        peer = PeerConnection(
+            reader, FakeWriter(), magic=MAGIC, local_version=version(405),
+            on_message=handler,
+            receive_resource_budgets=(peer_budget, node_budget),
+        )
+        peer.handshake.local_version_sent = True
+        peer.handshake.remote_version = version(1000)
+        peer.handshake.local_verack_sent = True
+        peer.handshake.remote_verack_received = True
+        peer.handshake._refresh_complete()
+        command, received = await peer._read_message()
+        expected_bytes = 24 + (3 * len(payload))
+        await peer.handle_message(command, received)
+        self.assertEqual(len(transferred), 1)
+        self.assertIsNotNone(transferred[0])
+        self.assertEqual((peer_budget.items_in_use, peer_budget.bytes_in_use), (1, expected_bytes))
+        self.assertEqual((node_budget.items_in_use, node_budget.bytes_in_use), (1, expected_bytes))
+        try:
+            # Represents a bounded application queue consumer owning the payload.
+            self.assertEqual(received, payload)
+        finally:
+            transferred[0].release()
+        self.assertEqual((peer_budget.items_in_use, peer_budget.bytes_in_use), (0, 0))
+        self.assertEqual((node_budget.items_in_use, node_budget.bytes_in_use), (0, 0))
+        with self.assertRaisesRegex(PeerProtocolError, "during dispatch"):
+            peer.take_receive_reservation()
+
     async def test_close_releases_decoded_message_not_yet_dispatched(self):
         reader = asyncio.StreamReader()
         reader.feed_data(encode_message(MAGIC, "headers", b"payload"))
