@@ -386,6 +386,15 @@ class UTXOStore:
                 raise RuntimeError("persisted bootstrap issuance metadata is malformed") from exc
             if bootstrap_issued < 0 or issued < 0 or bootstrap_issued + issued > TOTAL_SUPPLY_CAP:
                 raise RuntimeError("persisted cumulative issuance exceeds total supply cap")
+            active_block_count = db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0]
+            if active_block_count == 0:
+                live_bootstrap_value = db.execute(
+                    "SELECT COALESCE(SUM(value), 0) FROM utxos"
+                ).fetchone()[0]
+                if live_bootstrap_value < 0 or live_bootstrap_value > bootstrap_issued:
+                    raise RuntimeError(
+                        "persisted pre-activation UTXO value exceeds authenticated issuance accounting"
+                    )
             issuance_rows = db.execute(
                 "SELECT height, subsidy_issued FROM blocks ORDER BY height"
             ).fetchall()
