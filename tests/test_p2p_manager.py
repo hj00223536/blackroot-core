@@ -3,6 +3,7 @@ import unittest
 
 from src.blackroot_p2p_handshake import VersionMessage
 from src.blackroot_p2p_manager import PeerManager
+from src.blackroot_p2p_resources import ResourceBudget
 
 MAGIC = bytes.fromhex("b2a1c3d4")
 
@@ -56,6 +57,46 @@ class PeerManagerConfigurationTests(unittest.TestCase):
                 local_version=version(),
                 monotonic_clock=123,
             )
+
+
+    def test_resource_budget_pair_requires_node_and_peer_factory_together(self):
+        node_budget = ResourceBudget(max_items=4, max_bytes=4096, name="node")
+        with self.assertRaisesRegex(ValueError, "configured together"):
+            PeerManager(
+                magic=MAGIC, local_version=version(),
+                send_node_budget=node_budget,
+            )
+        with self.assertRaisesRegex(ValueError, "configured together"):
+            PeerManager(
+                magic=MAGIC, local_version=version(),
+                receive_peer_budget_factory=lambda: ResourceBudget(
+                    max_items=1, max_bytes=1024, name="peer"
+                ),
+            )
+
+    def test_manager_injects_shared_node_and_fresh_peer_budgets(self):
+        send_node = ResourceBudget(max_items=8, max_bytes=8192, name="send-node")
+        receive_node = ResourceBudget(max_items=8, max_bytes=8192, name="receive-node")
+        manager = PeerManager(
+            magic=MAGIC,
+            local_version=version(),
+            send_node_budget=send_node,
+            send_peer_budget_factory=lambda: ResourceBudget(
+                max_items=2, max_bytes=2048, name="send-peer"
+            ),
+            receive_node_budget=receive_node,
+            receive_peer_budget_factory=lambda: ResourceBudget(
+                max_items=2, max_bytes=2048, name="receive-peer"
+            ),
+        )
+        first = manager._new_peer(asyncio.StreamReader(), object())
+        second = manager._new_peer(asyncio.StreamReader(), object())
+        self.assertIs(first._send_resource_budgets[1], send_node)
+        self.assertIs(second._send_resource_budgets[1], send_node)
+        self.assertIsNot(first._send_resource_budgets[0], second._send_resource_budgets[0])
+        self.assertIs(first._receive_resource_budgets[1], receive_node)
+        self.assertIs(second._receive_resource_budgets[1], receive_node)
+        self.assertIsNot(first._receive_resource_budgets[0], second._receive_resource_budgets[0])
 
     def test_rejects_non_callable_handlers(self):
         for kwargs in ({"on_message": 1}, {"on_peer_error": 1}):
