@@ -1413,10 +1413,22 @@ store.apply(tx)
 
 
     def test_disconnect_tip_rejects_missing_transaction_and_matching_undo_without_mutation(self):
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import ec, utils
         from src.blackroot_blocks import Block, COINBASE_INDEX
         from src.blackroot_chain import BlockHeader
         from src.blackroot_consensus import block_subsidy
+        from src.blackroot_script import _hash160, _push, legacy_sighash_all, p2pkh_script
         from src.blackroot_transactions import merkle_root
+
+        private_key = ec.derive_private_key(11, ec.SECP256K1())
+        pubkey = private_key.public_key().public_bytes(
+            serialization.Encoding.X962,
+            serialization.PublicFormat.CompressedPoint,
+        )
+        funding = OutPoint(bytes.fromhex("51" * 32), 0)
+        funding_output = TxOutput(900, p2pkh_script(_hash160(pubkey)))
+        self.store.add_genesis_output(funding, funding_output)
 
         genesis_coinbase = Transaction(
             1,
@@ -1430,8 +1442,22 @@ store.apply(tx)
         genesis = Block(genesis_header, (genesis_coinbase,))
         self.store.connect_block(genesis, 0)
 
+        unsigned_spend = Transaction(
+            1, (TxInput(funding),), (TxOutput(800, b"disconnect-count-recipient"),)
+        )
+        digest = legacy_sighash_all(unsigned_spend, 0, funding_output.script_pubkey)
+        der_signature = private_key.sign(
+            digest, ec.ECDSA(utils.Prehashed(hashes.SHA256()))
+        )
+        r_value, s_value = utils.decode_dss_signature(der_signature)
+        from src.blackroot_script import N
+        if s_value > N // 2:
+            s_value = N - s_value
+        signature = utils.encode_dss_signature(r_value, s_value) + b"\\x01"
         spend = Transaction(
-            1, (TxInput(self.funding),), (TxOutput(800, b"disconnect-count-recipient"),)
+            1,
+            (TxInput(funding, _push(signature) + _push(pubkey)),),
+            unsigned_spend.outputs,
         )
         next_coinbase = Transaction(
             1,
@@ -1463,7 +1489,7 @@ store.apply(tx)
             )
             db.execute(
                 "DELETE FROM block_undo_spent WHERE height=1 AND txid=? AND output_index=?",
-                (self.funding.txid, self.funding.index),
+                (funding.txid, funding.index),
             )
 
         with self.assertRaisesRegex(RuntimeError, "transaction count does not match"):
