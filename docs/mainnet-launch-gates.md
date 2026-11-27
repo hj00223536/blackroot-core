@@ -234,3 +234,12 @@ the required difficulty bits calculated for a competing branch. The test checks
 that rejection leaves the complete header DAG, selected tip, and cumulative
 chainwork unchanged. It remains a local regression, not an independent
 cross-client consensus vector.
+
+### Header-batch commit-callback rollback
+
+A regression now forces the optional in-memory header-batch commit callback to
+raise after all candidate headers have been admitted. It verifies that the
+header DAG, selected tip, cumulative chainwork, and newly inserted nodes all
+return to their exact pre-batch state. This verifies in-memory rollback for the
+callback failure path only; durable cross-store atomicity remains governed by
+the coordinated storage and recovery requirements above.
