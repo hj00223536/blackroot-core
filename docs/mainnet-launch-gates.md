@@ -305,3 +305,18 @@ both cases must fail closed. This validates the created-output index used by
 disconnect/reorganization, but does not yet reconstruct spent-output undo
 records or independently replay the complete UTXO state. Full deterministic
 replay and spent-undo verification remain mandatory launch gates.
+
+
+### Persisted block undo-spent integrity
+
+The UTXO integrity audit now checks that undo-spent rows refer to inputs
+actually present in the corresponding active block, rejects duplicate or
+non-parent references, and compares restored value, locking script, creation
+height, and coinbase provenance with the source transaction whenever that
+source is part of active block history. It also derives the expected undo
+records for spends of known historical transaction outputs and fails closed
+when one is missing. Regression coverage removes a required record and alters
+its stored value. Bootstrap outputs are not represented by active transaction
+history, so their original values and scripts still require an authenticated
+bootstrap manifest to validate undo data completely. This remains a partial
+integrity audit, not deterministic full UTXO replay.
