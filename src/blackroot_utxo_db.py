@@ -410,6 +410,8 @@ class UTXOStore:
                     raise RuntimeError("UTXO active block heights are not contiguous")
                 if prev_hash != expected_parent:
                     raise RuntimeError("UTXO active block parent linkage is corrupt")
+                if len(bytes(stored_header)) != 80:
+                    raise RuntimeError("persisted active block header must be exactly 80 bytes")
                 tx_rows = db.execute(
                     "SELECT position, txid, raw_transaction FROM block_transactions "
                     "WHERE height=? ORDER BY position",
