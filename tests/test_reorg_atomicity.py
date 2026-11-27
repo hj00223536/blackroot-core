@@ -133,6 +133,52 @@ class ReorganizationAtomicityTests(unittest.TestCase):
                 ).fetchall()
             self.assertEqual(after_utxos, before_utxos)
 
+    def test_reorganization_rejects_persisted_transaction_id_index_tampering(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = UTXOStore(Path(directory) / "chain.sqlite")
+            genesis = mined_block(0, ZERO_HASH, 1)
+            chain = HeaderChain(
+                POW_LIMIT, genesis.header,
+                adjusted_time_provider=lambda: 1_000_000,
+            )
+            old = mined_block(1, genesis.header.hash, 2)
+            chain.add(old.header)
+            store.connect_validated_block(genesis, 0, chain)
+            store.connect_validated_block(old, 1, chain)
+
+            fork_one = mined_block(1, genesis.header.hash, 3)
+            fork_two = mined_block(2, fork_one.header.hash, 4)
+            chain.add_to_branch(fork_one.header)
+            chain.add_to_branch(fork_two.header)
+            store.store_block_body(fork_one)
+            store.store_block_body(fork_two)
+
+            before_tip = store.tip()
+            before_headers = store.active_block_headers()
+            with store._connection_scope() as db:
+                before_utxos = db.execute(
+                    "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
+                    "FROM utxos ORDER BY txid, output_index"
+                ).fetchall()
+                db.execute(
+                    "UPDATE block_transactions SET txid=? WHERE height=1 AND position=0",
+                    (bytes.fromhex("ff" * 32),),
+                )
+
+            with self.assertRaisesRegex(
+                RuntimeError, "header/body commitment is inconsistent"
+            ):
+                store.reorganize_to_best(chain)
+
+            self.assertEqual(store.tip(), before_tip)
+            self.assertEqual(store.active_block_headers(), before_headers)
+            with store._connection_scope() as db:
+                after_utxos = db.execute(
+                    "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
+                    "FROM utxos ORDER BY txid, output_index"
+                ).fetchall()
+            self.assertEqual(after_utxos, before_utxos)
+
     def test_invalid_p2pkh_signature_on_replacement_branch_rolls_back_all_state(self):
         from src.blackroot_script import _hash160, _push, p2pkh_script
         from src.blackroot_transactions import TxInput
