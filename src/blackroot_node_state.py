@@ -8,6 +8,7 @@ Neither mode is a production-ready consensus node.
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import stat
 from typing import Callable
 
@@ -178,6 +179,14 @@ class PersistentNodeState:
                 if not stat.S_ISREG(candidate_stat.st_mode):
                     raise RuntimeError(
                         f"SQLite database path must be a regular non-symlink file: {candidate.name}"
+                    )
+                if candidate_stat.st_uid != os.getuid():
+                    raise RuntimeError(
+                        f"SQLite database path must be owned by the current user: {candidate.name}"
+                    )
+                if candidate_stat.st_nlink != 1:
+                    raise RuntimeError(
+                        f"SQLite database path must not have hard-link aliases: {candidate.name}"
                     )
             return cls(
                 database,
