@@ -915,30 +915,45 @@ class UTXOStore:
                         (txid, index),
                     )
                 current_inputs = set()
-                for _stored_txid, raw_transaction in transaction_rows:
+                for position, (_stored_txid, raw_transaction) in enumerate(transaction_rows):
                     transaction = Transaction.deserialize(bytes(raw_transaction))
+                    if position == 0:
+                        continue
                     for txin in transaction.inputs:
-                        if txin.previous_output.txid != bytes(32):
-                            current_inputs.add(
-                                (txin.previous_output.txid, txin.previous_output.index)
-                            )
+                        current_inputs.add(
+                            (txin.previous_output.txid, txin.previous_output.index)
+                        )
 
                 prior_outputs = {}
+                prior_spent = set()
                 prior_rows = db.execute(
-                    "SELECT bt.txid, bt.raw_transaction, bt.height "
+                    "SELECT bt.txid, bt.raw_transaction, bt.height, bt.position "
                     "FROM block_transactions bt WHERE bt.height<? ORDER BY bt.height, bt.position",
                     (height,),
                 ).fetchall()
-                for prior_txid, raw_transaction, prior_height in prior_rows:
+                for prior_txid, raw_transaction, prior_height, prior_position in prior_rows:
                     prior_tx = Transaction.deserialize(bytes(raw_transaction))
                     if prior_tx.txid != bytes(prior_txid):
                         raise RuntimeError("stored prior transaction ID does not match reorganization history")
+                    if prior_position > 0:
+                        for txin in prior_tx.inputs:
+                            prior_spent.add(
+                                (txin.previous_output.txid, txin.previous_output.index)
+                            )
                     for output_index, output in enumerate(prior_tx.outputs):
                         prior_outputs[(prior_tx.txid, output_index)] = (
                             output.value, output.script_pubkey, prior_height,
-                            int(prior_tx.inputs[0].previous_output.txid == bytes(32)
-                                and prior_tx.inputs[0].previous_output.index == 0xffffffff),
+                            int(prior_position == 0),
                         )
+
+                block_inputs = set()
+                for txid, raw_transaction in transaction_rows[1:]:
+                    transaction = Transaction.deserialize(bytes(raw_transaction))
+                    for txin in transaction.inputs:
+                        outpoint = (txin.previous_output.txid, txin.previous_output.index)
+                        if outpoint in block_inputs or outpoint in prior_spent:
+                            raise RuntimeError("reorganization block history contains a duplicate or prior spend")
+                        block_inputs.add(outpoint)
 
                 spent = db.execute(
                     "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
@@ -946,6 +961,26 @@ class UTXOStore:
                     (height,),
                 ).fetchall()
                 recorded_spent = set()
+                for txid, index, value, script, created_height, is_coinbase_flag, created_mtp in spent:
+                    outpoint = (bytes(txid), index)
+                    if outpoint in recorded_spent or outpoint not in block_inputs:
+                        raise RuntimeError("reorganization undo-spent records do not match block inputs")
+                    recorded_spent.add(outpoint)
+                    known_output = prior_outputs.get(outpoint)
+                    if known_output is not None:
+                        expected_value, expected_script, expected_height, expected_coinbase = known_output
+                        if (
+                            value != expected_value or bytes(script) != expected_script
+                            or created_height != expected_height
+                            or is_coinbase_flag != expected_coinbase
+                        ):
+                            raise RuntimeError("reorganization undo-spent data does not match prior transaction output")
+                expected_known_spent = (
+                    set(prior_outputs).difference(prior_spent).intersection(block_inputs)
+                )
+                if not expected_known_spent.issubset(recorded_spent):
+                    raise RuntimeError("reorganization undo-spent records are missing known historical inputs")
+
                 for txid, index, value, script, created_height, is_coinbase_flag, created_mtp in spent:
                     outpoint = (bytes(txid), index)
                     if outpoint in recorded_spent or outpoint not in current_inputs:
