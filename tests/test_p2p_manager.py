@@ -795,6 +795,37 @@ class PeerManagerTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.gather(writer.wait_closed(), return_exceptions=True)
             await manager.close()
 
+    async def test_manager_shutdown_cancels_and_joins_inflight_outbound_dial(self):
+        manager = PeerManager(
+            magic=MAGIC, local_version=version(), connect_timeout=30
+        )
+        dial_started = asyncio.Event()
+        dial_cancelled = asyncio.Event()
+
+        async def blocked_open_connection(host, port):
+            dial_started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                dial_cancelled.set()
+                raise
+
+        with patch("src.blackroot_p2p_manager.asyncio.open_connection",
+                   side_effect=blocked_open_connection):
+            connecting = asyncio.create_task(manager.connect("127.0.0.1", 30303))
+            await asyncio.wait_for(dial_started.wait(), timeout=1)
+            self.assertEqual(manager._outbound_reservations, 1)
+            self.assertEqual(len(manager._dial_tasks), 1)
+
+            await asyncio.wait_for(manager.close(), timeout=1)
+            result = await asyncio.gather(connecting, return_exceptions=True)
+
+        self.assertIsInstance(result[0], asyncio.CancelledError)
+        self.assertTrue(dial_cancelled.is_set())
+        self.assertEqual(manager._outbound_reservations, 0)
+        self.assertEqual(manager._dial_tasks, set())
+        self.assertTrue(manager._outbound_connects_complete.is_set())
+
     async def test_enforces_outbound_peer_limit(self):
         host, port, *_ = await self.server_manager.start_server("127.0.0.1", 0)
         await self.client_manager.connect(host, port)
