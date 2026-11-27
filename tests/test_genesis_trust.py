@@ -111,6 +111,15 @@ class TrustConfigurationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "must not name a predecessor"):
             self.validate(config, expected_previous_config_digest=None)
 
+    def test_later_configuration_must_have_a_pinned_predecessor(self):
+        config = make_config(sequence=2, previous=None)
+        with self.assertRaisesRegex(ValueError, "require a pinned predecessor"):
+            self.validate(config, expected_sequence=2, expected_previous_config_digest=None)
+
+        config = make_config(sequence=2, previous="44" * 32)
+        with self.assertRaisesRegex(ValueError, "predecessor mismatch"):
+            self.validate(config, expected_sequence=2, expected_previous_config_digest="55" * 32)
+
     def test_duplicate_key_ids_or_public_keys_rejected(self):
         config = make_config()
         config["keys"].append(dict(config["keys"][0]))
