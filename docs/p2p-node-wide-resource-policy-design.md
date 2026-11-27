@@ -322,3 +322,7 @@ Cancellation still cannot reverse external side effects already performed by a h
 ## 22. Concurrent manager shutdown callers
 
 `PeerManager.close()` now elects one caller to perform shutdown and makes concurrent callers await the same completion event rather than returning while teardown is still in progress. The completion event is set in `finally`, including when shutdown raises, so waiters are not left blocked forever. A focused test blocks peer close, starts a second close caller, and verifies the second caller does not finish before the shared shutdown completes. This is event-loop-local synchronization; it is not a cross-thread lifecycle primitive.
+
+## 23. Per-peer queue identity
+
+The manager now requires `application_queue_factory` to return a pristine, unused queue for each peer. It rejects a queue that is already assigned to another managed peer, has been closed, contains queued messages, or has already established a consumer/in-flight message. This prevents two peer dispatch paths from accidentally sharing a single-consumer queue and prevents reassigning a previously closed queue. A focused test verifies that a factory returning one shared queue is rejected on the second peer. This identity check is local to the manager instance and does not replace global resource accounting.
