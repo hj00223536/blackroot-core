@@ -148,6 +148,7 @@ class PeerManager:
             raise TypeError("on_peer_disconnected must be callable")
         self.on_peer_disconnected = on_peer_disconnected
         self._server: asyncio.AbstractServer | None = None
+        self._server_starting = False
         self._peers: set[PeerConnection] = set()
         self._application_queues: dict[PeerConnection, ReservedMessageQueue] = {}
         self._application_worker_tasks: dict[PeerConnection, asyncio.Task] = {}
@@ -375,15 +376,32 @@ class PeerManager:
                         self._background_errors.append(callback_error)
 
     async def start_server(self, host: str = "127.0.0.1", port: int = 0) -> tuple:
-        """Start an inbound TCP listener and return its bound socket address."""
+        """Start one inbound listener; serialize startup against close and peers."""
         if self._closing:
             raise RuntimeError("peer manager is closing")
-        if self._server is not None:
-            raise RuntimeError("peer listener is already started")
-        self._server = await asyncio.start_server(self._accept, host, port)
-        if not self._server.sockets:
-            raise OSError("peer listener did not bind a socket")
-        return self._server.sockets[0].getsockname()
+        if self._server is not None or self._server_starting:
+            raise RuntimeError("peer listener is already started or starting")
+        self._server_starting = True
+        server = None
+        try:
+            server = await asyncio.start_server(self._accept, host, port)
+            if self._closing:
+                server.close()
+                await server.wait_closed()
+                raise RuntimeError("peer manager closed during listener startup")
+            if not server.sockets:
+                server.close()
+                await server.wait_closed()
+                raise OSError("peer listener did not bind a socket")
+            self._server = server
+            return server.sockets[0].getsockname()
+        except BaseException:
+            if server is not None and self._server is not server:
+                server.close()
+                await server.wait_closed()
+            raise
+        finally:
+            self._server_starting = False
 
     def _accept(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         if self._closing or self._load() >= self.max_peers:
