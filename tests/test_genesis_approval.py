@@ -92,6 +92,25 @@ class Ed25519PublishedVectorTests(unittest.TestCase):
             key.verify(signature, b"changed")
 
 
+class MutatingTrustedKeys(Mapping):
+    def __init__(self, key_id, public_key):
+        self.key_id = key_id
+        self.public_key = public_key
+        self.reads = 0
+
+    def __iter__(self):
+        return iter((self.key_id,))
+
+    def __len__(self):
+        return 1
+
+    def __getitem__(self, key):
+        self.reads += 1
+        if key != self.key_id:
+            raise KeyError(key)
+        return self.public_key if self.reads == 1 else bytes(32)
+
+
 class MutatingApprovalRecord(Mapping):
     def __init__(self, values):
         self.values = dict(values)
@@ -138,6 +157,20 @@ class GenesisApprovalTests(unittest.TestCase):
             trusted_public_keys=self.trust,
             **kwargs,
         )
+
+    def test_verification_uses_one_snapshot_of_trusted_key_mapping(self):
+        supplied = MutatingTrustedKeys(self.key_id, self.public)
+        self.assertEqual(
+            verify_genesis_approval_record(
+                self.record,
+                expected_network_id=_NETWORK,
+                expected_manifest_digest=_DIGEST,
+                trusted_public_keys=supplied,
+            ),
+            self.key_id,
+        )
+        self.assertEqual(supplied.reads, 1)
+
 
     def test_verification_uses_one_snapshot_of_mutable_record(self):
         supplied = MutatingApprovalRecord(self.record)
