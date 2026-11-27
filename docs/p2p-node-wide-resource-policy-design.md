@@ -321,7 +321,17 @@ Cancellation still cannot reverse external side effects already performed by a h
 
 ## 22. Concurrent manager shutdown callers
 
-`PeerManager.close()` now elects one caller to perform shutdown and makes concurrent callers await the same completion event rather than returning while teardown is still in progress. The completion event is set in `finally`, including when shutdown raises, so waiters are not left blocked forever. A focused test blocks peer close, starts a second close caller, and verifies the second caller does not finish before the shared shutdown completes. This is event-loop-local synchronization; it is not a cross-thread lifecycle primitive.
+`PeerManager.close()` creates one retained shutdown task and makes every caller
+await that same task. Awaiters use `asyncio.shield()`: cancelling an individual
+caller therefore does not cancel teardown, close sockets early, or mark the
+manager complete while peer sessions and workers remain active. The completion
+event is set by the retained shutdown task in `finally`, including when
+shutdown raises. Tests block peer close, verify concurrent callers wait, then
+cancel the first caller and verify a later caller still waits for the original
+shutdown to finish. This is event-loop-local synchronization; it is not a
+cross-thread lifecycle primitive. If the shutdown operation itself fails, all
+callers awaiting it observe that failure; the manager does not silently retry
+partially completed teardown.
 
 ## 23. Per-peer queue identity
 
