@@ -676,6 +676,8 @@ matching undo value; both cases must fail without changing active state.
 The same authenticated-header and creation-MTP checks now run in direct
 tip disconnection, not only in the reorganization path; a regression corrupts
 a known spent output's undo MTP and verifies that disconnect leaves active
-state unchanged. This does not authenticate bootstrap outputs or prove
-complete UTXO replay; bootstrap provenance, full undo metadata provenance,
+state unchanged. A second regression tampers with a historical header and its
+undo MTP together; direct disconnect must reject the altered header history
+without changing active state. This does not authenticate bootstrap outputs
+or prove complete UTXO replay; bootstrap provenance, full undo metadata provenance,
 crash recovery, adversarial testing, and independent review remain open.
