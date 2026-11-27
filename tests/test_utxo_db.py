@@ -768,6 +768,20 @@ store.apply(tx)
                     )
 
 
+    def test_verify_integrity_rejects_pre_activation_utxo_value_above_issuance(self):
+        with _managed_sqlite(self.db_path) as db:
+            db.execute(
+                "UPDATE utxos SET value=901 WHERE txid=? AND output_index=?",
+                (self.funding.txid, self.funding.index),
+            )
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "persisted pre-activation UTXO value exceeds authenticated issuance accounting",
+        ):
+            self.store.verify_integrity()
+
+
     def test_verify_integrity_rejects_missing_bootstrap_issuance_metadata(self):
         # A missing accounting record must not be interpreted as zero issuance.
         with _managed_sqlite(self.db_path) as db:
