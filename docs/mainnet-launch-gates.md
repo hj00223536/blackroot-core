@@ -55,6 +55,13 @@ customer funds.
   vulnerability response, monitoring, backups, and operational runbooks.
 
 
+## P2P resource-boundary gate
+
+- [ ] Define and approve hard peer-count, inbound/outbound, node-wide bandwidth/work, handshake, queue, memory, and file-descriptor budgets based on measured deployment envelopes.
+- [ ] Add adversarial load, churn, slow-peer, aggregate-rate, resource-exhaustion, and shutdown tests; independently review the final policy.
+
+See [P2P resource-boundary audit](p2p-resource-boundary-audit.md). The current peer manager's per-peer controls do not establish node-wide DoS resistance or authorize public binding.
+
 ## Persistent network identity gate
 
 - [ ] Freeze and independently review a canonical, versioned network-identity specification covering network ID/role, Genesis commitments, all consensus parameters, serialization/script/address identifiers, P2P magic/protocol compatibility, and storage compatibility.
