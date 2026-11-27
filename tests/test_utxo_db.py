@@ -35,6 +35,56 @@ class UTXOStoreTests(unittest.TestCase):
         self.funding = OutPoint(bytes.fromhex("31" * 32), 0)
         self.store.add_genesis_output(self.funding, TxOutput(900, b"funding-script"))
 
+    def test_connect_block_rejects_invalid_mtp_without_mutation(self):
+        from src.blackroot_blocks import Block, COINBASE_INDEX
+        from src.blackroot_chain import BlockHeader
+        from src.blackroot_consensus import block_subsidy
+        from src.blackroot_transactions import merkle_root
+
+        coinbase = Transaction(
+            1,
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
+            (TxOutput(block_subsidy(0), b"miner"),),
+        )
+        header = BlockHeader(
+            1, bytes(32), merkle_root((coinbase.txid,)),
+            1, 0x207fffff, 0,
+        )
+        candidate = Block(header, (coinbase,))
+        before_count = self.store.count()
+        for invalid in (-1, True, 1.5, "123"):
+            with self.subTest(median_time_past=invalid):
+                with self.assertRaisesRegex(ValueError, "median_time_past"):
+                    self.store.connect_block(candidate, 0, median_time_past=invalid)
+                self.assertIsNone(self.store.tip())
+                self.assertEqual(self.store.count(), before_count)
+
+    def test_reorganize_rejects_invalid_mtp_vector_before_mutation(self):
+        from src.blackroot_blocks import Block, COINBASE_INDEX
+        from src.blackroot_chain import BlockHeader
+        from src.blackroot_consensus import block_subsidy
+        from src.blackroot_transactions import merkle_root
+
+        coinbase = Transaction(
+            1,
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
+            (TxOutput(block_subsidy(0), b"miner"),),
+        )
+        header = BlockHeader(
+            1, bytes(32), merkle_root((coinbase.txid,)),
+            1, 0x207fffff, 0,
+        )
+        candidate = Block(header, (coinbase,))
+        before_count = self.store.count()
+        for invalid in (-1, True, 1.5, "123"):
+            with self.subTest(median_time_past=invalid):
+                with self.assertRaisesRegex(ValueError, "median-time-past"):
+                    self.store.reorganize(
+                        (), (candidate,), median_time_past_values=(invalid,)
+                    )
+                self.assertIsNone(self.store.tip())
+                self.assertEqual(self.store.count(), before_count)
+
     def test_invalid_p2pkh_signature_cannot_mutate_active_chain_or_utxos(self):
         from src.blackroot_blocks import Block, COINBASE_INDEX, ZERO_TXID
         from src.blackroot_chain import BlockHeader
