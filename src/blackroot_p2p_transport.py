@@ -325,7 +325,7 @@ class PeerConnection:
         Call only from the active message handler, before retaining payload data
         or scheduling downstream work. The recipient becomes responsible for
         releasing the returned reservation exactly once, preferably in a
-        try/finally block. A None result means receive accounting is not enabled.
+        try/finally block. The method fails closed when receive accounting is disabled or no reservation is owned by the active dispatch.
         """
         if not self._receive_dispatch_active:
             raise PeerProtocolError("receive reservation can only be transferred during dispatch")
