@@ -663,8 +663,9 @@ reconstructs the block from its stored 80-byte header and raw transaction
 records, and verifies the block hash, parent commitment, Merkle root, and each
 transaction ID against the positional index. Regression tests corrupt the
 stored transaction count, a transaction position, a stored transaction-ID
-index, and a persisted header byte, and assert that reorganization fails
-without changing the active tip, headers, or UTXO set.
+index, a persisted header byte, and an unreferenced undo-spent record, and
+assert that reorganization fails without changing the active tip, headers,
+or UTXO set.
 These are targeted database-integrity checks, not deterministic full UTXO
 replay or complete consensus validation. Bootstrap provenance, undo metadata
 provenance, crash recovery, adversarial testing, and independent review remain
