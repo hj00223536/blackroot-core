@@ -1570,5 +1570,48 @@ store.apply(tx)
         self.assertIsNotNone(self.store.get(OutPoint(coinbase.txid, 0)))
 
 
+    def test_disconnect_tip_rejects_header_merkle_corruption_without_mutation(self):
+        from src.blackroot_blocks import Block, COINBASE_INDEX
+        from src.blackroot_chain import BlockHeader
+        from src.blackroot_consensus import block_subsidy
+        from src.blackroot_transactions import merkle_root
+
+        coinbase = Transaction(
+            1,
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
+            (TxOutput(block_subsidy(0), b"disconnect-merkle-guard"),),
+        )
+        header = BlockHeader(
+            1, bytes(32), merkle_root((coinbase.txid,)),
+            1, 0x207fffff, 0,
+        )
+        block = Block(header, (coinbase,))
+        self.store.connect_block(block, 0)
+        output = OutPoint(coinbase.txid, 0)
+        before_count = self.store.count()
+        self.assertIsNotNone(self.store.get(output))
+
+        # Corrupt the committed Merkle root and update the stored hash too,
+        # so a simple header-hash comparison alone would not detect the damage.
+        corrupted_header = BlockHeader(
+            header.version, header.prev_hash, bytes.fromhex("99" * 32),
+            header.timestamp, header.bits, header.nonce,
+        )
+        corrupted_hash = corrupted_header.hash
+        with _managed_sqlite(self.db_path) as db:
+            db.execute(
+                "UPDATE blocks SET block_hash=?, header=? WHERE height=0",
+                (corrupted_hash, corrupted_header.serialize()),
+            )
+
+        before_tip = self.store.tip()
+        with self.assertRaisesRegex(RuntimeError, "merkle root does not match"):
+            self.store.disconnect_tip(corrupted_hash)
+
+        self.assertEqual(self.store.tip(), before_tip)
+        self.assertEqual(self.store.count(), before_count)
+        self.assertIsNotNone(self.store.get(output))
+
+
 if __name__ == "__main__":
     unittest.main()
