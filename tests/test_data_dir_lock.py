@@ -35,6 +35,15 @@ class DataDirectoryLockTests(unittest.TestCase):
                 DataDirectoryLock(root).acquire()
             self.assertEqual(target.read_text(), "do not modify")
 
+    def test_rejects_group_or_world_accessible_data_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "node-data"
+            root.mkdir(mode=0o700)
+            root.chmod(0o755)
+            with self.assertRaisesRegex(RuntimeError, "permissions must exclude group and other"):
+                DataDirectoryLock(root).acquire()
+            self.assertFalse((root / ".blackroot-node.lock").exists())
+
     def test_rejects_non_regular_file_at_lock_path(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
