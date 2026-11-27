@@ -661,9 +661,10 @@ Before trusting active-chain undo records, reorganization now checks that the
 persisted transaction rows have the expected count and contiguous positions,
 reconstructs the block from its stored 80-byte header and raw transaction
 records, and verifies the block hash, parent commitment, Merkle root, and each
-transaction ID against the positional index. Regression tests corrupt both a
-transaction position and a stored transaction-ID index and assert that the
-reorganization fails without changing the active tip, headers, or UTXO set.
+transaction ID against the positional index. Regression tests corrupt the
+stored transaction count, a transaction position, and a stored transaction-ID
+index, and assert that reorganization fails without changing the active tip,
+headers, or UTXO set.
 These are targeted database-integrity checks, not deterministic full UTXO
 replay or complete consensus validation. Bootstrap provenance, undo metadata
 provenance, crash recovery, adversarial testing, and independent review remain
