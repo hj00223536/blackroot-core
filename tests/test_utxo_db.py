@@ -2499,5 +2499,23 @@ store.apply(tx)
             self.store.verify_integrity()
 
 
+
+    def test_strict_integrity_gate_rejects_unverified_bootstrap_issuance(self):
+        # The default audit remains backward-compatible for local prototype
+        # tests. A launch-safety caller can explicitly require an authenticated
+        # bootstrap manifest; until that verifier exists, any bootstrap issuance
+        # must fail closed rather than treating the SQLite counter as proof.
+        self.store.verify_integrity()
+        with self.assertRaisesRegex(
+            RuntimeError, "authenticated bootstrap manifest verification is unavailable"
+        ):
+            self.store.verify_integrity(require_authenticated_bootstrap=True)
+
+    def test_strict_integrity_gate_rejects_non_boolean_policy(self):
+        with self.assertRaisesRegex(TypeError, "must be a bool"):
+            self.store.verify_integrity(require_authenticated_bootstrap=1)
+
+
+
 if __name__ == "__main__":
     unittest.main()
