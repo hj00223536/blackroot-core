@@ -592,3 +592,10 @@ registered application queue when per-peer callback or queue construction
 fails. Tests cover invalid handler-factory and queue-factory results. This
 reduces resource leakage on local setup errors but does not close the P2P
 admission/resource-policy gate or authorize public listener exposure.
+
+
+### P2P setup ownership failure containment — OPEN
+
+Per-peer send/receive budget factories and PeerConnection construction are now inside the same socket-ownership cleanup boundary as callback and queue setup. Any setup exception closes the accepted socket and removes/closes a partially registered application queue. The synchronous inbound accept callback records ordinary setup/registration exceptions in bounded manager error history and closes the socket rather than leaking an unhandled callback exception. Focused regressions cover raising/invalid budget factories and inbound setup failure.
+
+This is not a production P2P admission or resource ceiling. It does not bound kernel backlog, connection rate, aggregate descriptors, memory, tasks, or CPU, and does not authorize public listener exposure. CI must pass on the exact candidate commit; stress testing and independent review remain required.
