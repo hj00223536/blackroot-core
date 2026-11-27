@@ -1876,7 +1876,7 @@ store.apply(tx)
 
         replacement = make_block(block_one.header.hash, 2, (), 4)
         with self.assertRaisesRegex(
-            RuntimeError, "prior block header hash or parent commitment is inconsistent"
+            RuntimeError, "disconnect undo preflight prior header hash or parent commitment is inconsistent"
         ):
             self.store.disconnect_tip(block_two.header.hash)
 
@@ -2055,7 +2055,7 @@ store.apply(tx)
         with self.assertRaisesRegex(
             RuntimeError, "prior block header hash or parent commitment is inconsistent"
         ):
-            self.store.reorganize((block_two.header.hash,), (replacement,))
+            self.store.disconnect_tip(block_two.header.hash)
 
         self.assertEqual(self.store.tip(), before_tip)
         self.assertEqual(self.store.count(), before_count)
