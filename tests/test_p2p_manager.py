@@ -263,6 +263,7 @@ class PeerManagerTests(unittest.IsolatedAsyncioTestCase):
                 pass
         peer = manager._new_peer(asyncio.StreamReader(), Writer())
         manager._peers.add(peer)
+        queue = manager.application_queue_for(peer)
         entered = asyncio.Event()
 
         async def blocked_handler(command, payload):
@@ -286,7 +287,7 @@ class PeerManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(worker.cancelled())
         self.assertTrue(reservation.released)
         self.assertEqual(node_budget.bytes_in_use, 0)
-        self.assertTrue(manager.application_queue_for if False else True)
+        self.assertTrue(queue.closed)
 
     async def test_worker_handler_failure_is_recorded_and_closes_peer_queue(self):
         node_budget = ResourceBudget(max_items=8, max_bytes=8192, name="receive-node")
