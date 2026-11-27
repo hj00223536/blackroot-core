@@ -747,6 +747,29 @@ store.apply(tx)
         self.assertNotIn("genesis_manifest_digest", metadata)
 
 
+    def test_add_genesis_output_rejects_noncanonical_issuance_metadata_without_mutation(self):
+        new_outpoint = OutPoint(bytes.fromhex("32" * 32), 0)
+        with _managed_sqlite(self.db_path) as db:
+            db.execute(
+                "UPDATE metadata SET value='+900' WHERE key='bootstrap_issued_sats'"
+            )
+
+        with self.assertRaisesRegex(
+            RuntimeError, "bootstrap issuance metadata is malformed"
+        ):
+            self.store.add_genesis_output(
+                new_outpoint, TxOutput(100, b"must-not-be-added")
+            )
+
+        self.assertEqual(self.store.count(), 1)
+        self.assertIsNone(self.store.get(new_outpoint))
+        with _managed_sqlite(self.db_path) as db:
+            value = db.execute(
+                "SELECT value FROM metadata WHERE key='bootstrap_issued_sats'"
+            ).fetchone()[0]
+        self.assertEqual(value, "+900")
+
+
     def test_verify_integrity_rejects_corrupted_bootstrap_issuance_metadata(self):
         cases = (
             ("not-an-integer", "persisted bootstrap issuance metadata is malformed"),
