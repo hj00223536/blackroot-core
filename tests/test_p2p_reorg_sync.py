@@ -262,6 +262,10 @@ class MultiPeerReorganizationSyncTests(unittest.IsolatedAsyncioTestCase):
         assignments = await self.sync.request_missing_bodies(self.peers)
         block_hash = self.fork_one.header.hash
         original_peer = assignments[block_hash]
+        for other_hash in tuple(self.sync.pool.pending_hashes):
+            if other_hash != block_hash:
+                self.sync.pool.cancel(other_hash)
+                self.sync._requested_at.pop(other_hash, None)
         for peer in self.peers.values():
             peer.connected = False
 
