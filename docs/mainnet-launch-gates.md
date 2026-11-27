@@ -489,6 +489,26 @@ during restore. CI must pass on the exact test commit; this gate remains OPEN.
 The proposed end-to-end workflow is specified in `docs/production-backup-restore-design.md`. It remains a design proposal only: no production backup command, authenticated manifest, anti-rollback authority, or restore activation mechanism has been implemented or approved.
 
 
+
+### P2P admission-race and slow-handshake regression coverage
+
+Focused local asyncio regressions now exercise concurrent outbound dials,
+inbound accept bursts, and a mixed inbound/outbound race against the configured
+peer-count cap. Additional tests exercise handshake timeout cleanup when a
+remote peer stops partway through a frame header or version payload, and verify
+that a timed-out inbound session releases its manager peer slot. These tests
+improve coverage of ordinary event-loop admission and timeout cleanup; they do
+not establish a hard implementation ceiling, a bounded kernel accept queue,
+or protection against connection churn.
+
+Node-wide byte/message/work budgets, receive-memory reservations, bounded
+pending writes and waiters, listener backlog and OS descriptor policy,
+instrumented adversarial load tests, supported-hardware measurements, and
+independent security review remain OPEN. Per-peer token buckets still allow
+aggregate resource consumption to scale with peer count. No public listener
+or production P2P resource profile is authorized. CI must pass on the exact
+candidate commit before these focused tests are treated as verified.
+
 ### Persistent network-identity binding — OPEN
 
 Bounded source audits are recorded in
