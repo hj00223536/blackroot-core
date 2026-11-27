@@ -258,3 +258,9 @@ production resource policy. The tests cover basic atomic reservation and
 release behavior, not async cancellation at transport await boundaries or
 measured memory ceilings. Do not treat this increment as closing any P2P or
 Mainnet launch gate.
+
+## 13. Outbound transport integration status
+
+PeerConnection now accepts an explicit pair of send budgets (peer_budget, node_budget). When supplied, send() reserves one pending-writer item and the exact frame byte count (24-byte envelope plus payload) against both budgets before calling the frame encoder. The reservation is retained while waiting for the send lock and through writer.drain(). Reservation exhaustion rejects before encoding. Encoding errors release the reservation. If a write has been handed to the stream and drain is cancelled or fails, the peer is closed before the reservation is released, because delivery and buffered ownership are otherwise ambiguous.
+
+Focused tests cover blocked drains, per-peer capacity, a shared node budget across two peers, cancellation, and encoding failure. This remains opt-in: PeerManager does not yet construct or inject a shared reviewed budget, and receive-side reservations, handler ownership, bounded shutdown, measured transport memory, and public listener policy remain unimplemented. The legacy path without send_resource_budgets is still unaccounted. No production numeric limits have been selected; this does not close the P2P resource gate.
