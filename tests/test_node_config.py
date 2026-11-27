@@ -203,6 +203,44 @@ class TestnetConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "pow_limit"):
                 TestnetConfig.from_json_file(path)
 
+    def test_json_config_rejects_boolean_values_in_integer_fields(self):
+        settings = config()
+        header = settings.genesis_header
+        raw = {
+            "network_id": settings.network_id,
+            "message_magic": settings.message_magic.hex(),
+            "protocol_version": settings.protocol_version,
+            "genesis_header": {
+                "version": header.version,
+                "prev_hash": header.prev_hash.hex(),
+                "merkle_root": header.merkle_root.hex(),
+                "timestamp": header.timestamp,
+                "bits": header.bits,
+                "nonce": header.nonce,
+            },
+            "genesis_hash": settings.genesis_hash.hex(),
+            "pow_limit": hex(settings.pow_limit),
+            "p2p_port": settings.p2p_port,
+            "max_peers": settings.max_peers,
+            "max_payload": settings.max_payload,
+        }
+        cases = (
+            ("protocol_version", True, "positive int32"),
+            ("pow_limit", False, "positive uint256"),
+            ("p2p_port", True, "p2p_port"),
+            ("max_peers", True, "max_peers"),
+            ("max_payload", True, "P2P implementation limit"),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "testnet.json"
+            for field, value, message in cases:
+                with self.subTest(field=field):
+                    malformed = dict(raw)
+                    malformed[field] = value
+                    path.write_text(json.dumps(malformed), encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, message):
+                        TestnetConfig.from_json_file(path)
+
     def test_json_config_rejects_unknown_and_missing_fields(self):
         settings = config()
         header = settings.genesis_header
