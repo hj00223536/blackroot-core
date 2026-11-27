@@ -93,12 +93,15 @@ class ReorganizationAtomicityTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as directory:
             store = UTXOStore(Path(directory) / "chain.sqlite")
-            private_key = 7
-            # Compressed public key for private scalar 7 (computed by the
-            # test-only curve helper in the existing script test suite).
-            from src.blackroot_script import _mul
-            point = _mul(private_key)
-            pubkey = bytes([2 | (point[1] & 1)]) + point[0].to_bytes(32, "big")
+            # Derive the compressed secp256k1 public key with the same
+            # maintained cryptography backend used by production verification.
+            from cryptography.hazmat.primitives import serialization
+            from cryptography.hazmat.primitives.asymmetric import ec
+            private_key = ec.derive_private_key(7, ec.SECP256K1())
+            pubkey = private_key.public_key().public_bytes(
+                serialization.Encoding.X962,
+                serialization.PublicFormat.CompressedPoint,
+            )
             funding = OutPoint(bytes.fromhex("71" * 32), 0)
             funding_output = TxOutput(10_000, p2pkh_script(_hash160(pubkey)))
             store.add_genesis_output(funding, funding_output)
