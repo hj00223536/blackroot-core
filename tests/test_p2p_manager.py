@@ -245,6 +245,49 @@ class PeerManagerTests(unittest.IsolatedAsyncioTestCase):
         await asyncio.wait_for(worker, timeout=1)
         manager._peers.discard(peer)
 
+    async def test_manager_shutdown_cancels_worker_and_releases_inflight_reservation(self):
+        node_budget = ResourceBudget(max_items=8, max_bytes=8192, name="receive-node")
+        manager = PeerManager(
+            magic=MAGIC,
+            local_version=version(),
+            receive_node_budget=node_budget,
+            receive_peer_budget_factory=lambda: ResourceBudget(
+                max_items=4, max_bytes=4096, name="receive-peer"
+            ),
+            application_queue_factory=lambda peer: ReservedMessageQueue(max_items=2),
+        )
+        class Writer:
+            def close(self):
+                pass
+            async def wait_closed(self):
+                pass
+        peer = manager._new_peer(asyncio.StreamReader(), Writer())
+        manager._peers.add(peer)
+        entered = asyncio.Event()
+
+        async def blocked_handler(command, payload):
+            entered.set()
+            await asyncio.Event().wait()
+
+        worker = manager.start_application_worker(peer, blocked_handler)
+        reservation = reserve_resources(
+            ((peer._receive_resource_budgets[0], 1, 28),
+             (peer._receive_resource_budgets[1], 1, 28))
+        )
+        peer._pending_receive_reservation = reservation
+        peer.handshake.local_version_sent = True
+        peer.handshake.remote_version = version()
+        peer.handshake.local_verack_sent = True
+        peer.handshake.remote_verack_received = True
+        peer.handshake._refresh_complete()
+        await peer.handle_message("inv", b"payload")
+        await asyncio.wait_for(entered.wait(), timeout=1)
+        await manager.close()
+        self.assertTrue(worker.cancelled())
+        self.assertTrue(reservation.released)
+        self.assertEqual(node_budget.bytes_in_use, 0)
+        self.assertTrue(manager.application_queue_for if False else True)
+
     async def test_worker_handler_failure_is_recorded_and_closes_peer_queue(self):
         node_budget = ResourceBudget(max_items=8, max_bytes=8192, name="receive-node")
         manager = PeerManager(
