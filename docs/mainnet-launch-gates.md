@@ -219,3 +219,12 @@ boundaries. They do not simulate sudden power loss, torn writes, filesystem or
 device failure, corruption, long-running contention, or every individual SQL
 write boundary. Those remain explicit launch gates and require independent
 fault-injection and restore testing.
+
+### Header-admission fail-closed regression coverage
+
+Automated regressions now verify that a header with insufficient proof of work
+and a header carrying incorrect retarget bits are rejected without changing the
+known header DAG, selected tip, or chainwork-bearing node set. These tests cover
+state atomicity for these two rejection paths only. They do not replace
+independent proof-of-work/compact-target vectors, adversarial retarget boundary
+testing, adjusted-clock policy review, or full external header-consensus review.
