@@ -146,3 +146,42 @@ No numeric policy is selected by this audit. Values must follow documented
 hardware profiles, measured workloads, operator requirements, and independent
 security review; do not infer production-safe defaults from the local testnet
 configuration.
+
+## Outbound send-queue and pre-lock allocation finding
+
+A follow-up review of `PeerConnection.send()` found a concrete aggregate
+memory exposure that is not visible from the existence of the per-peer send
+lock:
+
+- The method calls `encode_message()` and constructs the complete frame before
+  acquiring `_send_lock`. Concurrent callers can therefore each allocate and
+  retain a full encoded frame while waiting for the lock.
+- The lock serializes `writer.write()` and `writer.drain()`, but does not bound
+  the number of tasks waiting to acquire it, the aggregate bytes held by those
+  tasks, or the time a caller may wait behind a slow reader.
+- There is no explicit send-waiter counter, per-peer pending-byte reservation,
+  node-wide pending-byte reservation, write-drain deadline, or cancellation
+  accounting for such reservations.
+- The configured maximum frame size constrains each encoded frame only. It
+  does not constrain the sum of frames retained by concurrent callers.
+
+This is a source-level finding, not a demonstrated exploit or measured memory
+impact. It does mean that the current send lock must not be described as a
+bounded outbound queue or backpressure policy.
+
+Before implementation, the reviewed resource policy must define whether sends
+are rejected immediately or admitted through a bounded queue; reserve both
+waiter capacity and byte capacity before encoding or retaining a frame; define
+per-peer and node-wide accounting; release reservations exactly once on
+completion, cancellation, write failure, and shutdown; and specify a bounded
+write-drain/shutdown behavior. The implementation must not hold an unbounded
+number of tasks waiting on an asyncio lock. Any queue limit must come from an
+approved measured profile, not an arbitrary constant.
+
+The receive path has a related but distinct boundary: it validates the frame
+length and charges the peer-local token buckets before reading the payload,
+then retains the complete payload for decoding and handler execution. This
+protects against oversized individual frames and per-peer rate excess, but
+there is still no shared node-wide reservation for payload bytes retained
+across peers or application callbacks. The receive and send budgets therefore
+need one coherent ownership/accounting model rather than independent counters.
