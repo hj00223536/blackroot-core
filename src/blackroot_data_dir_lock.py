@@ -64,3 +64,8 @@ class DataDirectoryLock:
 
     def __exit__(self, exc_type, exc, traceback) -> None:
         self.release()
+
+    @property
+    def is_held(self) -> bool:
+        """Whether this instance currently owns its advisory process lock."""
+        return self._fd is not None
