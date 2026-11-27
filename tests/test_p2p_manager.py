@@ -215,6 +215,56 @@ class PeerManagerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.client_manager.peer_count, self.client_manager.max_peers)
         self.assertEqual(self.client_manager._outbound_reservations, 0)
 
+    async def test_mixed_inbound_and_outbound_race_respects_shared_peer_cap(self):
+        manager = PeerManager(
+            magic=MAGIC,
+            local_version=version(),
+            max_peers=1,
+            handshake_timeout=1,
+            idle_timeout=5,
+        )
+        external_writers = []
+
+        def hold_external_connection(reader, writer):
+            external_writers.append(writer)
+
+        external_server = await asyncio.start_server(
+            hold_external_connection, "127.0.0.1", 0
+        )
+        external_host, external_port, *_ = external_server.sockets[0].getsockname()
+        inbound_host, inbound_port, *_ = await manager.start_server("127.0.0.1", 0)
+        inbound_writer = None
+        try:
+            outbound_result, inbound_result = await asyncio.gather(
+                manager.connect(external_host, external_port),
+                asyncio.open_connection(inbound_host, inbound_port),
+                return_exceptions=True,
+            )
+            if not isinstance(inbound_result, BaseException):
+                _, inbound_writer = inbound_result
+
+            self.assertLessEqual(manager._load(), 1)
+            self.assertLessEqual(manager.peer_count, 1)
+            self.assertEqual(manager._outbound_reservations, 0)
+            self.assertTrue(
+                not isinstance(outbound_result, BaseException)
+                or isinstance(outbound_result, RuntimeError)
+            )
+        finally:
+            if inbound_writer is not None:
+                inbound_writer.close()
+                await asyncio.gather(inbound_writer.wait_closed(), return_exceptions=True)
+            await manager.close()
+            external_server.close()
+            await external_server.wait_closed()
+            for writer in external_writers:
+                writer.close()
+            if external_writers:
+                await asyncio.gather(
+                    *(writer.wait_closed() for writer in external_writers),
+                    return_exceptions=True,
+                )
+
     async def test_inbound_accept_burst_cannot_oversubscribe_peer_cap(self):
         host, port, *_ = await self.server_manager.start_server("127.0.0.1", 0)
         clients = await asyncio.gather(
