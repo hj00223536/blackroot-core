@@ -374,8 +374,16 @@ class UTXOStore:
                 )
             return fee
 
-    def verify_integrity(self) -> None:
-        """Fail closed on SQLite, relational, transaction-record, or body corruption."""
+    def verify_integrity(self, *, require_authenticated_bootstrap: bool = False) -> None:
+        """Fail closed on stored-state corruption and optionally reject unauthenticated bootstrap state.
+
+        ``require_authenticated_bootstrap`` is a launch-safety gate, not a
+        manifest verifier: this prototype has no authenticated bootstrap
+        manifest integration, so any non-zero bootstrap issuance is rejected
+        when the gate is enabled.
+        """
+        if not isinstance(require_authenticated_bootstrap, bool):
+            raise TypeError("require_authenticated_bootstrap must be a bool")
         with self._connection_scope() as db:
             integrity = db.execute("PRAGMA integrity_check").fetchall()
             if integrity != [("ok",)]:
@@ -398,6 +406,11 @@ class UTXOStore:
                 raise RuntimeError("persisted bootstrap issuance metadata is malformed")
             if bootstrap_issued < 0 or issued < 0 or bootstrap_issued + issued > TOTAL_SUPPLY_CAP:
                 raise RuntimeError("persisted cumulative issuance exceeds total supply cap")
+            if require_authenticated_bootstrap and bootstrap_issued != 0:
+                raise RuntimeError(
+                    "authenticated bootstrap manifest verification is unavailable; "
+                    "non-zero bootstrap issuance is not accepted by the strict integrity gate"
+                )
             active_block_count = db.execute("SELECT COUNT(*) FROM blocks").fetchone()[0]
             if active_block_count == 0:
                 live_bootstrap_value = db.execute(
