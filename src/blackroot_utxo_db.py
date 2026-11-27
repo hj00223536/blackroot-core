@@ -437,12 +437,12 @@ class UTXOStore:
                         if previous in block_inputs:
                             raise RuntimeError("active block transaction history contains a duplicate spend")
                         block_inputs.add(previous)
+                        if previous in spent_history:
+                            raise RuntimeError("active transaction history spends an output more than once")
                         source = active_transactions.get(previous.txid)
                         if source is not None and source[0] < height:
                             if previous.index >= len(source[2].outputs):
                                 raise RuntimeError("active transaction spends a nonexistent historical output")
-                            if previous in spent_history:
-                                raise RuntimeError("active transaction history spends an output more than once")
                             expected_spent.add(previous)
 
                 spent_rows = db.execute(
