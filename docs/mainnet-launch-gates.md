@@ -668,9 +668,11 @@ known historical input's undo value, and assert that reorganization fails
 without changing the active tip, headers, or UTXO set.
 These are targeted database-integrity checks, not deterministic full UTXO
 replay or complete consensus validation. For known transaction outputs, reorganization now recomputes the expected
-creation MTP from the prior 11-header window (or fewer available ancestors)
-and rejects mismatched undo metadata. Regression coverage corrupts a known
-input's creation MTP and checks that the active state remains unchanged.
+creation MTP from the prior 11-header window (or fewer available ancestors),
+after checking that each historical header's hash and parent commitment match
+the persisted active-chain index. Regression coverage corrupts a known input's
+creation MTP and separately tampers with a historical header while forging the
+matching undo value; both cases must fail without changing active state.
 This does not authenticate bootstrap outputs or prove complete UTXO replay;
 bootstrap provenance, full undo metadata provenance, crash recovery,
 adversarial testing, and independent review remain open.
