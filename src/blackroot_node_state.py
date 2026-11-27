@@ -155,6 +155,7 @@ class PersistentNodeState:
                 database,
                 Path(str(database) + "-wal"),
                 Path(str(database) + "-shm"),
+                Path(str(database) + "-journal"),
             ):
                 try:
                     candidate_stat = candidate.lstat()
