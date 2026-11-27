@@ -468,3 +468,23 @@ covering interruption at each step. Do not overwrite the live data directory
 during restore. CI must pass on the exact test commit; this gate remains OPEN.
 
 The proposed end-to-end workflow is specified in `docs/production-backup-restore-design.md`. It remains a design proposal only: no production backup command, authenticated manifest, anti-rollback authority, or restore activation mechanism has been implemented or approved.
+
+
+### Persistent network-identity binding — OPEN
+
+A bounded source audit is recorded in
+`docs/persistent-network-identity-audit.md`. The persistent header store
+currently binds its metadata to schema version, proof-of-work limit, and the
+configured genesis hash, and active UTXO records are cross-checked against the
+replayed header DAG. However, the persisted identity does not include the
+configured network ID, P2P message magic, or protocol version; the UTXO
+metadata table does not independently pin network identity or genesis; and no
+authenticated externally pinned network-identity manifest is loaded at
+startup. A genesis hash is not a complete identity for all protocol settings.
+
+Before this gate can close, freeze and independently review a canonical,
+versioned identity specification covering the complete consensus and P2P
+parameter set, define trust-anchor/pin distribution and anti-rollback, persist
+the accepted binding without silently rewriting existing databases, and add
+mismatch, downgrade, corruption, and interrupted-migration tests. This is a
+source audit and design requirement, not an implementation or launch approval.
