@@ -1676,5 +1676,32 @@ store.apply(tx)
             self.store.verify_integrity()
 
 
+    def test_verify_integrity_rejects_live_utxo_value_tampering(self):
+        from src.blackroot_blocks import Block, COINBASE_INDEX
+        from src.blackroot_chain import BlockHeader
+        from src.blackroot_consensus import block_subsidy
+        from src.blackroot_transactions import merkle_root
+
+        coinbase = Transaction(
+            1,
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
+            (TxOutput(block_subsidy(0), b"integrity-live-utxo-value"),),
+        )
+        header = BlockHeader(
+            1, bytes(32), merkle_root((coinbase.txid,)),
+            1, 0x207fffff, 0,
+        )
+        self.store.connect_block(Block(header, (coinbase,)), 0)
+
+        with _managed_sqlite(self.db_path) as db:
+            db.execute(
+                "UPDATE utxos SET value=value-1 WHERE txid=? AND output_index=0",
+                (coinbase.txid,),
+            )
+
+        with self.assertRaisesRegex(RuntimeError, "does not match its active transaction"):
+            self.store.verify_integrity()
+
+
 if __name__ == "__main__":
     unittest.main()
