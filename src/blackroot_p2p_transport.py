@@ -198,6 +198,7 @@ class PeerConnection:
         self._send_lock = asyncio.Lock()
         self._closed = False
         self._close_task: asyncio.Task | None = None
+        self._close_start_error: BaseException | None = None
         self.remote_version: VersionMessage | None = None
 
     @property
@@ -416,17 +417,25 @@ class PeerConnection:
 
     async def close(self) -> None:
         """Await one cancellation-shielded stream teardown shared by callers."""
+        if self._close_start_error is not None:
+            raise RuntimeError("peer teardown task creation previously failed") from self._close_start_error
         if self._close_task is None:
             self._closed = True
             close_coroutine = self._close_impl()
             try:
                 self._close_task = asyncio.create_task(close_coroutine)
-            except BaseException:
+            except BaseException as exc:
                 close_coroutine.close()
-                # Preserve synchronous ownership cleanup if task creation fails.
-                self.writer.close()
-                if not self._receive_dispatch_active:
-                    self._release_pending_receive_reservation()
+                # Do not retry writer teardown after its task could not be retained.
+                self._close_start_error = exc
+                try:
+                    self.writer.close()
+                except BaseException:
+                    # Keep the task-creation failure as the primary exception.
+                    pass
+                finally:
+                    if not self._receive_dispatch_active:
+                        self._release_pending_receive_reservation()
                 raise
         await asyncio.shield(self._close_task)
 
