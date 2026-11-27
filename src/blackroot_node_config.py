@@ -73,8 +73,10 @@ class TestnetConfig:
             raise ValueError("genesis_hash must be exactly 32 raw bytes")
         if self.genesis_header.hash != self.genesis_hash:
             raise ValueError("genesis_hash does not match the configured genesis header")
-        if not isinstance(self.pow_limit, int) or isinstance(self.pow_limit, bool) or self.pow_limit <= 0:
-            raise ValueError("pow_limit must be a positive integer")
+        if (not isinstance(self.pow_limit, int)
+                or isinstance(self.pow_limit, bool)
+                or not 0 < self.pow_limit < 1 << 256):
+            raise ValueError("pow_limit must be a positive uint256")
         target = decode_compact_target(self.genesis_header.bits)
         if target > self.pow_limit:
             raise ValueError("genesis target exceeds configured proof-of-work limit")
