@@ -439,3 +439,8 @@ A bounded audit is recorded in `docs/node-entrypoint-lock-audit.md`. The local C
 `PersistentNodeState.data_directory_locked` exposes current lock ownership. The local CLI opts into `BlackrootNodeRuntime(require_locked_state=True)`; tests cover rejection of unlocked state and acceptance/release of locked state. This narrows accidental bypass at the CLI/runtime boundary, but the enforcement flag remains opt-in for compatibility callers and legacy constructors remain unlocked. The global mandatory process-ownership gate remains OPEN. CI verification is pending.
 
 Lock-file hardening follow-up: `DataDirectoryLock` now uses `O_NOFOLLOW` where available, rejects symlinked lock paths and directories, and verifies the opened descriptor is a regular file. Tests cover symlink redirection and invalid directory paths. This is defense in depth, not a substitute for restrictive directory permissions, privileged-tampering defenses, or filesystem review. CI verification remains pending.
+
+
+### Private node data-directory permissions
+
+`DataDirectoryLock` now requires the opened data directory to be owned by the current user and to exclude group/other permissions (0700 or stricter), and opens the lock file relative to a pinned directory descriptor. A regression covers rejection of a permissive 0755 directory before lock-file creation. This does not defend against the owning user or privileged local tampering, parent-path replacement before descriptor acquisition, hostile filesystems, or restored-backup rollback. Independent filesystem, ownership, backup/restore, and crash-recovery review remains OPEN; CI must pass on the exact commit.
