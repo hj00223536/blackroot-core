@@ -60,6 +60,14 @@ def verify_genesis_approval_record(
         revoked_keys_snapshot = frozenset(revoked_key_ids)
     except (TypeError, ValueError) as exc:
         raise ValueError("trusted public-key configuration is malformed") from exc
+    for configured_key_id, configured_public_bytes in trusted_keys_snapshot.items():
+        _hex32(configured_key_id, "trusted key identifier")
+        if not isinstance(configured_public_bytes, bytes) or len(configured_public_bytes) != 32:
+            raise ValueError("trusted public key must contain exactly 32 raw bytes")
+        if hashlib.sha256(configured_public_bytes).hexdigest() != configured_key_id:
+            raise ValueError("trusted public-key identifier mismatch")
+    for revoked_key_id in revoked_keys_snapshot:
+        _hex32(revoked_key_id, "revoked key identifier")
     # Snapshot caller-controlled record once so validation and signature
     # verification cannot observe different values.
     record_snapshot = dict(record)
