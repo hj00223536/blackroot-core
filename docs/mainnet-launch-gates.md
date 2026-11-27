@@ -419,3 +419,7 @@ full UTXO replay.
 ### External trust-policy pin distribution
 
 The requirements proposal in `docs/external-release-policy-pin-distribution-proposal.md` is not an implementation or approval. Before production trust activation, the project must select and independently review an external pin distribution and freshness mechanism, signer identity and quorum, separation of duties, rollback detection, key rotation/revocation, and recovery procedures. A local database or restored backup is not an authoritative external pin. This gate remains OPEN; no owner key, policy authority, or trust activation is approved.
+
+### Trust-state lifecycle integration review
+
+`docs/trust-state-implementation-readiness-review.md` records a bounded source review. The existing POSIX data-directory lock is not mandatory in `PersistentNodeState`, and the SQLite transaction coordinator does not acquire it. Neither component supplies external pin authentication or snapshot rollback resistance. Mandatory lock ownership, external policy authentication/freshness, transactional acceptance, restore-old-backup rejection, and crash/fault tests remain OPEN. Do not treat the existing primitives as a completed trust-state implementation.
