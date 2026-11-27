@@ -80,6 +80,7 @@ async def run_node(config: TestnetConfig, data_dir: Path, bind_host: str, connec
             # production network must replace this with a network-adjusted
             # clock derived from its peer-time policy.
             adjusted_time=adjusted_time,
+            require_locked_state=True,
         )
         # Supervise timed-out fork-body requests for the full CLI node lifetime.
         await runtime.start_retry_loop()
