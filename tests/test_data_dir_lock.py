@@ -63,6 +63,30 @@ class DataDirectoryLockTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "must be a regular file"):
                 DataDirectoryLock(root).acquire()
 
+    def test_rejects_hard_linked_lock_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / "outside-lock"
+            target.write_text("do not modify")
+            lock_path = root / ".blackroot-node.lock"
+            try:
+                lock_path.hardlink_to(target)
+            except (NotImplementedError, OSError) as exc:
+                self.skipTest(f"hard links are unsupported: {exc}")
+            with self.assertRaisesRegex(RuntimeError, "hard-link aliases"):
+                DataDirectoryLock(root).acquire()
+            self.assertEqual(target.read_text(), "do not modify")
+
+    def test_rejects_group_or_world_accessible_lock_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            lock_path = root / ".blackroot-node.lock"
+            lock_path.write_text("existing lock")
+            lock_path.chmod(0o644)
+            with self.assertRaisesRegex(RuntimeError, "permissions must exclude group and other"):
+                DataDirectoryLock(root).acquire()
+            self.assertEqual(lock_path.read_text(), "existing lock")
+
     def test_kernel_releases_lock_after_owner_process_exits(self):
         with tempfile.TemporaryDirectory() as directory:
             child_code = (
