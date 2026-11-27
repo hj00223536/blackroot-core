@@ -64,3 +64,8 @@ The type boundary alone is not cryptographic authentication. It must be construc
 The repository has reusable POSIX locking and SQLite transaction primitives, but they are not yet wired into a mandatory trust-state lifecycle. The safe next step is to settle external policy authority and lock ownership, not to create a local sequence counter that could be mistaken for rollback resistance.
 
 Until these gaps are closed, keep trust-state persistence unimplemented and all issuance/activation gates closed.
+## 6. Locked lifecycle entry point added (not yet CI-verified)
+
+A new opt-in `PersistentNodeState.open_locked(data_dir, database_path, ...)` entry point now acquires `DataDirectoryLock` before opening coordinated SQLite state, requires the database file to be directly inside the resolved data directory, retains the lock for the state object's lifetime, and releases it on `close()`. The lock exposes an `is_held` property. Focused tests were added for second-owner rejection, release/reopen, idempotent close, and database-path containment.
+
+This is a bounded improvement, not a completed mandatory-lock guarantee: legacy constructors and `open_coordinated()` remain available for compatibility and tests without acquiring a process lock. Production integration must route every node startup through `open_locked` (or a later mandatory lifecycle facade), and the CLI/service entry points must be audited so they cannot bypass it. The new code and tests have not yet been validated by a completed CI run. The lock is advisory POSIX flock and does not prevent privileged tampering or full-backup rollback.
