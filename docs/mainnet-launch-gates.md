@@ -582,3 +582,6 @@ Peer teardown now closes the per-peer queue, cancels and awaits its retained wor
 Concurrent `PeerManager.close()` calls now wait for the same shutdown completion instead of later callers returning while the first teardown is still running. A blocking-peer test verifies this ordering. This is event-loop-local lifecycle synchronization and does not change the open production P2P resource gate.
 
 The per-peer queue factory now rejects shared, previously used, or closed queue instances; each peer must receive a fresh pristine queue. A test covers accidental queue reuse across two peers. This prevents cross-peer consumer ownership ambiguity but does not close the node-wide resource-policy gate.
+
+
+A cancellation-safety review found that a caller cancelling its own `PeerManager.close()` await could interrupt teardown while the manager's completion event was still signalled in `finally`. Shutdown now runs in one retained task awaited through `asyncio.shield()`; cancellation of an individual caller cannot cancel the shared teardown, and later callers await that same task. Tests cover cancellation of the first caller while a peer close is blocked. This improves lifecycle correctness but is not evidence of a production resource ceiling; the P2P gate remains OPEN.
