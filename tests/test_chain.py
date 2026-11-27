@@ -123,6 +123,54 @@ class HeaderChainTests(unittest.TestCase):
             self.assertEqual([header.hash for header in disconnect], [old_branch.hash])
             self.assertEqual([header.hash for header in connect], [side_one.hash, side_two.hash])
 
+    def test_insufficient_proof_of_work_does_not_mutate_header_dag(self):
+        genesis = mine_header(ZERO_HASH, 1)
+        chain = HeaderChain(
+            POW_LIMIT, genesis, allow_unchecked_time_for_tests=True
+        )
+        from src.blackroot_consensus import sha256d
+
+        nonce = 0
+        while True:
+            candidate = BlockHeader(
+                1, genesis.hash, bytes([0x42]) * 32, 2, BITS, nonce
+            )
+            digest = int.from_bytes(sha256d(candidate.serialize()), "little")
+            if digest > POW_LIMIT:
+                break
+            nonce += 1
+
+        original_nodes = chain.nodes
+        original_tip = chain.best_hash
+        with self.assertRaisesRegex(ValueError, "insufficient proof of work"):
+            chain.add_to_branch(candidate)
+
+        self.assertEqual(chain.nodes, original_nodes)
+        self.assertEqual(chain.best_hash, original_tip)
+
+    def test_incorrect_retarget_bits_do_not_mutate_header_dag(self):
+        from src.blackroot_consensus import DIFFICULTY_INTERVAL
+
+        genesis = mine_header(ZERO_HASH, 1)
+        chain = HeaderChain(
+            POW_LIMIT, genesis, allow_unchecked_time_for_tests=True
+        )
+        parent = genesis
+        for height in range(1, DIFFICULTY_INTERVAL):
+            parent = mine_header(parent.hash, 1 + height * 600)
+            chain.add(parent)
+
+        original_nodes = chain.nodes
+        original_tip = chain.best_hash
+        wrong = mine_header(
+            parent.hash, 1 + DIFFICULTY_INTERVAL * 600, BITS
+        )
+        with self.assertRaisesRegex(ValueError, "difficulty bits"):
+            chain.add_to_branch(wrong)
+
+        self.assertEqual(chain.nodes, original_nodes)
+        self.assertEqual(chain.best_hash, original_tip)
+
     def test_rejects_unknown_parent_and_duplicate_header(self):
         genesis = mine_header(ZERO_HASH, 1)
         chain = HeaderChain(POW_LIMIT, genesis, allow_unchecked_time_for_tests=True)
