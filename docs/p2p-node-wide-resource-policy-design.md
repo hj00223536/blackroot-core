@@ -318,3 +318,7 @@ Manager shutdown now closes all application queues before closing peer streams, 
 A peer session now closes its application queue and cancels/awaits its retained worker before completing peer teardown. This matters when a handler is blocked indefinitely: merely closing the queue would release queued messages but leave the in-flight handler and its reservation alive. The worker's `queue.consume()` `finally` now provides the reservation release path on this disconnect-triggered cancellation. The manager also removes the per-peer worker-start marker on disconnect so churn does not accumulate stale peer references. Tests cover a blocked handler, disconnect, cancellation, reservation release, and admission-state cleanup.
 
 Cancellation still cannot reverse external side effects already performed by a handler. Handlers must be cancellation-aware and idempotent as appropriate. This remains a bounded per-peer worker prototype, not a complete node-wide scheduling/resource policy.
+
+## 22. Concurrent manager shutdown callers
+
+`PeerManager.close()` now elects one caller to perform shutdown and makes concurrent callers await the same completion event rather than returning while teardown is still in progress. The completion event is set in `finally`, including when shutdown raises, so waiters are not left blocked forever. A focused test blocks peer close, starts a second close caller, and verifies the second caller does not finish before the shared shutdown completes. This is event-loop-local synchronization; it is not a cross-thread lifecycle primitive.
