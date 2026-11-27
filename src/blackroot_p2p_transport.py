@@ -22,6 +22,7 @@ from .blackroot_blocks import MAX_BLOCK_SIZE
 from .blackroot_p2p_headers import MAX_HEADERS_PER_MESSAGE
 from .blackroot_p2p_inventory import MAX_INVENTORY_ITEMS
 from .blackroot_p2p_getheaders import MAX_BLOCK_LOCATOR_HASHES
+from .blackroot_p2p_resources import ResourceBudget, reserve_resources
 
 MessageHandler = Callable[[str, bytes], object | Awaitable[object]]
 
@@ -121,6 +122,7 @@ class PeerConnection:
         data_bytes_per_second: float = 2 * 1024 * 1024,
         data_bytes_burst: float = 4 * 1024 * 1024,
         monotonic_clock: Callable[[], float] = time.monotonic,
+        send_resource_budgets: tuple[ResourceBudget, ResourceBudget] | None = None,
     ) -> None:
         if not isinstance(magic, bytes) or len(magic) != 4:
             raise ValueError("network magic must be exactly four bytes")
@@ -161,6 +163,15 @@ class PeerConnection:
             or not math.isfinite(now)
         ):
             raise ValueError("monotonic_clock must return a finite number")
+        if send_resource_budgets is not None:
+            if (
+                not isinstance(send_resource_budgets, tuple)
+                or len(send_resource_budgets) != 2
+                or any(not isinstance(item, ResourceBudget) for item in send_resource_budgets)
+                or send_resource_budgets[0] is send_resource_budgets[1]
+            ):
+                raise ValueError("send_resource_budgets must be a distinct (peer, node) budget pair")
+        self._send_resource_budgets = send_resource_budgets
         self._monotonic_clock = monotonic_clock
         self._control_message_bucket = _TokenBucket(
             control_messages_per_second, control_message_burst, now
@@ -181,15 +192,36 @@ class PeerConnection:
         return self.handshake.complete and not self._closed
 
     async def send(self, command: str, payload: bytes = b"") -> None:
-        """Send one bounded frame, serializing concurrent writes."""
+        """Send one frame; when configured, reserve peer and node capacity first."""
         if self._closed:
             raise ConnectionError("peer connection is closed")
-        frame = encode_message(
-            self.magic, command, payload, max_payload=self.max_payload
-        )
-        async with self._send_lock:
-            self.writer.write(frame)
-            await self.writer.drain()
+        if not isinstance(payload, bytes):
+            raise TypeError("payload must be bytes")
+        reservation = None
+        if self._send_resource_budgets is not None:
+            peer_budget, node_budget = self._send_resource_budgets
+            reservation = reserve_resources(
+                (
+                    (peer_budget, 1, HEADER_SIZE + len(payload)),
+                    (node_budget, 1, HEADER_SIZE + len(payload)),
+                )
+            )
+            if reservation is None:
+                raise PeerProtocolError("outbound resource budget exhausted")
+        try:
+            # Encoding happens only after both budgets have admitted the exact
+            # frame size. The reservation remains owned through drain completion.
+            frame = encode_message(
+                self.magic, command, payload, max_payload=self.max_payload
+            )
+            async with self._send_lock:
+                if self._closed:
+                    raise ConnectionError("peer connection is closed")
+                self.writer.write(frame)
+                await self.writer.drain()
+        finally:
+            if reservation is not None:
+                reservation.release()
 
     async def send_ping(self, nonce: int | None = None) -> int:
         """Send an eight-byte ping after handshake and return its nonce."""
