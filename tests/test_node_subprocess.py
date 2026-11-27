@@ -133,6 +133,7 @@ class SeparateProcessNodeSmokeTests(unittest.TestCase):
                     second_record["best_hash"], first_record["best_hash"]
                 )
                 self.assertEqual(second_record["height"], 0)
+                self.assertIs(second_record["block_retry_loop"], True)
                 self.assertEqual(first_record["height"], 0)
                 self.assertIn("no value", second_record["warning"])
 
