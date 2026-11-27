@@ -35,3 +35,7 @@ Before closing this gate:
 3. Add integration tests proving unlocked state is rejected by the production composition root and competing processes cannot share the data directory.
 4. Review directory permissions, symlink/path alias behavior, filesystem semantics, crash recovery, and backup/restore interactions.
 5. Run and pass the complete CI matrix on the exact resulting commit.
+
+## Follow-up enforcement change
+
+`PersistentNodeState.data_directory_locked` now reports whether its owned lock is currently held. `BlackrootNodeRuntime(..., require_locked_state=True)` rejects an unlocked state before constructing the P2P sync service. The loopback CLI opts into this enforcement mode. Runtime unit tests were added for both rejection of unlocked state and acceptance/release of a properly locked state. This narrows accidental bypass at the CLI/runtime boundary but does not force every external embedding caller to enable the option; the global production composition-root gate remains open.
