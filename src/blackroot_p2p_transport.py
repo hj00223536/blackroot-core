@@ -297,8 +297,8 @@ class PeerConnection:
             peer_budget, node_budget = self._receive_resource_budgets
             reservation = reserve_resources(
                 (
-                    (peer_budget, 1, HEADER_SIZE + length),
-                    (node_budget, 1, HEADER_SIZE + length),
+                    (peer_budget, 1, HEADER_SIZE + (3 * length)),
+                    (node_budget, 1, HEADER_SIZE + (3 * length)),
                 )
             )
             if reservation is None:
