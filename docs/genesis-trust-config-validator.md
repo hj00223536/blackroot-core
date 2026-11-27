@@ -51,3 +51,7 @@ The test public key is RFC 8032 published test material only. It is not an owner
 5. Only after owner approval and independent review, consider wiring validated active keys into detached approval verification.
 
 This prototype does not create a founder output, initialize issuance state, or authorize testnet/mainnet release.
+
+## External release-policy distribution proposal
+
+The minimum requirements for authenticating and distributing external anti-rollback pins are documented in `docs/external-release-policy-pin-distribution-proposal.md`. It is a proposal only: no distribution model, signer, quorum, owner identity, or freshness authority has been selected. It does not change the validator's experimental status or authorize trust activation or issuance.
