@@ -392,3 +392,15 @@ required undo set only from historical outputs not already spent in the prior
 active prefix. Bootstrap-origin outputs remain unauthenticated without a
 separate authenticated bootstrap manifest, and this check is not full UTXO
 replay or a substitute for consensus validation.
+
+### Tip-disconnect transaction dependency preflight
+
+The tip-disconnect storage primitive now reconstructs the active transaction index
+from persisted transaction bodies and checks dependency order across the complete
+active prefix plus the candidate tip before applying any UTXO undo mutation. It
+rejects an earlier active transaction that references an output from the same
+or a later block, or an output index that does not exist in an earlier source
+transaction. A regression verifies that a dependency-order rejection leaves
+the active tip and UTXO state unchanged. This is a storage-integrity safeguard;
+it does not validate block headers, proof of work, scripts, or the full
+consensus state, and it does not replace deterministic full UTXO replay.
