@@ -368,3 +368,8 @@ This does not set a production bind address, backlog, connection-rate limit, or 
 
 
 Shutdown now also waits for the in-flight listener-start completion event. This matters because merely closing a listener that was already installed is insufficient: an `asyncio.start_server` call can still be pending when close begins. The close operation therefore does not report completion until the pending bind has either failed or returned a server that the startup path closes after observing the manager's closing state. The regression asserts close remains pending until that bind is released and its late server is closed.
+
+
+## 27. Application worker task-creation rollback
+
+`start_application_worker` now treats task creation as part of worker admission. If `asyncio.create_task` fails, it explicitly closes the unsubmitted coroutine and removes the peer's worker-start marker before propagating the error. A regression injects task-creation failure and verifies the marker and worker-task registry remain empty. This prevents a peer from being permanently marked as having a worker when no worker exists. It does not add a global worker/task ceiling or change the opt-in queue policy.
