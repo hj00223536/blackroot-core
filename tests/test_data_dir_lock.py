@@ -22,6 +22,27 @@ class DataDirectoryLockTests(unittest.TestCase):
             with DataDirectoryLock(directory):
                 pass
 
+    def test_rejects_symbolic_link_at_lock_path(self):
+        if not hasattr(os, "O_NOFOLLOW"):
+            self.skipTest("platform does not expose O_NOFOLLOW")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / "unrelated-file"
+            target.write_text("do not modify")
+            lock_path = root / ".blackroot-node.lock"
+            lock_path.symlink_to(target)
+            with self.assertRaisesRegex(RuntimeError, "must not be a symbolic link"):
+                DataDirectoryLock(root).acquire()
+            self.assertEqual(target.read_text(), "do not modify")
+
+    def test_rejects_non_regular_file_at_lock_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            lock_path = root / ".blackroot-node.lock"
+            lock_path.mkdir()
+            with self.assertRaisesRegex(RuntimeError, "must be a regular file"):
+                DataDirectoryLock(root).acquire()
+
     def test_kernel_releases_lock_after_owner_process_exits(self):
         with tempfile.TemporaryDirectory() as directory:
             child_code = (
