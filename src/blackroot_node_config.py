@@ -61,8 +61,10 @@ class TestnetConfig:
             raise ValueError("message_magic must be exactly four bytes")
         if self.message_magic == bytes(4):
             raise ValueError("all-zero message_magic is not permitted")
-        if not isinstance(self.protocol_version, int) or isinstance(self.protocol_version, bool) or self.protocol_version < 1:
-            raise ValueError("protocol_version must be a positive integer")
+        if (not isinstance(self.protocol_version, int)
+                or isinstance(self.protocol_version, bool)
+                or not 1 <= self.protocol_version <= 0x7FFFFFFF):
+            raise ValueError("protocol_version must be a positive int32")
         if not isinstance(self.genesis_header, BlockHeader):
             raise TypeError("genesis_header must be a BlockHeader")
         if self.genesis_header.prev_hash != ZERO_HASH:
@@ -82,8 +84,10 @@ class TestnetConfig:
             raise ValueError("p2p_port must be between 0 and 65535")
         if not isinstance(self.max_peers, int) or isinstance(self.max_peers, bool) or self.max_peers < 1:
             raise ValueError("max_peers must be a positive integer")
-        if not isinstance(self.max_payload, int) or isinstance(self.max_payload, bool) or not 1 <= self.max_payload <= 0xFFFFFFFF:
-            raise ValueError("max_payload must be between 1 and uint32 max")
+        if (not isinstance(self.max_payload, int)
+                or isinstance(self.max_payload, bool)
+                or not 1 <= self.max_payload <= DEFAULT_MAX_PAYLOAD):
+            raise ValueError("max_payload must be within the P2P implementation limit")
 
     @classmethod
     def from_json_file(cls, path: str | Path) -> "TestnetConfig":
