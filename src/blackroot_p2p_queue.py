@@ -59,6 +59,7 @@ class ReservedMessageQueue:
         )
         self._closed = False
         self._consumer_task: asyncio.Task | None = None
+        self._inflight: ReservedMessage | None = None
 
     @property
     def qsize(self) -> int:
@@ -99,9 +100,18 @@ class ReservedMessageQueue:
             self._queue.task_done()
             return None
         assert isinstance(item, ReservedMessage)
+        if self._inflight is not None:
+            raise RuntimeError("previous message must be acknowledged before the next get")
+        self._inflight = item
         return item
 
     def task_done(self) -> None:
+        """Acknowledge the current message and release its reservation."""
+        if self._inflight is None:
+            raise ValueError("task_done called without an in-flight message")
+        if not self._inflight._released:
+            self._inflight.release()
+        self._inflight = None
         self._queue.task_done()
 
     async def join(self) -> None:
