@@ -772,5 +772,19 @@ store.apply(tx)
                     )
 
 
+    def test_verify_integrity_rejects_malformed_persisted_utxo_outpoint(self):
+        with _managed_sqlite(self.db_path) as db:
+            db.execute("PRAGMA ignore_check_constraints = ON")
+            db.execute(
+                "UPDATE utxos SET txid=? WHERE txid=? AND output_index=?",
+                (b"\\x01", self.funding.txid, self.funding.index),
+            )
+
+        with self.assertRaisesRegex(
+            RuntimeError, "persisted UTXO transaction ID is malformed"
+        ):
+            self.store.verify_integrity()
+
+
 if __name__ == "__main__":
     unittest.main()
