@@ -1105,11 +1105,12 @@ class UTXOStore:
 
         with self._write_scope() as db:
             tip = db.execute(
-                "SELECT height, block_hash, tx_count FROM blocks ORDER BY height DESC LIMIT 1"
+                "SELECT height, block_hash, tx_count, prev_hash, header FROM blocks ORDER BY height DESC LIMIT 1"
             ).fetchone()
             if tip is None:
                 raise ValueError("cannot disconnect an empty chain")
             height, block_hash, expected_tx_count = tip[0], bytes(tip[1]), tip[2]
+            stored_prev_hash, stored_header = bytes(tip[3]), bytes(tip[4])
             if block_hash != expected_tip_hash:
                 raise ValueError("expected tip hash does not match stored tip")
 
@@ -1148,6 +1149,25 @@ class UTXOStore:
                         if outpoint in block_inputs:
                             raise RuntimeError("disconnect undo preflight found duplicate block inputs")
                         block_inputs.add(outpoint)
+
+            # Reconstruct the complete persisted block before touching live UTXOs.
+            # This binds the stored header/hash/parent to the ordered transaction
+            # records and verifies the header's Merkle commitment.
+            from .blackroot_transactions import compact_size, merkle_root
+            try:
+                reconstructed = Block.deserialize(
+                    stored_header + compact_size(len(transaction_rows))
+                    + b"".join(bytes(row[2]) for row in transaction_rows)
+                )
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError("disconnect undo preflight could not reconstruct active block") from exc
+            if (
+                reconstructed.header.hash != block_hash
+                or reconstructed.header.prev_hash != stored_prev_hash
+            ):
+                raise RuntimeError("disconnect undo preflight block header does not match chain record")
+            if merkle_root(tx.txid for tx in reconstructed.transactions) != reconstructed.header.merkle_root:
+                raise RuntimeError("disconnect undo preflight block merkle root does not match transactions")
 
             created = db.execute(
                 "SELECT txid, output_index FROM block_undo_created WHERE height=?",
