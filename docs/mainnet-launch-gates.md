@@ -654,3 +654,17 @@ A failure-injection regression now checks that failure to create the retained te
 ### Header batch commit callback mutation guard — OPEN
 
 `HeaderChain.add_batch()` now prevents its `on_commit` callback from invoking public single-header or nested-batch mutation APIs while the callback is running. This prevents the callback from silently extending the in-memory DAG beyond the validated batch and its returned accepted-header list. Focused regressions cover both mutation paths. This remains an in-memory header prototype: callback side effects outside the DAG cannot be rolled back, and persistent branch state, block-body validation, UTXO replay, and independent consensus review remain launch gates.
+
+### Persisted active block body preflight during reorganization — OPEN
+
+Before trusting active-chain undo records, reorganization now checks that the
+persisted transaction rows have the expected count and contiguous positions,
+reconstructs the block from its stored 80-byte header and raw transaction
+records, and verifies the block hash, parent commitment, Merkle root, and each
+transaction ID against the positional index. Regression tests corrupt both a
+transaction position and a stored transaction-ID index and assert that the
+reorganization fails without changing the active tip, headers, or UTXO set.
+These are targeted database-integrity checks, not deterministic full UTXO
+replay or complete consensus validation. Bootstrap provenance, undo metadata
+provenance, crash recovery, adversarial testing, and independent review remain
+open.
