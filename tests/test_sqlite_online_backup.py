@@ -75,6 +75,11 @@ class SQLiteBackupRecoveryTests(unittest.TestCase):
                     source.execute("SELECT amount FROM ledger WHERE id=1").fetchone(),
                     (40_000_000,),
                 )
+                # Prove the committed row is still in the live WAL rather than
+                # relying on a checkpoint having copied it into the main DB.
+                wal_path = Path(str(source_path) + "-wal")
+                self.assertTrue(wal_path.exists())
+                self.assertGreater(wal_path.stat().st_size, 0)
                 backup = sqlite3.connect(backup_path)
                 try:
                     source.backup(backup)
