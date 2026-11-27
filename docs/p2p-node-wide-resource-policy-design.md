@@ -406,3 +406,7 @@ the P2P resource-policy gate. CI and independent review remain required.
 ## 14. Shared PeerConnection teardown
 
 PeerConnection.close() now retains one teardown task and shields it from cancellation of individual callers. Concurrent peer-run and manager-shutdown paths await the same writer-close operation rather than independently awaiting wait_closed(). Regression tests cover concurrent close calls and cancellation of the first caller while a second caller waits. If task creation fails, the coroutine is closed and synchronous writer/reservation cleanup is attempted. This is not a node-wide resource policy and does not authorize public networking; CI, adversarial lifecycle testing, and independent review remain required.
+
+### Teardown task-creation failure retry guard
+
+If retaining the shared transport teardown task fails, the connection records that startup failure, closes the unsubmitted coroutine, attempts synchronous writer closure once, and releases any receive reservation still owned by the connection. Later close callers fail explicitly rather than invoking writer.close() a second time. A failure-injection regression checks the single-close invariant. This is a narrow local failure path; it does not replace runtime testing or independent review.
