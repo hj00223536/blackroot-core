@@ -17,6 +17,7 @@ from .blackroot_header_store import PersistentHeaderStore
 from .blackroot_utxo_db import UTXOStore
 from .blackroot_recovery_journal import NodeRecoveryJournal
 from .blackroot_sqlite import SQLiteTransactionCoordinator
+from .blackroot_data_dir_lock import DataDirectoryLock
 
 
 def _validate_distinct_database_paths(
@@ -62,7 +63,11 @@ class PersistentNodeState:
         *,
         database_path: str | Path | None = None,
         adjusted_time_provider: Callable[[], int] | None = None,
+        _data_directory_lock: DataDirectoryLock | None = None,
     ) -> None:
+        if _data_directory_lock is not None and not _data_directory_lock.is_held:
+            raise RuntimeError("provided data-directory lock is not held")
+        self._data_directory_lock = _data_directory_lock
         self._coordinator: SQLiteTransactionCoordinator | None = None
         if database_path is not None:
             coordinator = SQLiteTransactionCoordinator(database_path)
@@ -105,6 +110,44 @@ class PersistentNodeState:
         return self._coordinator is not None
 
     @classmethod
+    def open_locked(
+        cls,
+        data_dir: str | Path,
+        database_path: str | Path,
+        pow_limit: int,
+        genesis: BlockHeader,
+        *,
+        adjusted_time_provider: Callable[[], int] | None = None,
+    ) -> "PersistentNodeState":
+        """Open coordinated node state while holding its data-directory lock.
+
+        This is the required lifecycle entry point for deployments that need
+        single-process ownership. The SQLite database must be directly inside
+        the locked directory. Legacy constructors remain available for tests
+        and compatibility, and do not provide this process-ownership guarantee.
+        """
+        directory = Path(data_dir).expanduser().resolve()
+        database = Path(database_path).expanduser().resolve()
+        if database.parent != directory:
+            raise ValueError(
+                "locked node database must be directly inside the data directory"
+            )
+        lock = DataDirectoryLock(directory).acquire()
+        try:
+            return cls(
+                database,
+                database,
+                pow_limit,
+                genesis,
+                database_path=database,
+                adjusted_time_provider=adjusted_time_provider,
+                _data_directory_lock=lock,
+            )
+        except BaseException:
+            lock.release()
+            raise
+
+    @classmethod
     def open_coordinated(
         cls, database_path: str | Path, pow_limit: int, genesis: BlockHeader, *,
         adjusted_time_provider: Callable[[], int] | None = None,
@@ -117,9 +160,14 @@ class PersistentNodeState:
         )
 
     def close(self) -> None:
-        """Close the node-owned SQLite connection; the instance stays closed."""
-        if self._coordinator is not None:
-            self._coordinator.__exit__(None, None, None)
+        """Close node state and release its process lock, if owned."""
+        try:
+            if self._coordinator is not None:
+                self._coordinator.__exit__(None, None, None)
+        finally:
+            if self._data_directory_lock is not None:
+                self._data_directory_lock.release()
+                self._data_directory_lock = None
 
     def __enter__(self) -> "PersistentNodeState":
         if self._coordinator is not None and not self._coordinator.is_open:
