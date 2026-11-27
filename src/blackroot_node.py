@@ -9,7 +9,6 @@ import secrets
 import time
 from pathlib import Path
 
-from .blackroot_data_dir_lock import DataDirectoryLock
 from .blackroot_node_config import TestnetConfig
 from .blackroot_node_runtime import BlackrootNodeRuntime
 from .blackroot_node_state import PersistentNodeState
@@ -48,10 +47,8 @@ async def wait_for_peer_handshake(peer, *, timeout: float = 10.0) -> None:
 async def run_node(config: TestnetConfig, data_dir: Path, bind_host: str, connect_to: tuple[str, int] | None = None) -> None:
     bind_host = config.validate_bind_host(bind_host)
     data_dir.mkdir(parents=True, exist_ok=True)
-    # Hold the process lock before opening SQLite so two CLI instances cannot
-    # mutate one node database concurrently. flock is released by the kernel
-    # after normal exit or abrupt process termination.
-    data_lock = DataDirectoryLock(data_dir).acquire()
+    # The locked lifecycle acquires the process lock before opening SQLite
+    # and retains it until PersistentNodeState.close().
     state = None
     runtime = None
     try:
@@ -59,7 +56,8 @@ async def run_node(config: TestnetConfig, data_dir: Path, bind_host: str, connec
         # P2P header admission. This is a provisional local clock, not a
         # network-adjusted production time policy.
         adjusted_time = lambda: int(time.time())
-        state = PersistentNodeState.open_coordinated(
+        state = PersistentNodeState.open_locked(
+            data_dir,
             data_dir / "blackroot-node.sqlite",
             config.pow_limit,
             config.genesis_header,
@@ -122,11 +120,8 @@ async def run_node(config: TestnetConfig, data_dir: Path, bind_host: str, connec
             if runtime is not None:
                 await runtime.close()
         finally:
-            try:
-                if state is not None:
-                    state.close()
-            finally:
-                data_lock.release()
+            if state is not None:
+                state.close()
 
 
 def main(argv: list[str] | None = None) -> int:
