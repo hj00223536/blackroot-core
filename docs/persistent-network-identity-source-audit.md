@@ -68,3 +68,17 @@ Persistent storage currently checks a useful but incomplete subset of
 parameters. It does not authenticate or persist the full network identity.
 Keep the persistent network identity launch gate open; do not describe this
 storage lifecycle as safe for multi-network production use.
+
+## Startup and runtime wiring detail
+
+The local CLI currently performs the following composition:
+
+1. It parses `TestnetConfig`.
+2. It passes only `config.pow_limit` and `config.genesis_header` to `PersistentNodeState.open_locked()`.
+3. It creates the peer manager through `config.create_peer_manager(version)`, which applies the configured four-byte message magic and protocol-version floor to P2P sessions.
+4. It passes the protocol version separately to `BlackrootNodeRuntime`.
+5. It prints `config.network_id` in the startup event.
+
+This means the current CLI does use the configured P2P magic/version for its live manager, but those values are not supplied to or persisted by the state store. The startup log is informational only. In addition, the runtime constructor accepts a state, a manager, and a protocol version as separate arguments; it does not have a canonical identity object with which to prove that the manager and persistent state belong to the same network. This is an API composition gap, not evidence that the current loopback CLI has actually connected mismatched networks.
+
+The appropriate fix remains the approved, canonical identity object described in the design proposal. Do not patch this by adding ad hoc constructor arguments or by hashing the free-form local `network_id`: that would create another partially specified identity format. Once the identity schema and external pin are approved, one validated identity should be passed through configuration, persistent-state initialization/reopen, peer-manager construction, and runtime composition, with mismatch rejection before networking or state mutation.
