@@ -7,6 +7,24 @@ version/verack protocol, enforces message bounds and timeouts, and is removed
 when it closes. The manager enforces a configurable total peer cap (16 by
 default), including concurrent outbound connection reservations.
 
+## Inbound rate limits
+
+Each `PeerConnection` owns independent monotonic-clock token buckets:
+control-message count, data-message count, and data payload bytes. Defaults
+are 20 control messages/second with a burst of 40, 20 data messages/second
+with a burst of 40, and 2 MiB/second with a burst of 4 MiB. All six values
+are configurable on `PeerConnection`, `connect_peer`, and `PeerManager`.
+The manager passes the policy to inbound and outbound sessions; each session
+still has its own independent buckets.
+
+The inbound receive path charges the budget after validating the fixed header
+and command-specific payload ceiling, but before reading the payload body.
+A rejected frame closes the session through the existing protocol-error path.
+These defaults are provisional, not benchmarked production policy. They
+require multi-peer synchronization and load testing before public deployment.
+They apply to inbound traffic accepted by a peer session; they are not an
+outbound bandwidth shaper.
+
 ## Example lifecycle
 
 A caller creates a manager with the provisional network magic and local
