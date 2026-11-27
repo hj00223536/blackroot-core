@@ -391,6 +391,9 @@ class PeerManager:
             self._server.close()
             await self._server.wait_closed()
             self._server = None
+        # Stop queue admission and release queued payloads before peer shutdown.
+        for queue in tuple(self._application_queues.values()):
+            queue.close()
         peers = tuple(self._peers)
         await asyncio.gather(*(peer.close() for peer in peers), return_exceptions=True)
         tasks = tuple(self._tasks)
