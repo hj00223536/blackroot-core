@@ -73,6 +73,10 @@ See [P2P resource-boundary audit](p2p-resource-boundary-audit.md) and [node-wide
 
 See [persistent network identity binding design](persistent-network-identity-binding-design.md) and [persistent network identity source audit](persistent-network-identity-source-audit.md). The source audit confirms that current persistent metadata binds schema version, proof-of-work limit, and Genesis hash only; it does not bind network ID, P2P magic, or protocol version. It is a proposal only; it does not select Mainnet constants or authorize production use.
 
+## Bootstrap provenance and deterministic UTXO replay
+
+The source-level findings and required closure work are recorded in [UTXO bootstrap provenance audit](utxo-bootstrap-provenance-audit.md). The current `bootstrap_issued_sats` value is accounting metadata only; it is not a Genesis initialization marker or authenticated issuance evidence. Bootstrap outputs remain outside the active transaction-history index, and the pre-activation `apply()` path does not retain replayable transaction provenance. A successful database integrity check therefore does not prove bootstrap origin or deterministic full UTXO replay. This gate remains OPEN; do not use these paths to initialize a public network or create a founder balance.
+
 ## Genesis issuance authorization gate
 
 Use the [genesis activation package checklist](genesis-activation-package-checklist.md), [trust-anchor governance proposal](genesis-trust-anchor-governance-proposal.md), and [Genesis package semantic verification plan](genesis-package-semantic-verification-plan.md) as review aids. They are proposals/plans only and do not satisfy any approval, trust-anchor, semantic-verification, or issuance gate.
