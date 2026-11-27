@@ -610,3 +610,8 @@ Listener startup is single-flight, and a listener returned after shutdown has be
 
 
 Shutdown now waits for any listener bind already in progress to finish its cleanup path before marking manager shutdown complete. The race regression asserts close remains pending until a delayed bind returns and the late listener has been closed. This lifecycle gate remains separate from production bind/backlog policy, stress evidence, and independent security review.
+
+
+### Application worker task-creation failure — OPEN
+
+Worker admission now rolls back if task creation fails: the coroutine is closed and the peer's worker-start marker is removed, with a focused regression verifying no task/marker remains. This is local failure containment only. Global task limits, measured resource profiles, adversarial stress testing, and independent review remain open.
