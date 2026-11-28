@@ -1,3 +1,5 @@
+import shutil
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -140,6 +142,41 @@ class TrustCheckpointStoreTests(unittest.TestCase):
                     expected_config_digest=DIGEST_1,
                 )
             self.assertEqual(store.current()[1:3], (1, DIGEST_1))
+
+
+    def test_restored_old_database_is_rejected_against_new_external_pin(self):
+        backup_path = Path(self.temp.name) / "old-trust-checkpoint.sqlite"
+
+        with TrustCheckpointStore(self.path) as store:
+            store.initialize(
+                network_id=NETWORK, sequence=1, config_digest=DIGEST_1
+            )
+
+        # Preserve a consistent old snapshot after all writers have closed.
+        with sqlite3.connect(self.path) as source, sqlite3.connect(backup_path) as backup:
+            source.backup(backup)
+
+        with TrustCheckpointStore(self.path) as store:
+            store.advance(
+                network_id=NETWORK,
+                expected_current_sequence=1,
+                expected_current_digest=DIGEST_1,
+                new_sequence=2,
+                new_config_digest=DIGEST_2,
+                new_previous_config_digest=DIGEST_1,
+            )
+
+        # Simulate restoring a stale full-database backup.
+        shutil.copy2(backup_path, self.path)
+
+        with TrustCheckpointStore(self.path) as restored:
+            self.assertEqual(restored.current(), (NETWORK, 1, DIGEST_1, None))
+            with self.assertRaisesRegex(ValueError, "does not match externally pinned"):
+                restored.verify_current(
+                    network_id=NETWORK,
+                    expected_sequence=2,
+                    expected_config_digest=DIGEST_2,
+                )
 
     def test_concurrent_writers_from_same_checkpoint_allow_exactly_one_advance(self):
         import threading
