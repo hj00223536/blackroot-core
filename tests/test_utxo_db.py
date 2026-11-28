@@ -2618,5 +2618,74 @@ store.apply(tx)
 
 
 
+    def _make_replay_genesis(self):
+        from src.blackroot_blocks import Block, COINBASE_INDEX
+        from src.blackroot_chain import BlockHeader, HeaderChain
+        from src.blackroot_consensus import decode_compact_target
+        from src.blackroot_transactions import merkle_root
+
+        bits = 0x207fffff
+        coinbase = Transaction(
+            1,
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
+            (TxOutput(0, b"replay-genesis-output"),),
+        )
+        root = merkle_root((coinbase.txid,))
+        header = BlockHeader(1, bytes(32), root, 1, bits, 0)
+        while int.from_bytes(header.hash, "little") > decode_compact_target(bits):
+            header = BlockHeader(
+                header.version, header.prev_hash, header.merkle_root,
+                header.timestamp, header.bits, header.nonce + 1,
+            )
+        block = Block(header, (coinbase,))
+        chain = HeaderChain(decode_compact_target(bits), header)
+        return block, chain
+
+    def test_active_chain_replay_rebuilds_genesis_utxos(self):
+        from src.blackroot_utxo_db import UTXOStore
+
+        block, chain = self._make_replay_genesis()
+        replay_path = Path(self.tempdir.name) / "replay.sqlite"
+        store = UTXOStore(replay_path)
+        store.connect_validated_block(block, 0, chain)
+
+        result = store.verify_active_chain_replay(
+            chain, expected_genesis_hash=block.header.hash
+        )
+        self.assertEqual(result["height"], 0)
+        self.assertEqual(result["tip_hash"], block.header.hash.hex())
+        self.assertEqual(result["utxo_count"], 1)
+
+    def test_active_chain_replay_rejects_live_utxo_tampering(self):
+        from src.blackroot_utxo_db import UTXOStore
+
+        block, chain = self._make_replay_genesis()
+        replay_path = Path(self.tempdir.name) / "replay-tamper.sqlite"
+        store = UTXOStore(replay_path)
+        store.connect_validated_block(block, 0, chain)
+        with _managed_sqlite(replay_path) as db:
+            db.execute(
+                "UPDATE utxos SET script_pubkey=? WHERE txid=? AND output_index=0",
+                (b"tampered", block.transactions[0].txid),
+            )
+
+        with self.assertRaisesRegex(RuntimeError, "differs from independent replay"):
+            store.verify_active_chain_replay(
+                chain, expected_genesis_hash=block.header.hash
+            )
+
+    def test_active_chain_replay_rejects_bootstrap_state(self):
+        from src.blackroot_utxo_db import UTXOStore
+
+        block, chain = self._make_replay_genesis()
+        with self.assertRaisesRegex(
+            RuntimeError, "requires zero authenticated bootstrap issuance"
+        ):
+            self.store.verify_active_chain_replay(
+                chain, expected_genesis_hash=block.header.hash
+            )
+
+
+
 if __name__ == "__main__":
     unittest.main()
