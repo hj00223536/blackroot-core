@@ -60,13 +60,16 @@ class BlackrootNodeRuntime:
         request_timeout: float = 30.0,
         adjusted_time=None,
         require_locked_state: bool = False,
-    ) -> None:
+        require_authenticated_bootstrap: bool = False,
+    ) -> None
         if not isinstance(state, PersistentNodeState):
             raise TypeError("state must be a PersistentNodeState")
         if not isinstance(manager, PeerManager):
             raise TypeError("manager must be a PeerManager")
         if not isinstance(require_locked_state, bool):
             raise TypeError("require_locked_state must be a bool")
+        if not isinstance(require_authenticated_bootstrap, bool):
+            raise TypeError("require_authenticated_bootstrap must be a bool")
         if require_locked_state and not state.data_directory_locked:
             raise RuntimeError(
                 "node runtime requires persistent state holding the data-directory lock"
@@ -80,6 +83,8 @@ class BlackrootNodeRuntime:
             raise ValueError(
                 "runtime adjusted-time provider must match the persistent node state's provider"
             )
+        if require_authenticated_bootstrap:
+            state.utxos.verify_integrity(require_authenticated_bootstrap=True)
         self.state = state
         self.manager = manager
         self._sync_store = _NodeStateSyncStore(state)
