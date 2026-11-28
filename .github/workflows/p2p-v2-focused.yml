@@ -1,6 +1,8 @@
 name: p2p-v2-focused-tests
 
 on:
+  push:
+    branches: [feature/p2p-v2-network-identity]
   pull_request:
     branches: [main]
   workflow_dispatch:
