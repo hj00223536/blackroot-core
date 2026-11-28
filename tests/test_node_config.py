@@ -75,6 +75,39 @@ class TestnetConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "all-zero"):
             config(message_magic=bytes(4))
 
+    def test_network_id_rejects_non_text_and_whitespace_only_values(self):
+        for invalid in ("", "   ", "\\t\\n", None, 7, b"blackroot"):
+            with self.subTest(network_id=invalid), self.assertRaisesRegex(
+                ValueError, "network_id must be non-empty"
+            ):
+                config(network_id=invalid)
+
+    def test_json_config_rejects_non_text_network_id(self):
+        settings = config()
+        header = settings.genesis_header
+        raw = {
+            "network_id": 123,
+            "message_magic": settings.message_magic.hex(),
+            "protocol_version": settings.protocol_version,
+            "genesis_header": {
+                "version": header.version,
+                "prev_hash": header.prev_hash.hex(),
+                "merkle_root": header.merkle_root.hex(),
+                "timestamp": header.timestamp,
+                "bits": header.bits,
+                "nonce": header.nonce,
+            },
+            "genesis_hash": settings.genesis_hash.hex(),
+            "pow_limit": hex(settings.pow_limit),
+            "p2p_port": settings.p2p_port,
+            "max_peers": settings.max_peers,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "testnet.json"
+            path.write_text(json.dumps(raw), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "network_id must be non-empty"):
+                TestnetConfig.from_json_file(path)
+
     def test_manager_requires_matching_protocol_version(self):
         settings = config()
         version = VersionMessage(2, 0, 1, 2, 0, "/blackroot:test/")
