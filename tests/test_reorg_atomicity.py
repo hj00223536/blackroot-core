@@ -456,5 +456,64 @@ class ReorganizationAtomicityTests(unittest.TestCase):
             reopened.verify_integrity()
 
 
+    def test_reorganization_rejects_missing_bootstrap_undo_without_mutation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = UTXOStore(Path(directory) / "chain.sqlite")
+            funding = OutPoint(bytes.fromhex("a5" * 32), 0)
+            funding_output = TxOutput(1_000, b"\\x51")
+            store.add_genesis_output(funding, funding_output)
+
+            genesis = mined_block(0, ZERO_HASH, 1)
+            chain = HeaderChain(
+                POW_LIMIT, genesis.header,
+                adjusted_time_provider=lambda: 1_000_000,
+            )
+            spend = Transaction(
+                1, (TxInput(funding),), (TxOutput(900, b"\\x51"),)
+            )
+            active_coinbase = coinbase(1, block_subsidy(1) + 100)
+            active = mined_block(
+                1, genesis.header.hash, 2, (active_coinbase, spend)
+            )
+            chain.add(active.header)
+            store.connect_validated_block(genesis, 0, chain)
+            store.connect_validated_block(active, 1, chain)
+
+            fork_one = mined_block(1, genesis.header.hash, 3)
+            fork_two = mined_block(2, fork_one.header.hash, 4)
+            chain.add_to_branch(fork_one.header)
+            chain.add_to_branch(fork_two.header)
+            store.store_block_body(fork_one)
+            store.store_block_body(fork_two)
+
+            before_tip = store.tip()
+            before_headers = store.active_block_headers()
+            with store._connection_scope() as db:
+                before_utxos = db.execute(
+                    "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
+                    "FROM utxos ORDER BY txid, output_index"
+                ).fetchall()
+            with store._write_scope() as db:
+                db.execute(
+                    "DELETE FROM block_undo_spent WHERE height=1 AND txid=? AND output_index=0",
+                    (funding.txid,),
+                )
+
+            with self.assertRaisesRegex(
+                RuntimeError,
+                "reorganization undo-spent records do not cover every block input",
+            ):
+                store.reorganize_to_best(chain)
+
+            self.assertEqual(store.tip(), before_tip)
+            self.assertEqual(store.active_block_headers(), before_headers)
+            with store._connection_scope() as db:
+                after_utxos = db.execute(
+                    "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
+                    "FROM utxos ORDER BY txid, output_index"
+                ).fetchall()
+            self.assertEqual(after_utxos, before_utxos)
+
+
 if __name__ == "__main__":
     unittest.main()
