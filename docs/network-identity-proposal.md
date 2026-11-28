@@ -50,24 +50,28 @@ This proposal does not activate a network, allocate or mint BRT, create a founde
 
 The current frame magic is a useful early rejection filter, but it is only four bytes and is not sufficient as the authenticated chain-identity decision. The current `version` payload does not carry `network_id` or `genesis_hash`; therefore two peers configured with the same magic but different genesis identities can currently complete `version/verack`.
 
+### Approved P2P v2 wire policy (implementation in feature branch)
+
+Owner approval received for a separate P2P v2 implementation branch. The legacy `version` command remains unchanged for explicitly unconfigured legacy sessions. A manager created from `TestnetConfig` is identity-bound and sends only `version2`; it rejects legacy `version` without fallback. The v2 payload is `BRP2` (4-byte marker), 32-byte network ID, 32-byte genesis hash, then the canonical existing version payload. The wire network ID is SHA-256 of the UTF-8 bytes of the configured canonical `network_id` string. The genesis hash is passed as the validated 32-byte value from configuration. Both identities and the existing protocol version must match exactly before `verack` is sent. This is a mismatch guard, not cryptographic peer authentication.
+
 ### Proposed fail-closed identity check
 
 Before enabling synchronization on any non-loopback listener, the protocol review should decide and freeze all of the following together:
 
-1. Add a fixed-width 32-byte `network_id` and 32-byte `genesis_hash` to a versioned handshake format. The values must come from the node's validated immutable network configuration, not from peer input or caller-overridable metadata.
+1. The v2 envelope carries a fixed-width 32-byte `network_id` digest and 32-byte `genesis_hash`. Both local values come from the node's validated immutable network configuration, never from peer input.
 2. Require exact equality for both fields before sending/accepting the handshake completion acknowledgement. A mismatch closes the connection and must not dispatch application messages, request headers, or schedule synchronization.
 3. Keep the four-byte message magic check as an inexpensive frame filter, not as the sole identity check. Collision review remains required before freezing its value.
-4. Make the wire-format change an explicit protocol-version boundary. Do not silently append fields to the existing version-1 payload: old decoders may reject trailing bytes or parse ambiguously. Version 1 remains loopback-only until a migration policy is approved; the new format must not be enabled by configuration alone before its version and compatibility policy are frozen.
-5. Separately decide whether peers must use an exact protocol version or a reviewed compatibility range. The current minimum-version-only behavior accepts higher versions and must not be mistaken for negotiated feature compatibility. Unknown feature bits or incompatible required capabilities must fail closed.
+4. The wire-format change is an explicit `version2` command and `BRP2` envelope. The existing version-1 payload is unchanged. Identity-bound sessions reject version-1 and never downgrade. Version-1 support remains only for explicitly unconfigured legacy/test sessions.
+5. P2P v2 requires exact equality of the existing protocol-version field. No higher-version compatibility or feature negotiation is implied.
 
 ### Required negative and integration tests
 
-- Same magic, different `network_id`: reject before handshake completion and before any application callback.
-- Same magic and `network_id`, different `genesis_hash`: reject before handshake completion and before synchronization.
+- [x] Same magic, different `network_id`: reject before handshake completion and before any application callback (feature-branch unit test).
+- [x] Same magic and `network_id`, different `genesis_hash`: reject before handshake completion and before synchronization (feature-branch unit test).
 - Different magic: retain the existing frame-level rejection test.
-- Matching identities: complete handshake and permit application messages only after both acknowledgements.
-- Old/new protocol combinations: verify the explicitly approved compatibility matrix; no implicit fallback or downgrade.
+- [x] Matching identities: complete handshake and permit application messages only after both acknowledgements (feature-branch unit test).
+- [x] Legacy version-1 fallback is rejected by identity-bound v2 sessions; protocol version requires exact match (feature-branch unit tests).
 - Mutated, truncated, oversized, and malformed identity fields: reject without partial connection state or resource leaks.
 - End-to-end loopback sync: prove a peer with mismatched identity cannot trigger header/body requests or alter local chain state.
 
-No identity field, wire format, network identifier, protocol version, or public endpoint is activated by this proposal. The actual values and compatibility policy remain pending owner approval and independent review.
+The v2 wire format is implemented only on the isolated feature branch pending CI and review. No public endpoint is activated; network identity values remain configuration-supplied, and this mechanism does not authenticate peer operators.
