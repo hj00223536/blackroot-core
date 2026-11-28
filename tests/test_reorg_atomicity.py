@@ -616,7 +616,7 @@ class ReorganizationAtomicityTests(unittest.TestCase):
                     "SELECT 1 FROM utxos WHERE txid=? AND output_index=0",
                     (spend.txid,),
                 ).fetchone()
-            self.assertEqual(restored, (2_000, funding_output.script_pubkey, -1, 0))
+            self.assertEqual(restored, (2_000, funding_output.script_pubkey, 0, 0))
             self.assertIsNone(old_branch_output)
             self.assertEqual(store.tip(), (2, fork_two.header.hash))
             store.verify_integrity()
@@ -631,7 +631,7 @@ class ReorganizationAtomicityTests(unittest.TestCase):
                 ).fetchone()
             self.assertEqual(
                 reopened_funding,
-                (2_000, funding_output.script_pubkey, -1, 0),
+                (2_000, funding_output.script_pubkey, 0, 0),
             )
 
 
