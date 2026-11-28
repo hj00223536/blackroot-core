@@ -118,6 +118,8 @@ class GenesisAuthorizationCompositionTests(unittest.TestCase):
         self.assertEqual(result.trust_config_digest, self.trust["config_digest"])
         self.assertEqual(result.trust_config_sequence, 1)
         self.assertEqual(result.approving_key_id, KEY_ID)
+        with self.assertRaises(AttributeError):
+            result.manifest_digest = "ff" * 32
 
     def test_manifest_substitution_fails_before_approval(self):
         altered = dict(self.manifest)
