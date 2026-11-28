@@ -114,6 +114,33 @@ class TrustCheckpointStoreTests(unittest.TestCase):
                 )
 
 
+
+    def test_rejects_non_finite_timeout_and_sqlite_integer_overflow(self):
+        for timeout in (float("nan"), float("inf"), float("-inf")):
+            with self.assertRaisesRegex(ValueError, "timeout must be positive"):
+                TrustCheckpointStore(self.path, timeout=timeout)
+
+        with TrustCheckpointStore(self.path) as store:
+            store.initialize(
+                network_id=NETWORK, sequence=1, config_digest=DIGEST_1
+            )
+            with self.assertRaisesRegex(ValueError, "below the maximum"):
+                store.advance(
+                    network_id=NETWORK,
+                    expected_current_sequence=(1 << 63) - 1,
+                    expected_current_digest=DIGEST_1,
+                    new_sequence=(1 << 63),
+                    new_config_digest=DIGEST_2,
+                    new_previous_config_digest=DIGEST_1,
+                )
+            with self.assertRaisesRegex(ValueError, "positive SQLite integer"):
+                store.verify_current(
+                    network_id=NETWORK,
+                    expected_sequence=(1 << 63),
+                    expected_config_digest=DIGEST_1,
+                )
+            self.assertEqual(store.current()[1:3], (1, DIGEST_1))
+
     def test_concurrent_writers_from_same_checkpoint_allow_exactly_one_advance(self):
         import threading
         from concurrent.futures import ThreadPoolExecutor
