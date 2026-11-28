@@ -14,6 +14,9 @@ import time
 import unittest
 from pathlib import Path
 
+from src.blackroot_transactions import OutPoint, TxOutput
+from src.blackroot_utxo_db import UTXOStore
+
 
 ROOT = Path(__file__).resolve().parents[1]
 GENESIS_TIMESTAMP = 1_795_564_800
@@ -161,6 +164,45 @@ class SeparateProcessNodeSmokeTests(unittest.TestCase):
                             process.kill()
                             process.communicate(timeout=5)
 
+
+    def test_cli_fails_closed_on_unauthenticated_bootstrap_outputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config_path = root / "testnet.json"
+            _write_config(config_path)
+            data_dir = root / "node-data"
+            data_dir.mkdir(mode=0o700)
+            database = data_dir / "blackroot-node.sqlite"
+
+            # Simulate a legacy/untrusted bootstrap balance in an otherwise
+            # syntactically valid local node database.
+            store = UTXOStore(database)
+            store.add_genesis_output(
+                OutPoint(bytes.fromhex("88" * 32), 0),
+                TxOutput(1, b"unverified-bootstrap"),
+            )
+            store.close()
+
+            env = os.environ.copy()
+            env["PYTHONPATH"] = str(ROOT) + os.pathsep + env.get("PYTHONPATH", "")
+            result = subprocess.run(
+                [
+                    sys.executable, "-m", "src.blackroot_node",
+                    "--config", str(config_path),
+                    "--data-dir", str(data_dir),
+                    "--bind-host", "127.0.0.1",
+                ],
+                cwd=ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertIn(
+                "authenticated bootstrap manifest verification is unavailable",
+                result.stderr,
+            )
 
     def test_cli_rejects_second_process_using_same_data_directory(self):
         with tempfile.TemporaryDirectory() as directory:
