@@ -114,5 +114,48 @@ class TrustCheckpointStoreTests(unittest.TestCase):
                 )
 
 
+    def test_concurrent_writers_from_same_checkpoint_allow_exactly_one_advance(self):
+        import threading
+        from concurrent.futures import ThreadPoolExecutor
+
+        with TrustCheckpointStore(self.path) as store:
+            store.initialize(
+                network_id=NETWORK, sequence=1, config_digest=DIGEST_1
+            )
+
+        barrier = threading.Barrier(2)
+
+        def attempt(new_digest):
+            with TrustCheckpointStore(self.path, timeout=5.0) as store:
+                barrier.wait(timeout=5.0)
+                try:
+                    store.advance(
+                        network_id=NETWORK,
+                        expected_current_sequence=1,
+                        expected_current_digest=DIGEST_1,
+                        new_sequence=2,
+                        new_config_digest=new_digest,
+                        new_previous_config_digest=DIGEST_1,
+                    )
+                    return ("advanced", new_digest)
+                except ValueError as exc:
+                    return ("rejected", str(exc))
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            outcomes = list(pool.map(attempt, (DIGEST_2, DIGEST_3)))
+
+        self.assertEqual(
+            sum(outcome[0] == "advanced" for outcome in outcomes), 1
+        )
+        self.assertEqual(
+            sum(outcome[0] == "rejected" for outcome in outcomes), 1
+        )
+        with TrustCheckpointStore(self.path) as store:
+            current = store.current()
+            self.assertEqual(current[0:2], (NETWORK, 2))
+            self.assertIn(current[2], (DIGEST_2, DIGEST_3))
+            self.assertEqual(current[3], DIGEST_1)
+
+
 if __name__ == "__main__":
     unittest.main()
