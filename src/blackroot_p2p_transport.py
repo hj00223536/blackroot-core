@@ -393,7 +393,7 @@ class PeerConnection:
                     raise PeerProtocolError("peer network_id mismatch")
                 if envelope.genesis_hash != self.genesis_hash:
                     raise PeerProtocolError("peer genesis_hash mismatch")
-                if envelope.version.protocol_version != self.min_protocol_version:
+                if envelope.version.protocol_version != self.handshake.local_version.protocol_version:
                     raise PeerProtocolError("peer protocol version is not an exact match")
                 remote = self.handshake.receive_version(encode_version(envelope.version))
             self.remote_version = remote
