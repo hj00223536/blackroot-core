@@ -82,6 +82,13 @@ class TestnetConfigTests(unittest.TestCase):
             ):
                 config(network_id=invalid)
 
+    def test_network_id_rejects_noncanonical_whitespace_and_controls(self):
+        for invalid in (" blackroot-local ", "blackroot\nlocal", "blackroot\x00local"):
+            with self.subTest(network_id=repr(invalid)), self.assertRaisesRegex(
+                ValueError, "canonical printable text"
+            ):
+                config(network_id=invalid)
+
     def test_json_config_rejects_non_text_network_id(self):
         settings = config()
         header = settings.genesis_header
