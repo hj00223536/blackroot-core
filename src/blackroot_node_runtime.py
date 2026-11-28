@@ -85,6 +85,11 @@ class BlackrootNodeRuntime:
             )
         if require_authenticated_bootstrap:
             state.utxos.verify_integrity(require_authenticated_bootstrap=True)
+            if not state.require_authenticated_bootstrap:
+                raise RuntimeError(
+                    "node runtime requires persistent state opened with "
+                    "require_authenticated_bootstrap=True"
+                )
         self.state = state
         self.manager = manager
         self._sync_store = _NodeStateSyncStore(state)
