@@ -2848,7 +2848,7 @@ store.apply(tx)
                 (b"tampered", block.transactions[0].txid),
             )
 
-        with self.assertRaisesRegex(RuntimeError, "differs from independent replay"):
+        with self.assertRaisesRegex(RuntimeError, "differs from reconstructed active-chain replay"):
             store.verify_active_chain_replay(
                 chain, expected_genesis_hash=block.header.hash
             )
