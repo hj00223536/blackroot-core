@@ -97,6 +97,7 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 protocol_version=1,
                 adjusted_time=locked_state.headers.adjusted_time_provider,
                 require_locked_state=True,
+                require_authenticated_bootstrap=True,
             )
             self.assertTrue(locked_state.data_directory_locked)
         finally:
@@ -106,6 +107,32 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 await manager.close()
             locked_state.close()
         self.assertFalse(locked_state.data_directory_locked)
+
+    async def test_runtime_strict_bootstrap_gate_rejects_unverified_issuance(self):
+        self.state.utxos.add_genesis_output(
+            OutPoint(bytes.fromhex("55" * 32), 0),
+            TxOutput(1, b"unverified-bootstrap"),
+        )
+        with self.assertRaisesRegex(
+            RuntimeError, "authenticated bootstrap manifest verification is unavailable"
+        ):
+            BlackrootNodeRuntime(
+                self.state,
+                self.runtime.manager,
+                protocol_version=1,
+                adjusted_time=self.state.headers.adjusted_time_provider,
+                require_authenticated_bootstrap=True,
+            )
+
+    async def test_runtime_rejects_non_boolean_bootstrap_policy(self):
+        with self.assertRaisesRegex(TypeError, "require_authenticated_bootstrap must be a bool"):
+            BlackrootNodeRuntime(
+                self.state,
+                self.runtime.manager,
+                protocol_version=1,
+                adjusted_time=self.state.headers.adjusted_time_provider,
+                require_authenticated_bootstrap=1,
+            )
 
     async def test_runtime_rejects_clock_provider_different_from_persistent_state(self):
         with self.assertRaisesRegex(ValueError, "must match the persistent node state's provider"):
