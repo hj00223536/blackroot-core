@@ -2700,6 +2700,99 @@ store.apply(tx)
         self.assertEqual(result["subsidy_issued_sats"], block_subsidy(1))
 
 
+    def test_active_chain_replay_rebuilds_mature_coinbase_spend(self):
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import ec, utils
+        from src.blackroot_blocks import Block, COINBASE_INDEX
+        from src.blackroot_chain import BlockHeader, HeaderChain
+        from src.blackroot_consensus import decode_compact_target, block_subsidy
+        from src.blackroot_script import (
+            N, _hash160, _push, legacy_sighash_all, p2pkh_script,
+        )
+        from src.blackroot_transactions import merkle_root
+
+        genesis, _initial_chain = self._make_replay_genesis()
+        bits = genesis.header.bits
+        target = decode_compact_target(bits)
+        chain = HeaderChain(
+            target, genesis.header, allow_unchecked_time_for_tests=True,
+        )
+        replay_path = Path(self.tempdir.name) / "replay-mature-spend.sqlite"
+        store = UTXOStore(replay_path)
+        store.connect_validated_block(genesis, 0, chain)
+
+        private_key = ec.derive_private_key(12345, ec.SECP256K1())
+        pubkey = private_key.public_key().public_bytes(
+            serialization.Encoding.X962,
+            serialization.PublicFormat.CompressedPoint,
+        )
+        locking_script = p2pkh_script(_hash160(pubkey))
+        mature_coinbase_outpoint = None
+
+        for height in range(1, 102):
+            transactions = []
+            fee = 0
+            if height == 101:
+                unsigned = Transaction(
+                    1,
+                    (TxInput(mature_coinbase_outpoint),),
+                    (TxOutput(block_subsidy(1) - 100, locking_script),),
+                )
+                digest = legacy_sighash_all(unsigned, 0, locking_script)
+                der_signature = private_key.sign(
+                    digest, ec.ECDSA(utils.Prehashed(hashes.SHA256()))
+                )
+                r_value, s_value = utils.decode_dss_signature(der_signature)
+                if s_value > N // 2:
+                    s_value = N - s_value
+                signature = utils.encode_dss_signature(r_value, s_value) + b"\\x01"
+                spend = Transaction(
+                    1,
+                    (TxInput(
+                        mature_coinbase_outpoint,
+                        _push(signature) + _push(pubkey),
+                    ),),
+                    unsigned.outputs,
+                )
+                transactions.append(spend)
+                fee = 100
+
+            coinbase = Transaction(
+                1,
+                (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"ab"),),
+                (TxOutput(block_subsidy(height) + fee, b"replay-miner-output"),),
+            )
+            all_transactions = (coinbase, *transactions)
+            header = BlockHeader(
+                1,
+                chain.best_hash,
+                merkle_root(tx.txid for tx in all_transactions),
+                1 + height * 600,
+                bits,
+                0,
+            )
+            while int.from_bytes(header.hash, "little") > target:
+                header = BlockHeader(
+                    header.version, header.prev_hash, header.merkle_root,
+                    header.timestamp, header.bits, header.nonce + 1,
+                )
+            block = Block(header, tuple(all_transactions))
+            chain.add(header)
+            store.connect_validated_block(block, height, chain)
+            if height == 1:
+                mature_coinbase_outpoint = OutPoint(coinbase.txid, 0)
+
+        result = store.verify_active_chain_replay(
+            chain, expected_genesis_hash=genesis.header.hash
+        )
+        self.assertEqual(result["height"], 101)
+        self.assertEqual(result["utxo_count"], 102)
+        self.assertEqual(result["fees_sats"], 100)
+        self.assertEqual(result["subsidy_issued_sats"], sum(
+            block_subsidy(height) for height in range(102)
+        ))
+
+
     def test_active_chain_replay_rejects_live_utxo_tampering(self):
         from src.blackroot_utxo_db import UTXOStore
 
