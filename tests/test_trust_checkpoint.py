@@ -60,6 +60,15 @@ class TrustCheckpointStoreTests(unittest.TestCase):
             self.assertEqual(store.current()[1:3], (1, DIGEST_1))
             store.advance(**common)
             self.assertEqual(store.current(), (NETWORK, 2, DIGEST_2, DIGEST_1))
+        with TrustCheckpointStore(self.path) as reopened:
+            reopened.verify_current(
+                network_id=NETWORK, expected_sequence=2,
+                expected_config_digest=DIGEST_2,
+            )
+            self.assertEqual(
+                reopened.current(),
+                (NETWORK, 2, DIGEST_2, DIGEST_1),
+            )
 
     def test_stale_writer_and_cross_network_are_rejected_without_mutation(self):
         with TrustCheckpointStore(self.path) as store:
