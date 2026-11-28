@@ -44,3 +44,30 @@ This describes a candidate encoding only. It is not an instruction to generate a
 ## Safety boundary
 
 This proposal does not activate a network, allocate or mint BRT, create a founder balance, or establish a market price or liquidity. Do not send real assets to addresses generated from these provisional parameters.
+
+
+## P2P handshake identity proposal (not implemented)
+
+The current frame magic is a useful early rejection filter, but it is only four bytes and is not sufficient as the authenticated chain-identity decision. The current `version` payload does not carry `network_id` or `genesis_hash`; therefore two peers configured with the same magic but different genesis identities can currently complete `version/verack`.
+
+### Proposed fail-closed identity check
+
+Before enabling synchronization on any non-loopback listener, the protocol review should decide and freeze all of the following together:
+
+1. Add a fixed-width 32-byte `network_id` and 32-byte `genesis_hash` to a versioned handshake format. The values must come from the node's validated immutable network configuration, not from peer input or caller-overridable metadata.
+2. Require exact equality for both fields before sending/accepting the handshake completion acknowledgement. A mismatch closes the connection and must not dispatch application messages, request headers, or schedule synchronization.
+3. Keep the four-byte message magic check as an inexpensive frame filter, not as the sole identity check. Collision review remains required before freezing its value.
+4. Make the wire-format change an explicit protocol-version boundary. Do not silently append fields to the existing version-1 payload: old decoders may reject trailing bytes or parse ambiguously. Version 1 remains loopback-only until a migration policy is approved; the new format must not be enabled by configuration alone before its version and compatibility policy are frozen.
+5. Separately decide whether peers must use an exact protocol version or a reviewed compatibility range. The current minimum-version-only behavior accepts higher versions and must not be mistaken for negotiated feature compatibility. Unknown feature bits or incompatible required capabilities must fail closed.
+
+### Required negative and integration tests
+
+- Same magic, different `network_id`: reject before handshake completion and before any application callback.
+- Same magic and `network_id`, different `genesis_hash`: reject before handshake completion and before synchronization.
+- Different magic: retain the existing frame-level rejection test.
+- Matching identities: complete handshake and permit application messages only after both acknowledgements.
+- Old/new protocol combinations: verify the explicitly approved compatibility matrix; no implicit fallback or downgrade.
+- Mutated, truncated, oversized, and malformed identity fields: reject without partial connection state or resource leaks.
+- End-to-end loopback sync: prove a peer with mismatched identity cannot trigger header/body requests or alter local chain state.
+
+No identity field, wire format, network identifier, protocol version, or public endpoint is activated by this proposal. The actual values and compatibility policy remain pending owner approval and independent review.
