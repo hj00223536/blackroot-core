@@ -1072,10 +1072,18 @@ store.apply(tx)
                 "DELETE FROM block_undo_spent WHERE height=1 AND txid=? AND output_index=0",
                 (funding.txid,),
             )
+        before_tip = self.store.tip()
+        before_count = self.store.count()
         with self.assertRaisesRegex(
             RuntimeError, "undo-spent records do not cover every block input"
         ):
             self.store.verify_integrity()
+        with self.assertRaisesRegex(
+            RuntimeError, "disconnect undo-spent records do not cover every block input"
+        ):
+            self.store.disconnect_tip(block_one.header.hash)
+        self.assertEqual(self.store.tip(), before_tip)
+        self.assertEqual(self.store.count(), before_count)
         with _managed_sqlite(self.db_path) as db:
             db.execute(
                 "INSERT INTO block_undo_spent(height, txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp) "
