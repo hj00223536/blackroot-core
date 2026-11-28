@@ -2686,6 +2686,42 @@ store.apply(tx)
             )
 
 
+    def test_active_chain_replay_rejects_orphan_transaction_and_undo_rows(self):
+        from src.blackroot_utxo_db import UTXOStore
+
+        block, chain = self._make_replay_genesis()
+        replay_path = Path(self.tempdir.name) / "replay-orphans.sqlite"
+        store = UTXOStore(replay_path)
+        store.connect_validated_block(block, 0, chain)
+
+        # sqlite3 connections opened by external tools may not enable foreign
+        # keys. The replay verifier must reject orphan rows even in that case.
+        with _managed_sqlite(replay_path) as db:
+            db.execute(
+                "INSERT INTO block_transactions(height, position, txid, raw_transaction) "
+                "VALUES(99, 0, ?, ?)",
+                (b"\\x99" * 32, b"orphan-transaction"),
+            )
+            db.execute(
+                "INSERT INTO block_undo_created(height, txid, output_index) "
+                "VALUES(99, ?, 0)",
+                (b"\\x98" * 32,),
+            )
+            db.execute(
+                "INSERT INTO block_undo_spent("
+                "height, txid, output_index, value, script_pubkey, created_height, "
+                "is_coinbase, created_mtp) VALUES(99, ?, 0, 1, ?, 0, 0, NULL)",
+                (b"\\x97" * 32, b"orphan-script"),
+            )
+
+        with self.assertRaisesRegex(
+            RuntimeError, "contain rows outside active-chain replay"
+        ):
+            store.verify_active_chain_replay(
+                chain, expected_genesis_hash=block.header.hash
+            )
+
+
 
 if __name__ == "__main__":
     unittest.main()
