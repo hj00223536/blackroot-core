@@ -1,6 +1,6 @@
 # Deterministic UTXO Replay Verification Design
 
-**Status: DESIGN PROPOSAL ONLY — NOT IMPLEMENTED, NOT APPROVED, AND NOT A MAINNET READINESS CLAIM.**
+**Status: PARTIAL LOCAL PROTOTYPE IMPLEMENTED — FULL DESIGN NOT IMPLEMENTED, NOT APPROVED, AND NOT A MAINNET READINESS CLAIM.**
 
 ## 1. Security objective
 
@@ -96,6 +96,14 @@ Do not automatically repair or rewrite a mismatching database from the replay re
 - Prove replay is read-only and bounded in memory/disk/time for supported chain sizes.
 - Obtain independent consensus/security review and cross-client reproduction before closing the launch gate.
 
-## 9. Current decision
+## 9. Implemented local prototype boundary
 
-This document is a design aid only. The repository does not yet have the complete frozen consensus specification, authenticated network identity, approved Genesis package, deterministic full replay implementation, or independent replay client required above. **Keep deterministic UTXO replay and bootstrap provenance OPEN. No Testnet/Mainnet launch or issuance is authorized.**
+`UTXOStore.verify_active_chain_replay()` now provides a read-only local consistency replay from an empty in-memory UTXO/provenance state. It checks the caller-supplied `HeaderChain` against a caller-supplied expected Genesis hash, reconstructs active blocks from stored headers and ordered raw transactions, validates transaction transitions through the repository's existing block validator, derives subsidy/fees and undo records, compares the live UTXO/provenance rows, and rejects extra transaction/undo rows outside the active replay.
+
+Focused tests currently cover a Genesis-only replay, live-UTXO tampering, non-zero bootstrap rejection, and orphan transaction/undo rows. These are local regression tests, not independent consensus verification.
+
+The prototype does **not** authenticate a network identity or manifest, pin a trusted Genesis digest outside the caller, freeze consensus parameters, independently implement consensus/script validation, prove all header-chain rules, freeze a canonical UTXO commitment, or provide an external client. Multi-block spends/reorganizations, adversarial corruption coverage, resource bounds, crash/backup replay, and independent security review remain open.
+
+## 10. Current decision
+
+The repository has a limited local replay prototype, but not the complete authenticated deterministic replay system specified in this document. **Keep deterministic UTXO replay and bootstrap provenance OPEN. No Testnet/Mainnet launch or issuance is authorized.**
