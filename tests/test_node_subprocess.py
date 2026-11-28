@@ -181,7 +181,6 @@ class SeparateProcessNodeSmokeTests(unittest.TestCase):
                 OutPoint(bytes.fromhex("88" * 32), 0),
                 TxOutput(1, b"unverified-bootstrap"),
             )
-            store.close()
 
             env = os.environ.copy()
             env["PYTHONPATH"] = str(ROOT) + os.pathsep + env.get("PYTHONPATH", "")
