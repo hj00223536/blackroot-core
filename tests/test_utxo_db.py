@@ -2807,6 +2807,33 @@ store.apply(tx)
                 chain, expected_genesis_hash=genesis.header.hash
             )
 
+        # Restore the deliberately corrupted journal row, then disconnect the
+        # spending tip. The original mature coinbase output must be reinstated
+        # with its original value and locking script.
+        with _managed_sqlite(replay_path) as db:
+            db.execute(
+                "UPDATE block_undo_spent SET value=value-1 "
+                "WHERE height=101 AND txid=? AND output_index=0",
+                (mature_coinbase_outpoint.txid,),
+            )
+        disconnected_height, disconnected_hash = store.disconnect_tip(
+            block.header.hash
+        )
+        self.assertEqual(disconnected_height, 101)
+        self.assertEqual(disconnected_hash, block.header.hash)
+        with _managed_sqlite(replay_path) as db:
+            restored = db.execute(
+                "SELECT value, script_pubkey, created_height, is_coinbase "
+                "FROM utxos WHERE txid=? AND output_index=0",
+                (mature_coinbase_outpoint.txid,),
+            ).fetchone()
+        self.assertIsNotNone(restored)
+        self.assertEqual(
+            restored,
+            (block_subsidy(1), locking_script, 1, 1),
+        )
+        self.assertEqual(store.tip()[0], 100)
+
 
     def test_active_chain_replay_rejects_live_utxo_tampering(self):
         from src.blackroot_utxo_db import UTXOStore
