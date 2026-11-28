@@ -44,7 +44,7 @@ class UTXOStoreTests(unittest.TestCase):
 
         coinbase = Transaction(
             1,
-            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"ab"),),
             (TxOutput(block_subsidy(0), b"miner"),),
         )
         header = BlockHeader(
