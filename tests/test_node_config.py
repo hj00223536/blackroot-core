@@ -76,7 +76,7 @@ class TestnetConfigTests(unittest.TestCase):
             config(message_magic=bytes(4))
 
     def test_network_id_rejects_non_text_and_whitespace_only_values(self):
-        for invalid in ("", "   ", "\\t\\n", None, 7, b"blackroot"):
+        for invalid in ("", "   ", "\t\n", None, 7, b"blackroot"):
             with self.subTest(network_id=invalid), self.assertRaisesRegex(
                 ValueError, "network_id must be non-empty"
             ):
