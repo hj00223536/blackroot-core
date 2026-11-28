@@ -2656,6 +2656,46 @@ store.apply(tx)
         self.assertEqual(result["tip_hash"], block.header.hash.hex())
         self.assertEqual(result["utxo_count"], 1)
 
+    def test_active_chain_replay_rebuilds_two_block_chain(self):
+        from src.blackroot_blocks import Block, COINBASE_INDEX
+        from src.blackroot_chain import BlockHeader
+        from src.blackroot_consensus import decode_compact_target
+        from src.blackroot_monetary import block_subsidy
+        from src.blackroot_transactions import merkle_root
+
+        genesis, chain = self._make_replay_genesis()
+        bits = genesis.header.bits
+        coinbase = Transaction(
+            1,
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
+            (TxOutput(block_subsidy(1), b"replay-miner-output"),),
+        )
+        header = BlockHeader(
+            1, genesis.header.hash, merkle_root((coinbase.txid,)), 601, bits, 0
+        )
+        target = decode_compact_target(bits)
+        while int.from_bytes(header.hash, "little") > target:
+            header = BlockHeader(
+                header.version, header.prev_hash, header.merkle_root,
+                header.timestamp, header.bits, header.nonce + 1,
+            )
+        block_one = Block(header, (coinbase,))
+        chain.add(header)
+
+        replay_path = Path(self.tempdir.name) / "replay-two-blocks.sqlite"
+        store = UTXOStore(replay_path)
+        store.connect_validated_block(genesis, 0, chain)
+        store.connect_validated_block(block_one, 1, chain)
+
+        result = store.verify_active_chain_replay(
+            chain, expected_genesis_hash=genesis.header.hash
+        )
+        self.assertEqual(result["height"], 1)
+        self.assertEqual(result["tip_hash"], block_one.header.hash.hex())
+        self.assertEqual(result["utxo_count"], 2)
+        self.assertEqual(result["subsidy_issued_sats"], block_subsidy(1))
+
+
     def test_active_chain_replay_rejects_live_utxo_tampering(self):
         from src.blackroot_utxo_db import UTXOStore
 
