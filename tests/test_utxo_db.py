@@ -1058,6 +1058,31 @@ store.apply(tx)
         block_one = make_block(genesis.header.hash, 1, (first_spend,))
         self.store.connect_block(block_one, 1)
 
+        # A bootstrap source has no active-chain transaction record, but its
+        # undo entry is still mandatory so disconnect can restore the output.
+        with _managed_sqlite(self.db_path) as db:
+            bootstrap_undo = db.execute(
+                "SELECT value, script_pubkey, created_height, is_coinbase, created_mtp "
+                "FROM block_undo_spent WHERE height=1 AND txid=? AND output_index=0",
+                (funding.txid,),
+            ).fetchone()
+        self.assertIsNotNone(bootstrap_undo)
+        with _managed_sqlite(self.db_path) as db:
+            db.execute(
+                "DELETE FROM block_undo_spent WHERE height=1 AND txid=? AND output_index=0",
+                (funding.txid,),
+            )
+        with self.assertRaisesRegex(
+            RuntimeError, "undo-spent records do not cover every block input"
+        ):
+            self.store.verify_integrity()
+        with _managed_sqlite(self.db_path) as db:
+            db.execute(
+                "INSERT INTO block_undo_spent(height, txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp) "
+                "VALUES(1, ?, 0, ?, ?, ?, ?, ?)",
+                (funding.txid, *bootstrap_undo),
+            )
+
         second_spend = signed_spend(OutPoint(first_spend.txid, 0), 790)
         block_two = make_block(block_one.header.hash, 2, (second_spend,))
         self.store.connect_block(block_two, 2)
