@@ -87,6 +87,21 @@ See [persistent network identity binding design](persistent-network-identity-bin
 
 See [external trust-witness protocol proposal](external-trust-witness-protocol-proposal.md). The proposal is design-only: no witness service, key, quorum, transparency log, startup integration, or rollback-proof mechanism is implemented. The existing local SQLite checkpoint remains a comparison store and cannot authenticate its caller-supplied external pins.
 
+### Active-chain UTXO reverse-presence audit — implemented, CI pending
+
+The explicit UTXO integrity audit now reconstructs the set of active-chain
+transaction outputs that should remain unspent by walking the recorded active
+transaction history and spend history, then compares that set with live UTXO
+rows belonging to active-chain transactions. This detects both deleted live
+outputs and unexpected extra live outputs that forward-only row validation
+could miss. Regression tests cover both tampering directions.
+
+This is a targeted consistency invariant over persisted indexes. It is not
+deterministic replay from Genesis, does not authenticate bootstrap outputs,
+does not independently validate all consensus rules, and does not close the
+UTXO replay launch gate. CI must pass on the exact candidate commit before
+this change is considered verified.
+
 ## Bootstrap provenance and deterministic UTXO replay
 
 See [deterministic UTXO replay verification design](deterministic-utxo-replay-design.md) for a proposed read-only reconstruction and comparison workflow. It is design-only: authenticated network identity, approved Genesis inputs, frozen complete consensus rules, implementation, independent client reproduction, and adversarial tests are still absent. The current unauthenticated bootstrap path is explicitly ineligible for deterministic replay.
