@@ -541,7 +541,7 @@ class ReorganizationAtomicityTests(unittest.TestCase):
             self.assertEqual(after_utxos, before_utxos)
 
 
-    def test_successful_reorganization_restores_spent_funding_output(self):
+    def test_reorganization_fails_closed_for_unauthenticated_bootstrap_spend(self):
         from cryptography.hazmat.primitives import hashes, serialization
         from cryptography.hazmat.primitives.asymmetric import ec, utils
         from src.blackroot_script import (
@@ -549,17 +549,14 @@ class ReorganizationAtomicityTests(unittest.TestCase):
         )
 
         with tempfile.TemporaryDirectory() as directory:
-            database = Path(directory) / "chain.sqlite"
-            store = UTXOStore(database)
+            store = UTXOStore(Path(directory) / "chain.sqlite")
             private_key = ec.derive_private_key(19, ec.SECP256K1())
             pubkey = private_key.public_key().public_bytes(
                 serialization.Encoding.X962,
                 serialization.PublicFormat.CompressedPoint,
             )
             funding = OutPoint(bytes.fromhex("b6" * 32), 0)
-            funding_output = TxOutput(
-                2_000, p2pkh_script(_hash160(pubkey))
-            )
+            funding_output = TxOutput(2_000, p2pkh_script(_hash160(pubkey)))
             store.add_genesis_output(funding, funding_output)
 
             genesis = mined_block(0, ZERO_HASH, 1)
@@ -579,17 +576,15 @@ class ReorganizationAtomicityTests(unittest.TestCase):
             r_value, s_value = utils.decode_dss_signature(der)
             if s_value > N // 2:
                 s_value = N - s_value
-            signature = utils.encode_dss_signature(
-                r_value, s_value
-            ) + b"\x01"
+            signature = utils.encode_dss_signature(r_value, s_value) + b"\\x01"
             spend = Transaction(
                 1,
                 (TxInput(funding, _push(signature) + _push(pubkey)),),
                 unsigned.outputs,
             )
-            active_coinbase = coinbase(1, block_subsidy(1) + 200)
             active = mined_block(
-                1, genesis.header.hash, 2, (active_coinbase, spend)
+                1, genesis.header.hash, 2,
+                (coinbase(1, block_subsidy(1) + 200), spend),
             )
             chain.add(active.header)
             store.connect_validated_block(genesis, 0, chain)
@@ -602,37 +597,29 @@ class ReorganizationAtomicityTests(unittest.TestCase):
             store.store_block_body(fork_one)
             store.store_block_body(fork_two)
 
-            self.assertEqual(
-                store.reorganize_to_best(chain),
-                (2, fork_two.header.hash),
-            )
+            original_tip = store.tip()
+            original_headers = store.active_block_headers()
             with store._connection_scope() as db:
-                restored = db.execute(
-                    "SELECT value, script_pubkey, created_height, is_coinbase "
-                    "FROM utxos WHERE txid=? AND output_index=0",
-                    (funding.txid,),
-                ).fetchone()
-                old_branch_output = db.execute(
-                    "SELECT 1 FROM utxos WHERE txid=? AND output_index=0",
-                    (spend.txid,),
-                ).fetchone()
-            self.assertEqual(restored, (2_000, funding_output.script_pubkey, 0, 0))
-            self.assertIsNone(old_branch_output)
-            self.assertEqual(store.tip(), (2, fork_two.header.hash))
-            store.verify_integrity()
+                original_utxos = db.execute(
+                    "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
+                    "FROM utxos ORDER BY txid, output_index"
+                ).fetchall()
 
-            reopened = UTXOStore(database)
-            self.assertEqual(reopened.tip(), (2, fork_two.header.hash))
-            with reopened._connection_scope() as db:
-                reopened_funding = db.execute(
-                    "SELECT value, script_pubkey, created_height, is_coinbase "
-                    "FROM utxos WHERE txid=? AND output_index=0",
-                    (funding.txid,),
-                ).fetchone()
-            self.assertEqual(
-                reopened_funding,
-                (2_000, funding_output.script_pubkey, 0, 0),
-            )
+            with self.assertRaisesRegex(
+                RuntimeError, "unauthenticated bootstrap input"
+            ):
+                store.reorganize_to_best(chain)
+
+            self.assertEqual(store.tip(), original_tip)
+            self.assertEqual(store.active_block_headers(), original_headers)
+            with store._connection_scope() as db:
+                after_utxos = db.execute(
+                    "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
+                    "FROM utxos ORDER BY txid, output_index"
+                ).fetchall()
+            self.assertEqual(after_utxos, original_utxos)
+            self.assertIsNone(store.get(funding))
+            store.verify_integrity()
 
 
 if __name__ == "__main__":
