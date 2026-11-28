@@ -1271,6 +1271,194 @@ class UTXOStore:
             return None if tip is None else (tip[0], bytes(tip[1]))
 
 
+    def verify_active_chain_replay(
+        self,
+        header_chain: HeaderChain,
+        *,
+        expected_genesis_hash: bytes,
+    ) -> dict[str, int | str]:
+        """Read-only replay of the active chain from an empty UTXO state.
+
+        This is a local consistency verifier, not a network identity or
+        manifest authenticator. The caller must independently authenticate
+        the expected genesis hash and initialize HeaderChain with the intended
+        consensus parameters. Non-zero legacy bootstrap issuance is rejected.
+        """
+        if not isinstance(header_chain, HeaderChain):
+            raise TypeError("header_chain must be a HeaderChain")
+        if not isinstance(expected_genesis_hash, bytes) or len(expected_genesis_hash) != 32:
+            raise ValueError("expected_genesis_hash must be exactly 32 bytes")
+
+        with self._connection_scope() as db:
+            bootstrap_row = db.execute(
+                "SELECT value FROM metadata WHERE key='bootstrap_issued_sats'"
+            ).fetchone()
+            if bootstrap_row is None or bootstrap_row[0] != "0":
+                raise RuntimeError(
+                    "active-chain replay requires zero authenticated bootstrap issuance"
+                )
+
+            genesis_header = header_chain.get(0)
+            if genesis_header.hash != expected_genesis_hash:
+                raise RuntimeError("HeaderChain genesis does not match expected genesis hash")
+
+            rows = db.execute(
+                "SELECT height, block_hash, prev_hash, header, tx_count, total_fees, subsidy_issued "
+                "FROM blocks ORDER BY height"
+            ).fetchall()
+            if not rows:
+                raise RuntimeError("active-chain replay requires a persisted genesis block")
+            if len(rows) != header_chain.height + 1:
+                raise RuntimeError("persisted active chain length does not match HeaderChain")
+            if bytes(rows[-1][1]) != header_chain.best_hash:
+                raise RuntimeError("persisted active tip does not match HeaderChain best tip")
+
+            from .blackroot_transactions import compact_size
+            replay_utxos: dict[OutPoint, TxOutput] = {}
+            replay_provenance: dict[OutPoint, UTXOProvenance] = {}
+            total_issuance = 0
+            total_fees = 0
+            expected_parent = bytes(32)
+
+            for expected_height, row in enumerate(rows):
+                (
+                    height, stored_hash, stored_parent, stored_header,
+                    tx_count, stored_fees, stored_subsidy,
+                ) = row
+                stored_hash = bytes(stored_hash)
+                stored_parent = bytes(stored_parent)
+                stored_header = bytes(stored_header)
+                if height != expected_height:
+                    raise RuntimeError("active-chain replay found non-contiguous heights")
+                if stored_parent != expected_parent:
+                    raise RuntimeError("active-chain replay found a broken parent link")
+                if len(stored_header) != 80:
+                    raise RuntimeError("active-chain replay found a malformed header")
+                selected_header = header_chain.get(height)
+                if selected_header.serialize() != stored_header:
+                    raise RuntimeError("persisted header differs from validated HeaderChain")
+
+                tx_rows = db.execute(
+                    "SELECT position, txid, raw_transaction FROM block_transactions "
+                    "WHERE height=? ORDER BY position",
+                    (height,),
+                ).fetchall()
+                if len(tx_rows) != tx_count:
+                    raise RuntimeError("active-chain replay transaction count mismatch")
+                if any(position != i for i, (position, _txid, _raw) in enumerate(tx_rows)):
+                    raise RuntimeError("active-chain replay transaction positions are not contiguous")
+                try:
+                    block = Block.deserialize(
+                        stored_header + compact_size(len(tx_rows))
+                        + b"".join(bytes(tx_row[2]) for tx_row in tx_rows)
+                    )
+                except (TypeError, ValueError) as exc:
+                    raise RuntimeError("active-chain replay could not reconstruct block body") from exc
+                if block.header.hash != stored_hash or block.header.prev_hash != stored_parent:
+                    raise RuntimeError("active-chain replay block hash or parent mismatch")
+                for (_position, txid, raw_tx), tx in zip(tx_rows, block.transactions):
+                    if tx.txid != bytes(txid) or tx.serialize() != bytes(raw_tx):
+                        raise RuntimeError("active-chain replay transaction bytes or ID mismatch")
+
+                mtp = None if height == 0 else header_chain.median_time_past(stored_parent)
+                try:
+                    next_utxos, computed_fees = validate_block_transactions(
+                        block, replay_utxos, height, replay_provenance, mtp
+                    )
+                except (TypeError, ValueError, KeyError) as exc:
+                    raise RuntimeError(
+                        f"active-chain replay transaction validation failed at height {height}"
+                    ) from exc
+                expected_subsidy = block_subsidy(height)
+                if stored_fees != computed_fees:
+                    raise RuntimeError("persisted block fee total differs from replay")
+                if stored_subsidy != expected_subsidy:
+                    raise RuntimeError("persisted block subsidy differs from consensus schedule")
+                total_issuance += expected_subsidy
+                total_fees += computed_fees
+                if total_issuance > TOTAL_SUPPLY_CAP:
+                    raise RuntimeError("active-chain replay exceeds total supply cap")
+
+                next_provenance = self._advance_provenance(
+                    block, replay_provenance, height, mtp
+                )
+                if set(next_utxos) != set(next_provenance):
+                    raise RuntimeError("replayed UTXO and provenance keys diverged")
+
+                expected_created = {
+                    (tx.txid, output_index)
+                    for tx in block.transactions
+                    for output_index, _output in enumerate(tx.outputs)
+                }
+                recorded_created = {
+                    (bytes(txid), output_index)
+                    for txid, output_index in db.execute(
+                        "SELECT txid, output_index FROM block_undo_created WHERE height=?",
+                        (height,),
+                    ).fetchall()
+                }
+                if recorded_created != expected_created:
+                    raise RuntimeError("persisted undo-created records differ from replay")
+
+                expected_spent = {}
+                for tx in block.transactions[1:]:
+                    for txin in tx.inputs:
+                        outpoint = txin.previous_output
+                        output = replay_utxos.get(outpoint)
+                        if output is not None:
+                            provenance = replay_provenance[outpoint]
+                            expected_spent[outpoint] = (
+                                output.value, output.script_pubkey,
+                                provenance.created_height,
+                                int(provenance.is_coinbase),
+                                provenance.created_median_time_past,
+                            )
+                recorded_spent = {}
+                for txid, output_index, value, script, created_height, is_coinbase_flag, created_mtp in db.execute(
+                    "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
+                    "FROM block_undo_spent WHERE height=?",
+                    (height,),
+                ).fetchall():
+                    outpoint = OutPoint(bytes(txid), output_index)
+                    if outpoint in recorded_spent:
+                        raise RuntimeError("persisted undo-spent records contain duplicates")
+                    recorded_spent[outpoint] = (
+                        value, bytes(script), created_height, is_coinbase_flag, created_mtp
+                    )
+                if recorded_spent != expected_spent:
+                    raise RuntimeError("persisted undo-spent records differ from replay")
+
+                replay_utxos = next_utxos
+                replay_provenance = next_provenance
+                expected_parent = stored_hash
+
+            live_rows = db.execute(
+                "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
+                "FROM utxos"
+            ).fetchall()
+            live_utxos = {
+                OutPoint(bytes(txid), output_index): (
+                    TxOutput(value, bytes(script)),
+                    UTXOProvenance(created_height, bool(is_coinbase_flag), created_mtp),
+                )
+                for txid, output_index, value, script, created_height, is_coinbase_flag, created_mtp
+                in live_rows
+            }
+            expected_live = {
+                outpoint: (output, replay_provenance[outpoint])
+                for outpoint, output in replay_utxos.items()
+            }
+            if live_utxos != expected_live:
+                raise RuntimeError("persisted live UTXO state differs from independent replay")
+
+            return {
+                "height": len(rows) - 1,
+                "tip_hash": expected_parent.hex(),
+                "utxo_count": len(replay_utxos),
+                "subsidy_issued_sats": total_issuance,
+                "fees_sats": total_fees,
+            }
+
     def disconnect_tip(self, expected_tip_hash: bytes) -> tuple[int, bytes]:
         """Disconnect exactly the current tip using its recorded UTXO undo data.
 
