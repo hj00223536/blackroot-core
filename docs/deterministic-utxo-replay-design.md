@@ -70,6 +70,8 @@ The verifier must compare full rows, not only aggregate balances or a row count.
 
 The current pre-activation `add_genesis_output()` path inserts caller-supplied outputs and increments `bootstrap_issued_sats`; it does not authenticate a Genesis manifest. The pre-activation `apply()` path does not retain raw transaction history. Such databases do not contain enough authenticated history for deterministic replay.
 
+The same trust gap affects reorganization undo for a bootstrap-origin output: when its source transaction is absent from persisted active-chain history, the current reorganization path cannot independently derive the original value and script from a block. It can check that an undo row exists for the input, but that row is not an authenticated source of truth. A reorganization that restores such an output is therefore only a local prototype behavior, not evidence of tamper-resistant recovery. Before production use, either prohibit spending bootstrap-origin outputs or introduce and independently authenticate a canonical bootstrap/Genesis commitment and verify each restored outpoint against it.
+
 Until an authenticated one-time Genesis initializer exists:
 - reject replay mode for any state containing unauthenticated bootstrap issuance;
 - do not infer founder ownership or allocation from a UTXO row;
