@@ -89,14 +89,16 @@ See [external trust-witness protocol proposal](external-trust-witness-protocol-p
 
 ### Undo coverage for bootstrap spends — implemented, CI pending
 
-The UTXO integrity audit now requires one persisted undo-spent record for every
+The UTXO integrity audit, tip-disconnect preflight, and reorganization
+disconnect path now require one persisted undo-spent record for every
 non-coinbase input in each active block, including spends of bootstrap outputs
 that have no source transaction in active block history. This closes a gap
 where a missing undo record for a bootstrap spend could evade the historical
-active-transaction subset check and prevent a later disconnect from restoring
+active-transaction subset check and cause a disconnect/reorganization to lose
 the spent output. A regression test removes that bootstrap undo row and
-requires the audit to fail closed. This remains an integrity check over stored
-history, not a replacement for authenticated bootstrap provenance or
+requires both the integrity audit and direct tip disconnect to fail without
+mutating the active tip or UTXO count. This remains an integrity check over
+stored history, not a replacement for authenticated bootstrap provenance or
 deterministic replay from Genesis.
 
 ### Active-chain UTXO reverse-presence audit — implemented, CI pending
