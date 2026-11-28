@@ -2700,18 +2700,18 @@ store.apply(tx)
             db.execute(
                 "INSERT INTO block_transactions(height, position, txid, raw_transaction) "
                 "VALUES(99, 0, ?, ?)",
-                (b"\\x99" * 32, b"orphan-transaction"),
+                (b"\x99" * 32, b"orphan-transaction"),
             )
             db.execute(
                 "INSERT INTO block_undo_created(height, txid, output_index) "
                 "VALUES(99, ?, 0)",
-                (b"\\x98" * 32,),
+                (b"\x98" * 32,),
             )
             db.execute(
                 "INSERT INTO block_undo_spent("
                 "height, txid, output_index, value, script_pubkey, created_height, "
                 "is_coinbase, created_mtp) VALUES(99, ?, 0, 1, ?, 0, 0, NULL)",
-                (b"\\x97" * 32, b"orphan-script"),
+                (b"\x97" * 32, b"orphan-script"),
             )
 
         with self.assertRaisesRegex(
