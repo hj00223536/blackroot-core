@@ -126,6 +126,13 @@ class PersistentHeaderStore:
                 "genesis_hash": genesis.hash.hex(),
             }
             if not metadata:
+                existing_headers = db.execute(
+                    "SELECT COUNT(*) FROM headers"
+                ).fetchone()[0]
+                if existing_headers:
+                    raise RuntimeError(
+                        "persistent header store has headers but no initialization metadata"
+                    )
                 initial = HeaderChain(self.pow_limit, genesis, adjusted_time_provider=self.adjusted_time_provider)
                 db.executemany(
                     "INSERT INTO header_metadata(key, value) VALUES(?, ?)",
