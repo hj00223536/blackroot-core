@@ -1158,6 +1158,10 @@ class UTXOStore:
                         raise RuntimeError("reorganization undo-spent records do not match block inputs")
                     recorded_spent.add(outpoint)
                     known_output = prior_outputs.get(outpoint)
+                    if known_output is None:
+                        raise RuntimeError(
+                            "reorganization cannot restore an unauthenticated bootstrap input"
+                        )
                     if known_output is not None:
                         expected_value, expected_script, expected_height, expected_coinbase = known_output
                         expected_mtp = expected_creation_mtp(expected_height)
@@ -1664,6 +1668,10 @@ class UTXOStore:
                     raise RuntimeError("disconnect undo-spent records do not match active block inputs")
                 recorded_spent.add(outpoint)
                 known_output = prior_outputs.get(outpoint)
+                if known_output is None:
+                    raise RuntimeError(
+                        "disconnect cannot restore an unauthenticated bootstrap input"
+                    )
                 if known_output is not None:
                     expected_value, expected_script, expected_height, expected_coinbase = known_output
                     expected_mtp = expected_creation_mtp(expected_height)
