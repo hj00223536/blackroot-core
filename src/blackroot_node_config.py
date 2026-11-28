@@ -55,6 +55,8 @@ class TestnetConfig:
     def __post_init__(self) -> None:
         if not isinstance(self.network_id, str) or not self.network_id.strip():
             raise ValueError("network_id must be non-empty")
+        if self.network_id != self.network_id.strip() or not self.network_id.isprintable():
+            raise ValueError("network_id must be canonical printable text without surrounding whitespace")
         if self.network_id.strip().lower() in {"main", "mainnet", "bitcoin", "production"}:
             raise ValueError("testnet configuration cannot use a production network name")
         if not isinstance(self.message_magic, bytes) or len(self.message_magic) != 4:
