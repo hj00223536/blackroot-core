@@ -459,8 +459,19 @@ class ReorganizationAtomicityTests(unittest.TestCase):
     def test_reorganization_rejects_missing_bootstrap_undo_without_mutation(self):
         with tempfile.TemporaryDirectory() as directory:
             store = UTXOStore(Path(directory) / "chain.sqlite")
+            from cryptography.hazmat.primitives import hashes, serialization
+            from cryptography.hazmat.primitives.asymmetric import ec, utils
+            from src.blackroot_script import (
+                N, _hash160, _push, legacy_sighash_all, p2pkh_script,
+            )
+
+            private_key = ec.derive_private_key(11, ec.SECP256K1())
+            pubkey = private_key.public_key().public_bytes(
+                serialization.Encoding.X962,
+                serialization.PublicFormat.CompressedPoint,
+            )
             funding = OutPoint(bytes.fromhex("a5" * 32), 0)
-            funding_output = TxOutput(1_000, b"\x51")
+            funding_output = TxOutput(1_000, p2pkh_script(_hash160(pubkey)))
             store.add_genesis_output(funding, funding_output)
 
             genesis = mined_block(0, ZERO_HASH, 1)
@@ -468,8 +479,23 @@ class ReorganizationAtomicityTests(unittest.TestCase):
                 POW_LIMIT, genesis.header,
                 adjusted_time_provider=lambda: 1_000_000,
             )
+            unsigned_spend = Transaction(
+                1, (TxInput(funding),), (TxOutput(900, b"recipient"),)
+            )
+            digest = legacy_sighash_all(
+                unsigned_spend, 0, funding_output.script_pubkey
+            )
+            signature = private_key.sign(
+                digest, ec.ECDSA(utils.Prehashed(hashes.SHA256()))
+            )
+            r, s = utils.decode_dss_signature(signature)
+            if s > N // 2:
+                s = N - s
+            signature = utils.encode_dss_signature(r, s) + b"\x01"
             spend = Transaction(
-                1, (TxInput(funding),), (TxOutput(900, b"\x51"),)
+                1,
+                (TxInput(funding, _push(signature) + _push(pubkey)),),
+                unsigned_spend.outputs,
             )
             active_coinbase = coinbase(1, block_subsidy(1) + 100)
             active = mined_block(
