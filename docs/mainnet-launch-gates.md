@@ -87,6 +87,18 @@ See [persistent network identity binding design](persistent-network-identity-bin
 
 See [external trust-witness protocol proposal](external-trust-witness-protocol-proposal.md). The proposal is design-only: no witness service, key, quorum, transparency log, startup integration, or rollback-proof mechanism is implemented. The existing local SQLite checkpoint remains a comparison store and cannot authenticate its caller-supplied external pins.
 
+### Undo coverage for bootstrap spends — implemented, CI pending
+
+The UTXO integrity audit now requires one persisted undo-spent record for every
+non-coinbase input in each active block, including spends of bootstrap outputs
+that have no source transaction in active block history. This closes a gap
+where a missing undo record for a bootstrap spend could evade the historical
+active-transaction subset check and prevent a later disconnect from restoring
+the spent output. A regression test removes that bootstrap undo row and
+requires the audit to fail closed. This remains an integrity check over stored
+history, not a replacement for authenticated bootstrap provenance or
+deterministic replay from Genesis.
+
 ### Active-chain UTXO reverse-presence audit — implemented, CI pending
 
 The explicit UTXO integrity audit now reconstructs the set of active-chain
