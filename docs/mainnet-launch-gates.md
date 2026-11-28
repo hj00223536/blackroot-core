@@ -73,6 +73,20 @@ See [P2P resource-boundary audit](p2p-resource-boundary-audit.md) and [node-wide
 
 See [persistent network identity binding design](persistent-network-identity-binding-design.md) and [persistent network identity source audit](persistent-network-identity-source-audit.md). The source audit confirms that current persistent metadata binds schema version, proof-of-work limit, and Genesis hash only; it does not bind network ID, P2P magic, or protocol version. It is a proposal only; it does not select Mainnet constants or authorize production use.
 
+## External trust-witness and anti-rollback gate
+
+- [ ] Select and independently review an external witness architecture; no witness count, quorum threshold, operator, endpoint, or key is currently approved.
+- [ ] Define a normative, domain-separated, cross-language encoding and published signature vectors for checkpoint statements and challenge-bound responses.
+- [ ] Define CSPRNG nonce generation, single-use challenge handling, replay rejection, trusted-time/expiry policy (if used), and explicit behavior when trusted time is unavailable.
+- [ ] Establish independently administered witness operators, key custody, enrollment, rotation, revocation, compromise handling, and auditable membership changes.
+- [ ] Specify durable monotonic witness state, atomic advancement, restore detection, externally auditable backup/restore controls, equivocation evidence, and independently verifiable transparency/freshness proofs.
+- [ ] Approve a quorum and partition/outage policy through governance; prohibit automatic threshold reduction or fallback to local-only trust state.
+- [ ] Implement authenticated challenge-response and quorum verification; bind every accepted response to project, network, witness-set version, sequence, digest, predecessor, and fresh nonce.
+- [ ] Add adversarial tests for replay, nonce reuse, cross-network substitution, same-sequence equivocation, split-brain writers, snapshot rollback, crash consistency, key compromise, quorum loss, and recovery.
+- [ ] Integrate only after independent protocol, cryptographic, operational, and privacy review; require fail-closed startup and a separately authorized recovery procedure.
+
+See [external trust-witness protocol proposal](external-trust-witness-protocol-proposal.md). The proposal is design-only: no witness service, key, quorum, transparency log, startup integration, or rollback-proof mechanism is implemented. The existing local SQLite checkpoint remains a comparison store and cannot authenticate its caller-supplied external pins.
+
 ## Bootstrap provenance and deterministic UTXO replay
 
 See [deterministic UTXO replay verification design](deterministic-utxo-replay-design.md) for a proposed read-only reconstruction and comparison workflow. It is design-only: authenticated network identity, approved Genesis inputs, frozen complete consensus rules, implementation, independent client reproduction, and adversarial tests are still absent. The current unauthenticated bootstrap path is explicitly ineligible for deterministic replay.
