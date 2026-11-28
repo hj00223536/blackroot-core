@@ -1,7 +1,6 @@
 import asyncio
 import unittest
 
-from src.blackroot_p2p import encode_message
 from src.blackroot_p2p_handshake import VersionMessage, encode_version
 from src.blackroot_p2p_handshake_v2 import Version2Message, decode_version2, encode_version2
 from src.blackroot_p2p_transport import PeerConnection, PeerProtocolError
@@ -113,6 +112,26 @@ class Version2TransportTests(unittest.IsolatedAsyncioTestCase):
         payload = encode_version2(Version2Message(NETWORK, GENESIS, version(202)))
         with self.assertRaisesRegex(PeerProtocolError, "not configured"):
             await peer.handle_message("version2", payload)
+
+
+    async def test_run_sends_version2_and_never_uses_legacy_version(self):
+        reader = asyncio.StreamReader()
+        writer = FakeWriter()
+        peer = PeerConnection(
+            reader, writer, magic=MAGIC, local_version=version(101),
+            min_protocol_version=7, network_id=NETWORK, genesis_hash=GENESIS,
+        )
+        remote = encode_version2(Version2Message(NETWORK, GENESIS, version(202)))
+        reader.feed_data(
+            encode_message(MAGIC, "version2", remote)
+            + encode_message(MAGIC, "verack", b"")
+        )
+        reader.feed_eof()
+        await peer.run()
+        self.assertEqual(len(writer.frames), 2)
+        self.assertEqual(writer.frames[0][4:16], b"version2" + bytes(4))
+        self.assertEqual(writer.frames[1][4:16], b"verack" + bytes(6))
+        self.assertTrue(writer.closed)
 
     async def test_identity_configuration_must_be_complete(self):
         with self.assertRaisesRegex(ValueError, "configured together"):
