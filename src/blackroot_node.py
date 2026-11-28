@@ -61,6 +61,7 @@ async def run_node(config: TestnetConfig, data_dir: Path, bind_host: str, connec
             config.pow_limit,
             config.genesis_header,
             adjusted_time_provider=adjusted_time,
+            require_authenticated_bootstrap=True,
         )
         version = VersionMessage(
             protocol_version=config.protocol_version,
@@ -80,6 +81,7 @@ async def run_node(config: TestnetConfig, data_dir: Path, bind_host: str, connec
             # clock derived from its peer-time policy.
             adjusted_time=adjusted_time,
             require_locked_state=True,
+            require_authenticated_bootstrap=True,
         )
         # Supervise timed-out fork-body requests for the full CLI node lifetime.
         await runtime.start_retry_loop()
