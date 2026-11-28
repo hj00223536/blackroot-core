@@ -581,7 +581,7 @@ class ReorganizationAtomicityTests(unittest.TestCase):
                 s_value = N - s_value
             signature = utils.encode_dss_signature(
                 r_value, s_value
-            ) + b"\\x01"
+            ) + b"\x01"
             spend = Transaction(
                 1,
                 (TxInput(funding, _push(signature) + _push(pubkey)),),
