@@ -541,5 +541,99 @@ class ReorganizationAtomicityTests(unittest.TestCase):
             self.assertEqual(after_utxos, before_utxos)
 
 
+    def test_successful_reorganization_restores_spent_funding_output(self):
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import ec, utils
+        from src.blackroot_script import (
+            N, _hash160, _push, legacy_sighash_all, p2pkh_script,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            database = Path(directory) / "chain.sqlite"
+            store = UTXOStore(database)
+            private_key = ec.derive_private_key(19, ec.SECP256K1())
+            pubkey = private_key.public_key().public_bytes(
+                serialization.Encoding.X962,
+                serialization.PublicFormat.CompressedPoint,
+            )
+            funding = OutPoint(bytes.fromhex("b6" * 32), 0)
+            funding_output = TxOutput(
+                2_000, p2pkh_script(_hash160(pubkey))
+            )
+            store.add_genesis_output(funding, funding_output)
+
+            genesis = mined_block(0, ZERO_HASH, 1)
+            chain = HeaderChain(
+                POW_LIMIT, genesis.header,
+                adjusted_time_provider=lambda: 1_000_000,
+            )
+            unsigned = Transaction(
+                1, (TxInput(funding),), (TxOutput(1_800, b"old-branch"),)
+            )
+            digest = legacy_sighash_all(
+                unsigned, 0, funding_output.script_pubkey
+            )
+            der = private_key.sign(
+                digest, ec.ECDSA(utils.Prehashed(hashes.SHA256()))
+            )
+            r_value, s_value = utils.decode_dss_signature(der)
+            if s_value > N // 2:
+                s_value = N - s_value
+            signature = utils.encode_dss_signature(
+                r_value, s_value
+            ) + b"\\x01"
+            spend = Transaction(
+                1,
+                (TxInput(funding, _push(signature) + _push(pubkey)),),
+                unsigned.outputs,
+            )
+            active_coinbase = coinbase(1, block_subsidy(1) + 200)
+            active = mined_block(
+                1, genesis.header.hash, 2, (active_coinbase, spend)
+            )
+            chain.add(active.header)
+            store.connect_validated_block(genesis, 0, chain)
+            store.connect_validated_block(active, 1, chain)
+
+            fork_one = mined_block(1, genesis.header.hash, 3)
+            fork_two = mined_block(2, fork_one.header.hash, 4)
+            chain.add_to_branch(fork_one.header)
+            chain.add_to_branch(fork_two.header)
+            store.store_block_body(fork_one)
+            store.store_block_body(fork_two)
+
+            self.assertEqual(
+                store.reorganize_to_best(chain),
+                (2, fork_two.header.hash),
+            )
+            with store._connection_scope() as db:
+                restored = db.execute(
+                    "SELECT value, script_pubkey, created_height, is_coinbase "
+                    "FROM utxos WHERE txid=? AND output_index=0",
+                    (funding.txid,),
+                ).fetchone()
+                old_branch_output = db.execute(
+                    "SELECT 1 FROM utxos WHERE txid=? AND output_index=0",
+                    (spend.txid,),
+                ).fetchone()
+            self.assertEqual(restored, (2_000, funding_output.script_pubkey, -1, 0))
+            self.assertIsNone(old_branch_output)
+            self.assertEqual(store.tip(), (2, fork_two.header.hash))
+            store.verify_integrity()
+
+            reopened = UTXOStore(database)
+            self.assertEqual(reopened.tip(), (2, fork_two.header.hash))
+            with reopened._connection_scope() as db:
+                reopened_funding = db.execute(
+                    "SELECT value, script_pubkey, created_height, is_coinbase "
+                    "FROM utxos WHERE txid=? AND output_index=0",
+                    (funding.txid,),
+                ).fetchone()
+            self.assertEqual(
+                reopened_funding,
+                (2_000, funding_output.script_pubkey, -1, 0),
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
