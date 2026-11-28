@@ -1,6 +1,7 @@
 import asyncio
 import unittest
 
+from src.blackroot_p2p import encode_message
 from src.blackroot_p2p_handshake import VersionMessage, encode_version
 from src.blackroot_p2p_handshake_v2 import Version2Message, decode_version2, encode_version2
 from src.blackroot_p2p_transport import PeerConnection, PeerProtocolError
