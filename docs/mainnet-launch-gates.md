@@ -81,6 +81,8 @@ The source-level findings and required closure work are recorded in [UTXO bootst
 
 ## Genesis issuance authorization gate
 
+The repository now includes a verification-only composition in `src/blackroot_genesis_authorization.py` that joins Manifest v2 validation, externally pinned trust-configuration validation, and detached Ed25519 approval. Its frozen result is evidence only: it is not an initializer capability and performs no database writes. The [Genesis authorization verification contract](genesis-authorization-verification-contract.md) defines the required external pin handoff and fail-closed procedure. This implementation does not close the gate: no owner key, authenticated release-policy pin source, durable anti-rollback state, one-time initializer, or independent Genesis reproduction is approved or deployed.
+
 Use the [genesis activation package checklist](genesis-activation-package-checklist.md), [trust-anchor governance proposal](genesis-trust-anchor-governance-proposal.md), and [Genesis package semantic verification plan](genesis-package-semantic-verification-plan.md) as review aids. They are proposals/plans only and do not satisfy any approval, trust-anchor, semantic-verification, or issuance gate.
 
 
