@@ -7,6 +7,7 @@ normative protocol specification or a production node launcher.
 from __future__ import annotations
 
 import ipaddress
+import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -188,6 +189,8 @@ class TestnetConfig:
             handshake_timeout=handshake_timeout,
             idle_timeout=idle_timeout,
             min_protocol_version=self.protocol_version,
+            network_id=hashlib.sha256(self.network_id.encode("utf-8")).digest(),
+            genesis_hash=self.genesis_hash,
         )
 
     def validate_bind_host(self, host: str) -> str:
