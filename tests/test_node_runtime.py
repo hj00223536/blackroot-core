@@ -79,6 +79,7 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
             POW_LIMIT,
             self.state.headers.chain.get(0),
             adjusted_time_provider=lambda: 1_800_000_100,
+            require_authenticated_bootstrap=True,
         )
         manager = PeerManager(
             magic=MAGIC,
@@ -107,6 +108,19 @@ class BlackrootNodeRuntimeTests(unittest.IsolatedAsyncioTestCase):
                 await manager.close()
             locked_state.close()
         self.assertFalse(locked_state.data_directory_locked)
+
+    async def test_runtime_strict_bootstrap_gate_requires_strict_state_open(self):
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "requires persistent state opened with require_authenticated_bootstrap=True",
+        ):
+            BlackrootNodeRuntime(
+                self.state,
+                self.runtime.manager,
+                protocol_version=1,
+                adjusted_time=self.state.headers.adjusted_time_provider,
+                require_authenticated_bootstrap=True,
+            )
 
     async def test_runtime_strict_bootstrap_gate_rejects_unverified_issuance(self):
         self.state.utxos.add_genesis_output(
