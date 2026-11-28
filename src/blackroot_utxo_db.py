@@ -125,6 +125,25 @@ class UTXOStore:
             """)
             row = db.execute("SELECT value FROM metadata WHERE key='schema_version'").fetchone()
             if row is None:
+                metadata_rows = db.execute(
+                    "SELECT COUNT(*) FROM metadata"
+                ).fetchone()[0]
+                live_utxos = db.execute(
+                    "SELECT COUNT(*) FROM utxos"
+                ).fetchone()[0]
+                legacy_tables = {
+                    item[0] for item in db.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table'"
+                    ).fetchall()
+                } & {
+                    "blocks", "block_transactions", "block_bodies",
+                    "block_undo_spent", "block_undo_created",
+                }
+                if metadata_rows or live_utxos or legacy_tables:
+                    raise RuntimeError(
+                        "UTXO database has existing state but no schema version; "
+                        "verified reindex from genesis is required"
+                    )
                 db.execute(
                     "INSERT INTO metadata(key, value) VALUES('schema_version', ?)",
                     (str(self.SCHEMA_VERSION),),
