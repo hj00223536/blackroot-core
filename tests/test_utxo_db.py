@@ -2792,6 +2792,21 @@ store.apply(tx)
             block_subsidy(height) for height in range(102)
         ))
 
+        # The replay must derive undo-spent contents from the prior UTXO
+        # snapshot, not merely trust a self-consistent row count.
+        with _managed_sqlite(replay_path) as db:
+            db.execute(
+                "UPDATE block_undo_spent SET value=value+1 "
+                "WHERE height=101 AND txid=? AND output_index=0",
+                (mature_coinbase_outpoint.txid,),
+            )
+        with self.assertRaisesRegex(
+            RuntimeError, "persisted undo-spent records differ from replay"
+        ):
+            store.verify_active_chain_replay(
+                chain, expected_genesis_hash=genesis.header.hash
+            )
+
 
     def test_active_chain_replay_rejects_live_utxo_tampering(self):
         from src.blackroot_utxo_db import UTXOStore
