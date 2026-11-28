@@ -2745,7 +2745,7 @@ store.apply(tx)
                 r_value, s_value = utils.decode_dss_signature(der_signature)
                 if s_value > N // 2:
                     s_value = N - s_value
-                signature = utils.encode_dss_signature(r_value, s_value) + b"\\x01"
+                signature = utils.encode_dss_signature(r_value, s_value) + bytes([1])
                 spend = Transaction(
                     1,
                     (TxInput(
