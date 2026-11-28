@@ -1318,6 +1318,9 @@ class UTXOStore:
             replay_provenance: dict[OutPoint, UTXOProvenance] = {}
             total_issuance = 0
             total_fees = 0
+            replay_transaction_count = 0
+            replay_undo_created_count = 0
+            replay_undo_spent_count = 0
             expected_parent = bytes(32)
 
             for expected_height, row in enumerate(rows):
@@ -1345,6 +1348,7 @@ class UTXOStore:
                 ).fetchall()
                 if len(tx_rows) != tx_count:
                     raise RuntimeError("active-chain replay transaction count mismatch")
+                replay_transaction_count += len(tx_rows)
                 if any(position != i for i, (position, _txid, _raw) in enumerate(tx_rows)):
                     raise RuntimeError("active-chain replay transaction positions are not contiguous")
                 try:
@@ -1399,6 +1403,7 @@ class UTXOStore:
                 }
                 if recorded_created != expected_created:
                     raise RuntimeError("persisted undo-created records differ from replay")
+                replay_undo_created_count += len(expected_created)
 
                 expected_spent = {}
                 for tx in block.transactions[1:]:
@@ -1427,10 +1432,36 @@ class UTXOStore:
                     )
                 if recorded_spent != expected_spent:
                     raise RuntimeError("persisted undo-spent records differ from replay")
+                replay_undo_spent_count += len(expected_spent)
 
                 replay_utxos = next_utxos
                 replay_provenance = next_provenance
                 expected_parent = stored_hash
+
+            # Per-height comparisons above do not detect orphan rows whose
+            # height is outside the active range (for example, if foreign-key
+            # enforcement was disabled by an external SQLite writer). Reconcile
+            # whole-table cardinalities as a second, independent boundary check.
+            persisted_counts = {
+                "block_transactions": db.execute(
+                    "SELECT COUNT(*) FROM block_transactions"
+                ).fetchone()[0],
+                "block_undo_created": db.execute(
+                    "SELECT COUNT(*) FROM block_undo_created"
+                ).fetchone()[0],
+                "block_undo_spent": db.execute(
+                    "SELECT COUNT(*) FROM block_undo_spent"
+                ).fetchone()[0],
+            }
+            replay_counts = {
+                "block_transactions": replay_transaction_count,
+                "block_undo_created": replay_undo_created_count,
+                "block_undo_spent": replay_undo_spent_count,
+            }
+            if persisted_counts != replay_counts:
+                raise RuntimeError(
+                    "persisted transaction or undo tables contain rows outside active-chain replay"
+                )
 
             live_rows = db.execute(
                 "SELECT txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp "
