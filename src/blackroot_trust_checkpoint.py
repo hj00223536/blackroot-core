@@ -7,11 +7,13 @@ remain mandatory.
 """
 from __future__ import annotations
 
+import math
 import re
 import sqlite3
 from pathlib import Path
 
 _HEX64 = re.compile(r"^[0-9a-f]{64}$")
+_MAX_SQLITE_INTEGER = (1 << 63) - 1
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS trust_checkpoint (
     singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
@@ -33,7 +35,8 @@ class TrustCheckpointStore:
     """Persist one network's latest externally approved trust checkpoint."""
 
     def __init__(self, path: str | Path, *, timeout: float = 10.0):
-        if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or timeout <= 0:
+        if (not isinstance(timeout, (int, float)) or isinstance(timeout, bool)
+                or not math.isfinite(timeout) or timeout <= 0):
             raise ValueError("timeout must be positive")
         self.path = str(Path(path).expanduser())
         self.timeout = float(timeout)
@@ -108,8 +111,9 @@ class TrustCheckpointStore:
         current_digest = _digest(expected_current_digest, "expected_current_digest")
         new_digest = _digest(new_config_digest, "new_config_digest")
         predecessor = _digest(new_previous_config_digest, "new_previous_config_digest")
-        if type(expected_current_sequence) is not int or expected_current_sequence < 1:
-            raise ValueError("expected_current_sequence must be a positive integer")
+        if (type(expected_current_sequence) is not int
+                or not 1 <= expected_current_sequence < _MAX_SQLITE_INTEGER):
+            raise ValueError("expected_current_sequence must be a positive SQLite integer below the maximum")
         if type(new_sequence) is not int or new_sequence != expected_current_sequence + 1:
             raise ValueError("new trust checkpoint sequence must advance by exactly one")
         if new_digest == current_digest:
@@ -146,8 +150,9 @@ class TrustCheckpointStore:
     ) -> None:
         network = _digest(network_id, "network_id")
         digest = _digest(expected_config_digest, "expected_config_digest")
-        if type(expected_sequence) is not int or expected_sequence < 1:
-            raise ValueError("expected_sequence must be a positive integer")
+        if (type(expected_sequence) is not int
+                or not 1 <= expected_sequence <= _MAX_SQLITE_INTEGER):
+            raise ValueError("expected_sequence must be a positive SQLite integer")
         row = self._db().execute(
             "SELECT network_id, sequence, config_digest FROM trust_checkpoint WHERE singleton = 1"
         ).fetchone()
