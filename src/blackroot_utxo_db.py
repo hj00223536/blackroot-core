@@ -1173,6 +1173,10 @@ class UTXOStore:
                 )
                 if not expected_known_spent.issubset(recorded_spent):
                     raise RuntimeError("reorganization undo-spent records are missing known historical inputs")
+                if recorded_spent != block_inputs:
+                    raise RuntimeError(
+                        "reorganization undo-spent records do not cover every block input"
+                    )
 
                 for txid, index, value, script, created_height, is_coinbase_flag, created_mtp in spent:
                     db.execute(
@@ -1455,6 +1459,10 @@ class UTXOStore:
             expected_known_spent = set(prior_outputs).difference(prior_spent).intersection(block_inputs)
             if not expected_known_spent.issubset(recorded_spent):
                 raise RuntimeError("disconnect undo-spent records are missing known historical inputs")
+            if recorded_spent != block_inputs:
+                raise RuntimeError(
+                    "disconnect undo-spent records do not cover every block input"
+                )
 
             for txid, index in created:
                 db.execute(
