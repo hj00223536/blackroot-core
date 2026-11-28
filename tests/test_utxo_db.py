@@ -688,6 +688,19 @@ store.apply(tx)
         ):
             UTXOStore(self.db_path)
 
+    def test_existing_utxo_state_without_schema_version_fails_closed(self):
+        with _managed_sqlite(self.db_path) as db:
+            db.execute("DELETE FROM metadata")
+
+        with self.assertRaisesRegex(
+            RuntimeError, "existing state but no schema version"
+        ):
+            UTXOStore(self.db_path)
+
+        with _managed_sqlite(self.db_path) as db:
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM utxos").fetchone()[0], 1)
+            self.assertEqual(db.execute("SELECT COUNT(*) FROM metadata").fetchone()[0], 0)
+
     def test_schema_v5_rejects_malformed_bootstrap_issuance_metadata(self):
         with _managed_sqlite(self.db_path) as db:
             db.execute(
