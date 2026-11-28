@@ -574,6 +574,14 @@ class UTXOStore:
                             raise RuntimeError("persisted block undo-spent data does not match its source output")
                 if not expected_spent.issubset(recorded_spent):
                     raise RuntimeError("persisted block undo-spent records are missing historical inputs")
+                # Undo data must cover every non-coinbase input, including
+                # bootstrap outputs whose source transaction is not in active
+                # block history. Otherwise disconnecting the block can silently
+                # lose a spent bootstrap output.
+                if recorded_spent != block_inputs:
+                    raise RuntimeError(
+                        "persisted block undo-spent records do not cover every block input"
+                    )
                 spent_history.update(block_inputs)
                 expected_parent = block_hash
 
