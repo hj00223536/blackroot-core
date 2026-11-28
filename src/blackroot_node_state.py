@@ -65,8 +65,12 @@ class PersistentNodeState:
         *,
         database_path: str | Path | None = None,
         adjusted_time_provider: Callable[[], int] | None = None,
+        require_authenticated_bootstrap: bool = False,
         _data_directory_lock: DataDirectoryLock | None = None,
     ) -> None:
+        if not isinstance(require_authenticated_bootstrap, bool):
+            raise TypeError("require_authenticated_bootstrap must be a bool")
+        self.require_authenticated_bootstrap = require_authenticated_bootstrap
         if _data_directory_lock is not None and not _data_directory_lock.is_held:
             raise RuntimeError("provided data-directory lock is not held")
         self._data_directory_lock = _data_directory_lock
@@ -85,7 +89,9 @@ class PersistentNodeState:
                     self.recovery_journal = NodeRecoveryJournal(
                         database_path, connection=connection
                     )
-                    self.utxos.verify_integrity()
+                    self.utxos.verify_integrity(
+                        require_authenticated_bootstrap=self.require_authenticated_bootstrap
+                    )
                     self._verify_persistent_tip()
                     self.recovery_journal.reconcile(self.utxos.tip())
             except BaseException:
@@ -103,7 +109,9 @@ class PersistentNodeState:
         )
         self.utxos = UTXOStore(utxo_path)
         self.recovery_journal = NodeRecoveryJournal(journal_path)
-        self.utxos.verify_integrity()
+        self.utxos.verify_integrity(
+            require_authenticated_bootstrap=self.require_authenticated_bootstrap
+        )
         self._verify_persistent_tip()
         self.recovery_journal.reconcile(self.utxos.tip())
 
@@ -128,6 +136,7 @@ class PersistentNodeState:
         genesis: BlockHeader,
         *,
         adjusted_time_provider: Callable[[], int] | None = None,
+        require_authenticated_bootstrap: bool = False,
     ) -> "PersistentNodeState":
         """Open coordinated node state while holding its data-directory lock.
 
@@ -195,6 +204,7 @@ class PersistentNodeState:
                 genesis,
                 database_path=database,
                 adjusted_time_provider=adjusted_time_provider,
+                require_authenticated_bootstrap=require_authenticated_bootstrap,
                 _data_directory_lock=lock,
             )
         except BaseException:
@@ -205,12 +215,14 @@ class PersistentNodeState:
     def open_coordinated(
         cls, database_path: str | Path, pow_limit: int, genesis: BlockHeader, *,
         adjusted_time_provider: Callable[[], int] | None = None,
+        require_authenticated_bootstrap: bool = False,
     ) -> "PersistentNodeState":
         """Open all persistent stores on one node-owned SQLite connection."""
         return cls(
             database_path, database_path, pow_limit, genesis,
             database_path=database_path,
             adjusted_time_provider=adjusted_time_provider,
+            require_authenticated_bootstrap=require_authenticated_bootstrap,
         )
 
     def close(self) -> None:
