@@ -1,4 +1,5 @@
 import json
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -47,6 +48,8 @@ class TestnetConfigTests(unittest.TestCase):
         self.assertEqual(manager.magic, settings.message_magic)
         self.assertEqual(manager.local_version.protocol_version, 1)
         self.assertEqual(manager.max_peers, 4)
+        self.assertEqual(manager.network_id, hashlib.sha256(settings.network_id.encode("utf-8")).digest())
+        self.assertEqual(manager.genesis_hash, settings.genesis_hash)
 
     def test_protocol_version_and_payload_respect_p2p_bounds(self):
         with self.assertRaisesRegex(ValueError, "positive int32"):

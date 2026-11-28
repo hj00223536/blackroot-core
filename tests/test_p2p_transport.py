@@ -57,12 +57,6 @@ class FakeClock:
 
 class PeerConnectionTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
-    async def test_receive_dispatch_state_starts_inactive_and_resets_after_error(self):
-        self.assertFalse(self.peer._receive_dispatch_active)
-        with self.assertRaisesRegex(PeerProtocolError, "before handshake completion"):
-            await self.peer.handle_message("headers", b"payload")
-        self.assertFalse(self.peer._receive_dispatch_active)
-
         self.writer = FakeWriter()
         self.peer = PeerConnection(
             asyncio.StreamReader(),
@@ -70,6 +64,12 @@ class PeerConnectionTests(unittest.IsolatedAsyncioTestCase):
             magic=MAGIC,
             local_version=version(101),
         )
+
+    async def test_receive_dispatch_state_starts_inactive_and_resets_after_error(self):
+        self.assertFalse(self.peer._receive_dispatch_active)
+        with self.assertRaisesRegex(PeerProtocolError, "before handshake completion"):
+            await self.peer.handle_message("headers", b"payload")
+        self.assertFalse(self.peer._receive_dispatch_active)
 
     def test_rejects_boolean_minimum_protocol_version(self):
         with self.assertRaisesRegex(ValueError, "positive integer"):

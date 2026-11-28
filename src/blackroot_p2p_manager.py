@@ -34,6 +34,8 @@ class PeerManager:
         handshake_timeout: float = 10.0,
         idle_timeout: float = 120.0,
         min_protocol_version: int = 1,
+        network_id: bytes | None = None,
+        genesis_hash: bytes | None = None,
         on_message: MessageHandler | None = None,
         on_peer_message_factory: Callable[[PeerConnection], MessageHandler] | None = None,
         on_peer_error: Callable[[Exception], object] | None = None,
@@ -126,6 +128,14 @@ class PeerManager:
         self.connect_timeout = connect_timeout
         self.handshake_timeout = handshake_timeout
         self.idle_timeout = idle_timeout
+        if (network_id is None) != (genesis_hash is None):
+            raise ValueError("network_id and genesis_hash must be configured together")
+        if network_id is not None and (not isinstance(network_id, bytes) or len(network_id) != 32):
+            raise ValueError("network_id must be exactly 32 bytes")
+        if genesis_hash is not None and (not isinstance(genesis_hash, bytes) or len(genesis_hash) != 32):
+            raise ValueError("genesis_hash must be exactly 32 bytes")
+        self.network_id = network_id
+        self.genesis_hash = genesis_hash
         self.min_protocol_version = min_protocol_version
         self.control_messages_per_second = control_messages_per_second
         self.control_message_burst = control_message_burst
@@ -276,6 +286,7 @@ class PeerManager:
                 reader, writer, magic=self.magic, local_version=self._new_version(),
                 max_payload=self.max_payload, handshake_timeout=self.handshake_timeout,
                 idle_timeout=self.idle_timeout, min_protocol_version=self.min_protocol_version,
+                network_id=self.network_id, genesis_hash=self.genesis_hash,
                 on_message=self.on_message,
                 control_messages_per_second=self.control_messages_per_second,
                 control_message_burst=self.control_message_burst,

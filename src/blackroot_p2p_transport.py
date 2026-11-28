@@ -16,7 +16,8 @@ import time
 from collections.abc import Awaitable, Callable
 
 from .blackroot_p2p import DEFAULT_MAX_PAYLOAD, HEADER_SIZE, decode_message, encode_message
-from .blackroot_p2p_handshake import VersionMessage
+from .blackroot_p2p_handshake import VersionMessage, encode_version
+from .blackroot_p2p_handshake_v2 import Version2Message, decode_version2, encode_version2
 from .blackroot_p2p_state import PeerHandshake, encode_local_version
 from .blackroot_blocks import MAX_BLOCK_SIZE
 from .blackroot_p2p_headers import MAX_HEADERS_PER_MESSAGE
@@ -29,6 +30,7 @@ MessageHandler = Callable[[str, bytes], object | Awaitable[object]]
 # Reject fixed/small control-message lengths from the header before reading
 # attacker-controlled payload bytes from the TCP stream.
 _VERSION_MAX_PAYLOAD = 32 + 2 + 256
+_VERSION2_MAX_PAYLOAD = 68 + _VERSION_MAX_PAYLOAD
 _CONTROL_PAYLOAD_LENGTHS = {
     b"verack" + bytes(6): 0,
     b"ping" + bytes(8): 8,
@@ -51,6 +53,10 @@ def _validate_control_payload_length(command_field: bytes, length: int) -> None:
     if command_field == b"version" + bytes(5):
         if length > _VERSION_MAX_PAYLOAD:
             raise PeerProtocolError("version payload exceeds configured byte limit")
+        return
+    if command_field == b"version2" + bytes(4):
+        if length > _VERSION2_MAX_PAYLOAD:
+            raise PeerProtocolError("version2 payload exceeds configured byte limit")
         return
     expected = _CONTROL_PAYLOAD_LENGTHS.get(command_field)
     if expected is not None and length != expected:
@@ -114,6 +120,8 @@ class PeerConnection:
         handshake_timeout: float = 10.0,
         idle_timeout: float = 120.0,
         min_protocol_version: int = 1,
+        network_id: bytes | None = None,
+        genesis_hash: bytes | None = None,
         on_message: MessageHandler | None = None,
         control_messages_per_second: float = 20.0,
         control_message_burst: float = 40.0,
@@ -144,6 +152,14 @@ class PeerConnection:
         self.handshake_timeout = handshake_timeout
         self.idle_timeout = idle_timeout
         self.min_protocol_version = min_protocol_version
+        if (network_id is None) != (genesis_hash is None):
+            raise ValueError("network_id and genesis_hash must be configured together")
+        if network_id is not None and (not isinstance(network_id, bytes) or len(network_id) != 32):
+            raise ValueError("network_id must be exactly 32 bytes")
+        if genesis_hash is not None and (not isinstance(genesis_hash, bytes) or len(genesis_hash) != 32):
+            raise ValueError("genesis_hash must be exactly 32 bytes")
+        self.network_id = network_id
+        self.genesis_hash = genesis_hash
         self.on_message = on_message
         rate_settings = (
             ("control_messages_per_second", control_messages_per_second),
@@ -266,7 +282,7 @@ class PeerConnection:
             or not math.isfinite(now)
         ):
             raise PeerProtocolError("monotonic clock returned an invalid value")
-        if command in {"version", "verack", "ping", "pong"}:
+        if command in {"version", "version2", "verack", "ping", "pong"}:
             bucket = self._control_message_bucket
             if not bucket.can_consume(1, now):
                 raise PeerProtocolError("peer exceeded control-message rate limit")
@@ -357,12 +373,29 @@ class PeerConnection:
 
     async def _handle_message(self, command: str, payload: bytes) -> None:
         """Apply one decoded message to the handshake or active session."""
-        if command == "version":
+        if command in {"version", "version2"}:
             if self.handshake.remote_version is not None:
                 raise PeerProtocolError("duplicate version message")
-            remote = self.handshake.receive_version(payload)
-            if remote.protocol_version < self.min_protocol_version:
-                raise PeerProtocolError("peer protocol version is unsupported")
+            if self.network_id is None:
+                if command != "version":
+                    raise PeerProtocolError("version-2 handshake is not configured")
+                remote = self.handshake.receive_version(payload)
+                if remote.protocol_version < self.min_protocol_version:
+                    raise PeerProtocolError("peer protocol version is unsupported")
+            else:
+                if command != "version2":
+                    raise PeerProtocolError("legacy version-1 handshake is disabled")
+                try:
+                    envelope = decode_version2(payload)
+                except (TypeError, ValueError) as exc:
+                    raise PeerProtocolError(str(exc)) from exc
+                if envelope.network_id != self.network_id:
+                    raise PeerProtocolError("peer network_id mismatch")
+                if envelope.genesis_hash != self.genesis_hash:
+                    raise PeerProtocolError("peer genesis_hash mismatch")
+                if envelope.version.protocol_version != self.handshake.local_version.protocol_version:
+                    raise PeerProtocolError("peer protocol version is not an exact match")
+                remote = self.handshake.receive_version(encode_version(envelope.version))
             self.remote_version = remote
             await self.send("verack")
             self.handshake.mark_local_verack_sent()
@@ -399,7 +432,14 @@ class PeerConnection:
         if self.handshake.local_version_sent:
             raise PeerProtocolError("peer session has already been started")
         try:
-            await self.send("version", encode_local_version(self.handshake))
+            if self.network_id is None:
+                await self.send("version", encode_local_version(self.handshake))
+            else:
+                payload = encode_version2(Version2Message(
+                    self.network_id, self.genesis_hash, self.handshake.local_version
+                ))
+                await self.send("version2", payload)
+                self.handshake.mark_local_version_sent()
             while not self._closed:
                 timeout = self.idle_timeout if self.handshake.complete else self.handshake_timeout
                 try:
