@@ -46,7 +46,7 @@ This describes a candidate encoding only. It is not an instruction to generate a
 This proposal does not activate a network, allocate or mint BRT, create a founder balance, or establish a market price or liquidity. Do not send real assets to addresses generated from these provisional parameters.
 
 
-## P2P handshake identity proposal (not implemented)
+## P2P handshake identity proposal (v2 feature branch; not activated on main)
 
 The current frame magic is a useful early rejection filter, but it is only four bytes and is not sufficient as the authenticated chain-identity decision. The current `version` payload does not carry `network_id` or `genesis_hash`; therefore two peers configured with the same magic but different genesis identities can currently complete `version/verack`.
 
