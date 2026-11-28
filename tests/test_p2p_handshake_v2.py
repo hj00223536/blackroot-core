@@ -56,7 +56,7 @@ class Version2TransportTests(unittest.IsolatedAsyncioTestCase):
         self.writer = FakeWriter()
         self.peer = PeerConnection(
             asyncio.StreamReader(), self.writer, magic=MAGIC,
-            local_version=version(101), min_protocol_version=7,
+            local_version=version(101), min_protocol_version=1,
             network_id=NETWORK, genesis_hash=GENESIS, on_message=on_message,
         )
         self.peer.handshake.mark_local_version_sent()
@@ -120,7 +120,7 @@ class Version2TransportTests(unittest.IsolatedAsyncioTestCase):
         writer = FakeWriter()
         peer = PeerConnection(
             reader, writer, magic=MAGIC, local_version=version(101),
-            min_protocol_version=7, network_id=NETWORK, genesis_hash=GENESIS,
+            min_protocol_version=1, network_id=NETWORK, genesis_hash=GENESIS,
         )
         remote = encode_version2(Version2Message(NETWORK, GENESIS, version(202)))
         reader.feed_data(
