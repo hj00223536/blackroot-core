@@ -639,6 +639,27 @@ class UTXOStore:
                     if created_height != source_height or is_coinbase != int(source_position == 0):
                         raise RuntimeError("persisted UTXO provenance does not match its active transaction")
 
+            # Every unspent output created by an active-chain transaction must
+            # exist in the live UTXO set. The checks above validate rows that
+            # are present; this reverse check also detects silently deleted
+            # active outputs. Bootstrap outputs are excluded because their
+            # provenance is not represented in active_transactions.
+            expected_live_active: set[OutPoint] = set()
+            for txid, (_source_height, _source_position, source_tx) in active_transactions.items():
+                for output_index, _output in enumerate(source_tx.outputs):
+                    outpoint = OutPoint(txid, output_index)
+                    if outpoint not in spent_history:
+                        expected_live_active.add(outpoint)
+            actual_live_active = {
+                OutPoint(bytes(txid), output_index)
+                for txid, output_index, *_rest in utxo_rows
+                if bytes(txid) in active_transactions
+            }
+            if actual_live_active != expected_live_active:
+                raise RuntimeError(
+                    "persisted live UTXO set is missing or contains unexpected active-chain outputs"
+                )
+
             foreign_key_errors = db.execute("PRAGMA foreign_key_check").fetchall()
             if foreign_key_errors:
                 raise RuntimeError(
