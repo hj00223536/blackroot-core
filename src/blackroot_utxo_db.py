@@ -1480,7 +1480,7 @@ class UTXOStore:
                 for outpoint, output in replay_utxos.items()
             }
             if live_utxos != expected_live:
-                raise RuntimeError("persisted live UTXO state differs from independent replay")
+                raise RuntimeError("persisted live UTXO state differs from reconstructed active-chain replay")
 
             return {
                 "height": len(rows) - 1,
