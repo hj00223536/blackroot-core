@@ -55,6 +55,12 @@ The current composed verifier:
 
 The RFC 8032 private key used in tests is a public test vector only. It is not an owner key and must never be promoted into a production trust configuration.
 
+## Local durable checkpoint prototype
+
+`src/blackroot_trust_checkpoint.py` provides a small SQLite checkpoint for the latest trust-configuration network, sequence, and digest. It uses an immediate write transaction, refuses repeated initialization, permits only a one-step sequence advance whose predecessor equals the stored digest, and can compare reopened state with an externally supplied expected current pin. Its tests cover reopen persistence, duplicate initialization, skipped sequence, predecessor substitution, stale writers, cross-network mismatch, and malformed inputs.
+
+This is a local consistency and restart-persistence mechanism only. It is not a hardware monotonic counter, remote witness, signed release-policy source, or anti-rollback guarantee against an attacker who can replace the database or restore an older filesystem snapshot. A host administrator or compromised process may also alter or delete the file. The checkpoint must never be used as the sole source of trust; every activation decision still requires the independently authenticated external pin and governance evidence described above. The prototype is not wired into node startup or issuance.
+
 ## Closure requirements
 
 Before this contract can be treated as operational:
