@@ -2658,13 +2658,17 @@ store.apply(tx)
 
     def test_active_chain_replay_rebuilds_two_block_chain(self):
         from src.blackroot_blocks import Block, COINBASE_INDEX
-        from src.blackroot_chain import BlockHeader
+        from src.blackroot_chain import BlockHeader, HeaderChain
         from src.blackroot_consensus import decode_compact_target
         from src.blackroot_monetary import block_subsidy
         from src.blackroot_transactions import merkle_root
 
-        genesis, chain = self._make_replay_genesis()
+        genesis, _initial_chain = self._make_replay_genesis()
         bits = genesis.header.bits
+        chain = HeaderChain(
+            decode_compact_target(bits), genesis.header,
+            allow_unchecked_time_for_tests=True,
+        )
         coinbase = Transaction(
             1,
             (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
