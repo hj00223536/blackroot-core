@@ -2540,6 +2540,34 @@ store.apply(tx)
             self.store.verify_integrity()
 
 
+    def test_verify_integrity_rejects_unexpected_active_chain_utxo(self):
+        from src.blackroot_blocks import Block, COINBASE_INDEX
+        from src.blackroot_chain import BlockHeader
+        from src.blackroot_consensus import block_subsidy
+        from src.blackroot_transactions import merkle_root
+
+        coinbase = Transaction(
+            1,
+            (TxInput(OutPoint(bytes(32), COINBASE_INDEX), b"\\x01\\x01"),),
+            (TxOutput(block_subsidy(0), b"unexpected-live-utxo"),),
+        )
+        header = BlockHeader(
+            1, bytes(32), merkle_root((coinbase.txid,)),
+            1, 0x207fffff, 0,
+        )
+        self.store.connect_block(Block(header, (coinbase,)), 0)
+        with _managed_sqlite(self.db_path) as db:
+            db.execute(
+                "INSERT INTO utxos(txid, output_index, value, script_pubkey, created_height, is_coinbase, created_mtp) "
+                "VALUES(?, 1, 1, ?, 0, 1, NULL)",
+                (coinbase.txid, b"forged-output"),
+            )
+        with self.assertRaisesRegex(
+            RuntimeError, "live UTXO set is missing or contains unexpected active-chain outputs"
+        ):
+            self.store.verify_integrity()
+
+
     def test_strict_integrity_gate_rejects_unverified_bootstrap_issuance(self):
         # The default audit remains backward-compatible for local prototype
         # tests. A launch-safety caller can explicitly require an authenticated
