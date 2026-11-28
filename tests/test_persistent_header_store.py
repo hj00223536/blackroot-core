@@ -216,6 +216,24 @@ class PersistentHeaderStoreTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "missing its genesis header"):
             self.open_store()
 
+    def test_replay_fails_closed_when_header_rows_exist_without_metadata(self):
+        self.open_store()
+        with managed_sqlite(sqlite3.connect(self.path)) as db:
+            db.execute("DELETE FROM header_metadata")
+
+        with self.assertRaisesRegex(
+            RuntimeError, "headers but no initialization metadata"
+        ):
+            self.open_store()
+
+        with managed_sqlite(sqlite3.connect(self.path)) as db:
+            self.assertEqual(
+                db.execute("SELECT COUNT(*) FROM headers").fetchone()[0], 1
+            )
+            self.assertEqual(
+                db.execute("SELECT COUNT(*) FROM header_metadata").fetchone()[0], 0
+            )
+
     def test_stale_writer_fails_closed_after_concurrent_header_commit(self):
         first = self.open_store()
         stale = self.open_store()
