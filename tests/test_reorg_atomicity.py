@@ -460,7 +460,7 @@ class ReorganizationAtomicityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             store = UTXOStore(Path(directory) / "chain.sqlite")
             funding = OutPoint(bytes.fromhex("a5" * 32), 0)
-            funding_output = TxOutput(1_000, b"\\x51")
+            funding_output = TxOutput(1_000, b"\x51")
             store.add_genesis_output(funding, funding_output)
 
             genesis = mined_block(0, ZERO_HASH, 1)
@@ -469,7 +469,7 @@ class ReorganizationAtomicityTests(unittest.TestCase):
                 adjusted_time_provider=lambda: 1_000_000,
             )
             spend = Transaction(
-                1, (TxInput(funding),), (TxOutput(900, b"\\x51"),)
+                1, (TxInput(funding),), (TxOutput(900, b"\x51"),)
             )
             active_coinbase = coinbase(1, block_subsidy(1) + 100)
             active = mined_block(
