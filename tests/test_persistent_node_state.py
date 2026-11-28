@@ -74,6 +74,93 @@ class PersistentNodeStateTests(unittest.TestCase):
             adjusted_time_provider=lambda: 1_000_000,
         )
 
+    def test_strict_bootstrap_policy_is_enforced_before_split_state_open(self):
+        utxo_path = self.root / "strict-utxos.sqlite"
+        UTXOStore(utxo_path).add_genesis_output(
+            OutPoint(bytes.fromhex("55" * 32), 0),
+            TxOutput(1, b"unverified-bootstrap"),
+        )
+        with self.assertRaisesRegex(
+            RuntimeError, "authenticated bootstrap manifest verification is unavailable"
+        ):
+            PersistentNodeState(
+                self.root / "strict-headers.sqlite",
+                utxo_path,
+                POW_LIMIT,
+                self.genesis_block.header,
+                require_authenticated_bootstrap=True,
+            )
+
+    def test_strict_bootstrap_policy_is_enforced_during_coordinated_open(self):
+        database = self.root / "strict-coordinated.sqlite"
+        UTXOStore(database).add_genesis_output(
+            OutPoint(bytes.fromhex("66" * 32), 0),
+            TxOutput(1, b"unverified-bootstrap"),
+        )
+        with self.assertRaisesRegex(
+            RuntimeError, "authenticated bootstrap manifest verification is unavailable"
+        ):
+            PersistentNodeState.open_coordinated(
+                database,
+                POW_LIMIT,
+                self.genesis_block.header,
+                adjusted_time_provider=lambda: 1_000_000,
+                require_authenticated_bootstrap=True,
+            )
+
+    def test_strict_bootstrap_policy_is_enforced_by_locked_open_and_releases_lock(self):
+        data_dir = self.root / "strict-locked"
+        data_dir.mkdir()
+        database = data_dir / "node.sqlite"
+        UTXOStore(database).add_genesis_output(
+            OutPoint(bytes.fromhex("77" * 32), 0),
+            TxOutput(1, b"unverified-bootstrap"),
+        )
+        with self.assertRaisesRegex(
+            RuntimeError, "authenticated bootstrap manifest verification is unavailable"
+        ):
+            PersistentNodeState.open_locked(
+                data_dir,
+                database,
+                POW_LIMIT,
+                self.genesis_block.header,
+                adjusted_time_provider=lambda: 1_000_000,
+                require_authenticated_bootstrap=True,
+            )
+        # A failed strict open must not strand the exclusive directory lock.
+        reopened = PersistentNodeState.open_locked(
+            data_dir,
+            database,
+            POW_LIMIT,
+            self.genesis_block.header,
+            adjusted_time_provider=lambda: 1_000_000,
+        )
+        reopened.close()
+
+    def test_strict_bootstrap_policy_accepts_empty_coordinated_state(self):
+        state = PersistentNodeState.open_coordinated(
+            self.root / "strict-empty.sqlite",
+            POW_LIMIT,
+            self.genesis_block.header,
+            adjusted_time_provider=lambda: 1_000_000,
+            require_authenticated_bootstrap=True,
+        )
+        try:
+            self.assertTrue(state.require_authenticated_bootstrap)
+            self.assertIsNone(state.utxos.tip())
+        finally:
+            state.close()
+
+    def test_node_state_rejects_non_boolean_bootstrap_policy(self):
+        with self.assertRaisesRegex(TypeError, "require_authenticated_bootstrap must be a bool"):
+            PersistentNodeState(
+                self.root / "invalid-policy-headers.sqlite",
+                self.root / "invalid-policy-utxos.sqlite",
+                POW_LIMIT,
+                self.genesis_block.header,
+                require_authenticated_bootstrap=1,
+            )
+
     def test_coordinated_mode_uses_one_database_for_all_node_stores(self):
         state = self.coordinated_state()
         try:
