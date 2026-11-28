@@ -191,3 +191,10 @@ also asserts explicitly that its only coinbase output is a zero-value
 founder allocation. This assertion is intentionally not a substitute for a
 future owner-approved founder locking script, deterministic issuance bytes, or
 an independently verified final genesis.
+
+## Local active-chain replay prototype (not a launch gate closure)
+
+`UTXOStore.verify_active_chain_replay()` is now implemented as a read-only local consistency verifier. It reconstructs the active UTXO/provenance state from stored active-chain headers and raw transactions, compares per-block undo records and live UTXOs, and rejects orphan transaction/undo rows. Current focused tests cover Genesis-only replay, live UTXO tampering, bootstrap-state rejection, and orphan-row rejection.
+
+This does **not** satisfy the authenticated deterministic replay gate: the expected Genesis hash and `HeaderChain` are supplied by the caller; there is no externally pinned network-identity/manifest digest, no frozen consensus parameter package, no independent consensus/script implementation, and no independently maintained replay client. Multi-block spend/reorg replay, broad corruption tests, resource bounds, crash/backup replay, and independent review remain outstanding. Do not treat this prototype as authorization to launch a public Testnet or Mainnet.
+
